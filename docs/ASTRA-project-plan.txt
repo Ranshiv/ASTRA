@@ -1,0 +1,1562 @@
+# ASTRA
+
+## Astronomical Survey & Transient Research Analyzer
+
+### Final Project Plan
+
+---
+
+# 1. Executive Summary
+
+**ASTRA** is a Windows-first desktop scientific research application designed to discover, investigate, characterize, and prioritize unusual astronomical objects by combining observations from multiple astronomical surveys.
+
+The central idea is not to build another conventional astronomy viewer or another classifier for already-known objects.
+
+ASTRA will focus on:
+
+> **Finding unusual astronomical behavior, combining evidence across independent surveys, determining whether an anomaly is real or an artifact, explaining why it was flagged, and helping researchers decide what should be investigated next.**
+
+The initial platform will combine:
+
+* **ZTF** for time-domain/transient observations
+* **Gaia** for astrometry, photometry, and stellar information
+* **TESS** for high-cadence time-series observations
+
+The application will run locally on the researcher's machine and use the available **NVIDIA GPU** for accelerated machine learning and scientific computation.
+
+The final product will be distributed as a normal Windows application:
+
+**`ASTRA-Setup.exe`**
+
+Researchers should not need to manually install Python, Node.js, Rust, or the scientific libraries to use the released application.
+
+---
+
+# 2. Core Research Objective
+
+## Primary research question
+
+> Can multimodal, cross-survey astronomical analysis identify scientifically interesting anomalies more effectively than conventional single-survey anomaly detection?
+
+### Secondary research questions
+
+| Research Question                                             | Experimental Approach                                |
+| ------------------------------------------------------------- | ---------------------------------------------------- |
+| Does combining surveys improve discovery?                     | Compare single-survey and multi-survey models        |
+| Can unsupervised systems discover unknown patterns?           | Train without anomaly class labels                   |
+| Can the system distinguish artifacts from physical phenomena? | Data-quality and cross-survey consistency analysis   |
+| Does multimodal information improve ranking?                  | Compare photometric, astrometric and temporal models |
+| Can the system explain anomalies?                             | Feature attribution and evidence generation          |
+| Can historical observations increase confidence?              | Temporal cross-survey analysis                       |
+| Can the system prioritize scientific follow-up?               | Candidate significance ranking                       |
+
+---
+
+# 3. Intended Scientific Workflow
+
+```text
+Astronomical Data
+       ↓
+Data Acquisition
+       ↓
+Calibration / Cleaning
+       ↓
+Feature Extraction
+       ↓
+Anomaly Detection
+       ↓
+Cross-Survey Matching
+       ↓
+Artifact Rejection
+       ↓
+Scientific Characterization
+       ↓
+Candidate Ranking
+       ↓
+Human Investigation
+       ↓
+Follow-up Recommendation
+       ↓
+Research Report / Candidate Catalogue
+```
+
+---
+
+# 4. What ASTRA Should Actually Discover
+
+ASTRA should not be restricted to a single object class.
+
+Potential discoveries include:
+
+| Candidate Type          | Example Behavior                           |
+| ----------------------- | ------------------------------------------ |
+| Variable star           | Unexpected periodicity                     |
+| Stellar flare           | Unusual flare profile                      |
+| Binary system           | Inconsistent eclipse behavior              |
+| Transient               | Rare brightness evolution                  |
+| Microlensing candidate  | Unusual temporary amplification            |
+| AGN                     | Unexpected long-term variability           |
+| Stellar interaction     | Unusual multimodal behavior                |
+| Moving object           | Unexpected trajectory                      |
+| Unknown/rare phenomenon | Does not fit known populations             |
+| Instrumental artifact   | Appears anomalous but is not astrophysical |
+
+The application must be capable of concluding:
+
+> **“This is probably an artifact.”**
+
+That is as important as finding a real candidate.
+
+---
+
+# 5. Target Users
+
+| User                       | Usage                                  |
+| -------------------------- | -------------------------------------- |
+| Astronomer                 | Search and investigate unusual objects |
+| Astrophysics researcher    | Perform reproducible experiments       |
+| Student                    | Learn astronomical data analysis       |
+| ML researcher              | Develop anomaly-detection models       |
+| Observatory/research group | Prioritize targets                     |
+| Citizen scientist          | Review interesting candidates          |
+| Computational scientist    | Benchmark algorithms                   |
+
+---
+
+# 6. Data Sources
+
+## Initial sources
+
+### ZTF
+
+Used primarily for:
+
+* transient detection
+* time-domain astronomy
+* variable objects
+* historical light curves
+* image cutouts
+
+### Gaia
+
+Used for:
+
+* celestial coordinates
+* parallax
+* proper motion
+* photometry
+* radial velocity
+* stellar parameters
+* variability information
+
+### TESS
+
+Used for:
+
+* time-series photometry
+* stellar variability
+* transient behavior
+* flares
+* eclipses
+* transit-like patterns
+
+---
+
+# 7. Future Data Integrations
+
+ASTRA should use a modular data-provider architecture.
+
+| Future Source    | Purpose                            |
+| ---------------- | ---------------------------------- |
+| Rubin/LSST       | Massive time-domain data           |
+| SDSS             | Spectroscopy and imaging           |
+| Pan-STARRS       | Optical observations               |
+| DES              | Deep optical survey                |
+| Hubble           | High-resolution imaging            |
+| JWST             | Infrared observations              |
+| Chandra          | X-ray observations                 |
+| XMM-Newton       | X-ray observations                 |
+| Swift            | Transient/high-energy observations |
+| LIGO/Virgo/KAGRA | Gravitational-wave events          |
+| CHIME            | Radio transients                   |
+
+A new survey should be added through a connector rather than modifying the entire system.
+
+---
+
+# 8. Final Technology Stack
+
+| Layer                 | Technology              | Purpose                      |
+| --------------------- | ----------------------- | ---------------------------- |
+| Desktop framework     | **Tauri 2**             | Desktop application          |
+| Native layer          | **Rust**                | Native application logic     |
+| Frontend              | **React + TypeScript**  | UI                           |
+| Build system          | **Vite**                | Frontend build               |
+| Styling               | **Tailwind CSS**        | UI styling                   |
+| UI components         | **shadcn/ui**           | Interface components         |
+| Astronomy             | **Astropy**             | Astronomical calculations    |
+| Data access           | **Astroquery**          | Archive queries              |
+| Time-series astronomy | **Lightkurve**          | TESS/Kepler analysis         |
+| Numerical computing   | **NumPy / SciPy**       | Scientific computation       |
+| Dataframes            | **Polars**              | Fast data processing         |
+| Classical ML          | **scikit-learn**        | Baseline anomaly detection   |
+| Deep learning         | **PyTorch**             | Advanced anomaly models      |
+| Parallel computing    | **Dask**                | Large-scale processing       |
+| GPU arrays            | **CuPy**                | CUDA acceleration            |
+| Native acceleration   | **C++ / CUDA**          | Performance-critical kernels |
+| Local analytical DB   | **DuckDB**              | Local analytical queries     |
+| Local metadata        | **SQLite**              | Application/project storage  |
+| Analytical files      | **Parquet**             | Large datasets               |
+| Raw astronomy files   | **FITS**                | Scientific observations      |
+| Visualization         | **Plotly**              | Scientific graphs            |
+| Visualization         | **D3.js**               | Custom visualizations        |
+| Sky visualization     | **Aladin Lite**         | Astronomical sky maps        |
+| 3D visualization      | **Three.js**            | 3D data visualization        |
+| Packaging             | **Tauri Bundler**       | Windows installer            |
+| Testing               | **pytest + Rust tests** | Verification                 |
+| Documentation         | **MkDocs + Jupyter**    | Research documentation       |
+
+---
+
+# 9. Tauri vs Rust
+
+These are different technologies.
+
+### Tauri
+
+Tauri is the **desktop framework**.
+
+### Rust
+
+Rust is the **native programming language** used for the Tauri application core.
+
+Architecture:
+
+```text
+React + TypeScript
+        ↓
+      Tauri
+        ↓
+      Rust
+        ↓
+      Windows
+```
+
+Python is separate:
+
+```text
+React
+  ↓
+Tauri
+  ↓
+Rust
+  ↓
+Python scientific engine
+  ↓
+PyTorch / Astropy
+  ↓
+NVIDIA GPU
+```
+
+---
+
+# 10. Recommended Desktop Architecture
+
+```text
+┌───────────────────────────────────────────┐
+│                 ASTRA UI                  │
+│                                           │
+│ React + TypeScript                        │
+│                                           │
+│ Dashboard                                 │
+│ Sky Explorer                              │
+│ Candidate Explorer                        │
+│ Light Curves                              │
+│ FITS Viewer                               │
+│ Experiments                               │
+│ Models                                    │
+│ Research Reports                          │
+└─────────────────────┬─────────────────────┘
+                      │
+                  Tauri IPC
+                      │
+┌─────────────────────▼─────────────────────┐
+│                   RUST                    │
+│                                           │
+│ Native application core                   │
+│ Process management                        │
+│ Filesystem                                │
+│ Hardware detection                        │
+│ Security                                  │
+└─────────────────────┬─────────────────────┘
+                      │
+              Scientific Engine
+                      │
+┌─────────────────────▼─────────────────────┐
+│                  PYTHON                   │
+│                                           │
+│ Astropy                                  │
+│ Astroquery                               │
+│ Lightkurve                               │
+│ NumPy / SciPy                            │
+│ Polars                                   │
+│ PyTorch                                  │
+│ scikit-learn                             │
+│ Dask                                     │
+└─────────────────────┬─────────────────────┘
+                      │
+                 CUDA / CuPy
+                      │
+                      ▼
+                NVIDIA GPU
+```
+
+---
+
+# 11. Data Architecture
+
+ASTRA should **not** use one storage technology for everything.
+
+| Data                      | Recommended Storage         |
+| ------------------------- | --------------------------- |
+| Raw observations          | FITS                        |
+| Large analytical datasets | Parquet                     |
+| Local analytical queries  | DuckDB                      |
+| Application settings      | SQLite                      |
+| Project metadata          | SQLite                      |
+| Images                    | Local object/data directory |
+| ML embeddings             | Vector-capable storage      |
+| Models                    | Model directory             |
+| Research reports          | Project storage             |
+| Temporary processing      | Cache                       |
+
+### Example
+
+```text
+ASTRA/
+├── Projects/
+│   └── project_001/
+│       ├── metadata/
+│       ├── candidates/
+│       ├── experiments/
+│       ├── results/
+│       └── reports/
+│
+├── Datasets/
+│   ├── ZTF/
+│   ├── Gaia/
+│   └── TESS/
+│
+├── Models/
+├── Cache/
+├── Logs/
+└── Config/
+```
+
+---
+
+# 12. Scientific Processing Pipeline
+
+## Stage 1: Acquisition
+
+Search and retrieve observations.
+
+Example:
+
+```text
+RA: 180.122°
+DEC: +22.411°
+Search radius: 10 arcsec
+```
+
+ASTRA queries the available surveys.
+
+---
+
+## Stage 2: Cleaning
+
+Detect:
+
+* missing values
+* corrupted measurements
+* saturated pixels
+* bad observations
+* duplicates
+* inconsistent metadata
+* instrumental artifacts
+
+---
+
+## Stage 3: Feature extraction
+
+### Photometric
+
+* mean
+* variance
+* amplitude
+* skewness
+* kurtosis
+* variability indices
+
+### Temporal
+
+* periodicity
+* flare duration
+* rise time
+* decay time
+* recurrence
+* change points
+
+### Astrometric
+
+* parallax
+* proper motion
+* positional uncertainty
+
+### Spectral
+
+* line characteristics
+* continuum properties
+* spectral deviations
+
+### Image
+
+* morphology
+* shape
+* local environment
+* residual statistics
+
+---
+
+# 13. Anomaly Detection Strategy
+
+ASTRA should use multiple models.
+
+### Baseline models
+
+* Isolation Forest
+* Local Outlier Factor
+* One-Class SVM
+* PCA reconstruction
+
+### Advanced models
+
+* Autoencoder
+* Variational Autoencoder
+* Transformer-based time-series models
+* Contrastive learning
+* Multimodal embedding model
+
+### Research principle
+
+Never assume that the newest deep-learning model is automatically best.
+
+The research must compare methods quantitatively.
+
+---
+
+# 14. Multimodal Model
+
+The long-term goal is to create one representation from multiple observational modes.
+
+```text
+Photometry
+     │
+Astrometry
+     │
+Images
+     │
+Spectra
+     │
+Metadata
+     │
+Historical behavior
+     ↓
+Multimodal Encoder
+     ↓
+Astronomical Representation
+     ↓
+Similarity / Anomaly Detection
+```
+
+This becomes the central research innovation.
+
+---
+
+# 15. Cross-Survey Correlation
+
+For every candidate:
+
+```text
+Candidate
+   ↓
+Coordinate matching
+   ↓
+Identify corresponding sources
+   ↓
+Compare observation times
+   ↓
+Compare physical measurements
+   ↓
+Determine independent evidence
+   ↓
+Calculate consistency
+```
+
+Example:
+
+```text
+ZTF:
+Unusual dimming
+       +
+TESS:
+Historical variation
+       +
+Gaia:
+Unexpected stellar properties
+       ↓
+Cross-survey evidence
+       ↓
+High-priority candidate
+```
+
+---
+
+# 16. Candidate Scoring
+
+Use a composite score rather than a single ML probability.
+
+Example:
+
+| Component                | Weight |
+| ------------------------ | -----: |
+| Statistical rarity       |    25% |
+| Cross-survey consistency |    20% |
+| Temporal uniqueness      |    15% |
+| Physical inconsistency   |    15% |
+| Catalog novelty          |    10% |
+| Model agreement          |    10% |
+| Data quality             |     5% |
+
+These weights should eventually become experimental variables.
+
+---
+
+# 17. Explainable Anomaly Report
+
+Every candidate should answer:
+
+### What happened?
+
+### Why was it flagged?
+
+### Which observations support it?
+
+### Could it be an artifact?
+
+### What known objects resemble it?
+
+### What should the researcher do next?
+
+Example:
+
+```text
+Candidate: ASTRA-004921
+
+Anomaly score: 0.984
+
+Detected:
+• 5.8σ unusual variability
+• rare temporal behavior
+• cross-survey consistency
+• no strong catalog classification
+
+Potential explanations:
+1. Rare stellar variability
+2. Binary interaction
+3. Transient phenomenon
+4. Instrumental artifact
+
+Recommended action:
+Review historical observations and consider spectroscopic follow-up.
+```
+
+---
+
+# 18. Candidate Investigation Interface
+
+Each candidate gets its own workspace.
+
+```text
+┌───────────────────────────────────────┐
+│ Candidate ASTRA-004921                │
+├───────────────────────────────────────┤
+│ Summary                               │
+│                                       │
+│ Light Curve                           │
+│                                       │
+│ ZTF                                   │
+│ Gaia                                  │
+│ TESS                                  │
+│                                       │
+│ Sky Position                          │
+│                                       │
+│ Images / FITS                         │
+│                                       │
+│ Timeline                              │
+│                                       │
+│ Model Explanation                     │
+│                                       │
+│ Research Notes                        │
+│                                       │
+│ [Mark Interesting] [Artifact]         │
+└───────────────────────────────────────┘
+```
+
+---
+
+# 19. Research Experiment System
+
+Every experiment must be reproducible.
+
+Store:
+
+```text
+Experiment ID
+Dataset version
+Model version
+Feature version
+Preprocessing version
+Hyperparameters
+Hardware
+Execution time
+Results
+Random seeds
+```
+
+Example:
+
+```text
+Experiment #0241
+
+Dataset:
+ZTF + Gaia + TESS
+
+Model:
+Multimodal Autoencoder v0.8
+
+Objects:
+12,450,000
+
+Candidates:
+1,284
+
+High priority:
+37
+
+GPU:
+NVIDIA
+
+Runtime:
+...
+```
+
+---
+
+# 20. Scientific Validation
+
+The project must include controlled experiments.
+
+### Experiment groups
+
+| Experiment        | Purpose                  |
+| ----------------- | ------------------------ |
+| ZTF only          | Baseline                 |
+| Gaia only         | Baseline                 |
+| TESS only         | Baseline                 |
+| ZTF + Gaia        | Cross-survey improvement |
+| ZTF + TESS        | Temporal cross-check     |
+| Gaia + TESS       | Stellar characterization |
+| ZTF + Gaia + TESS | Full system              |
+
+### Metrics
+
+* precision
+* recall
+* F1
+* ROC-AUC
+* false-positive rate
+* anomaly discovery rate
+* candidate diversity
+* processing time
+* GPU utilization
+* memory usage
+
+---
+
+# 21. Research Dataset Strategy
+
+Do not begin with the entire astronomical archive.
+
+Use a staged approach.
+
+### Stage A
+
+Small representative datasets for development.
+
+### Stage B
+
+Medium-scale datasets for algorithm testing.
+
+### Stage C
+
+Large datasets for benchmark experiments.
+
+### Stage D
+
+Full-scale discovery campaigns.
+
+This will make development substantially faster and prevent the computer from becoming a very expensive space heater.
+
+---
+
+# 22. Human-in-the-Loop System
+
+Researchers can label candidates:
+
+```text
+Interesting
+Artifact
+Known object
+Uncertain
+Needs follow-up
+```
+
+ASTRA can use these labels to improve future ranking.
+
+```text
+Model
+ ↓
+Candidate
+ ↓
+Human review
+ ↓
+Label
+ ↓
+Training data
+ ↓
+Improved model
+```
+
+---
+
+# 23. Desktop Installation
+
+The released application should install through:
+
+**`ASTRA-Setup.exe`**
+
+The end user should not need:
+
+* Python
+* Node.js
+* Rust
+* Cargo
+* pip
+* CUDA Toolkit
+* VS Code
+
+These are development dependencies.
+
+ASTRA should package the necessary runtime components.
+
+---
+
+# 24. Developer Installation
+
+Your development machine should contain:
+
+| Technology                | Required    |
+| ------------------------- | ----------- |
+| Windows 11                | Yes         |
+| Git                       | Yes         |
+| VS Code                   | Yes         |
+| Node.js LTS               | Yes         |
+| Rust                      | Yes         |
+| Python                    | Yes         |
+| NVIDIA Driver             | Yes for GPU |
+| CUDA Toolkit              | Recommended |
+| Visual Studio Build Tools | Yes         |
+| CMake                     | Recommended |
+| Tauri tooling             | Yes         |
+| Docker                    | Optional    |
+| Jupyter                   | Recommended |
+| Nsight tools              | Optional    |
+
+---
+
+# 25. User Hardware Requirements
+
+### Minimum
+
+```text
+64-bit Windows
+8–16 GB RAM
+SSD
+Modern CPU
+```
+
+### Recommended
+
+```text
+16–32 GB RAM
+NVIDIA GPU
+8+ GB VRAM
+NVMe SSD
+```
+
+### Research workstation
+
+```text
+32–64+ GB RAM
+NVIDIA GPU
+12–24+ GB VRAM
+1–4 TB NVMe
+```
+
+The software should automatically choose:
+
+```text
+GPU mode
+or
+CPU mode
+```
+
+depending on available hardware.
+
+---
+
+# 26. GPU Architecture
+
+The application should detect:
+
+```text
+NVIDIA GPU
+      ↓
+VRAM
+      ↓
+CUDA capability
+      ↓
+PyTorch availability
+      ↓
+Select execution mode
+```
+
+GPU tasks:
+
+* neural-network training
+* inference
+* image feature extraction
+* embeddings
+* matrix operations
+* batch analysis
+
+CPU tasks:
+
+* metadata processing
+* file management
+* many astronomy utilities
+* database queries
+* non-GPU-compatible processing
+
+---
+
+# 27. Packaging Architecture
+
+ASTRA will consist of several build components.
+
+```text
+React
+ ↓
+Vite build
+ ↓
+Frontend bundle
+
+Python
+ ↓
+PyInstaller / equivalent packaging
+ ↓
+Scientific engine
+
+Rust
+ ↓
+Cargo build
+ ↓
+Native application
+
+All components
+ ↓
+Tauri Bundler
+ ↓
+Windows Installer
+ ↓
+ASTRA-Setup.exe
+```
+
+The final installer packages the application without requiring the researcher to understand its internal architecture.
+
+---
+
+# 28. Build Pipeline
+
+A release script should perform:
+
+```text
+1. Run frontend tests
+2. Build React application
+3. Run Python tests
+4. Build scientific engine
+5. Run Rust tests
+6. Compile Rust/Tauri
+7. Package models/resources
+8. Validate dependencies
+9. Generate installer
+10. Generate checksums
+11. Sign release binaries
+```
+
+Output:
+
+```text
+release/
+└── ASTRA-1.0.0-Setup.exe
+```
+
+---
+
+# 29. Development Phases
+
+## Phase 1 — Foundation
+
+**Weeks 1–4**
+
+Build:
+
+* Tauri
+* Rust
+* React
+* TypeScript
+* Python engine
+* project management
+* basic desktop shell
+
+### Result
+
+Working desktop application.
+
+---
+
+## Phase 2 — Astronomy Data Layer
+
+**Weeks 5–8**
+
+Build:
+
+* ZTF connector
+* Gaia connector
+* TESS connector
+* archive queries
+* local caching
+* FITS handling
+* metadata normalization
+
+### Result
+
+Unified astronomical data engine.
+
+---
+
+## Phase 3 — Scientific Visualization
+
+**Weeks 7–10**
+
+Build:
+
+* light curves
+* image viewer
+* FITS viewer
+* sky map
+* candidate explorer
+* timeline
+
+### Result
+
+Usable scientific investigation interface.
+
+---
+
+## Phase 4 — Baseline Anomaly Detection
+
+**Weeks 9–12**
+
+Implement:
+
+* statistical features
+* PCA
+* Isolation Forest
+* LOF
+* One-Class SVM
+
+### Result
+
+First working anomaly engine.
+
+---
+
+## Phase 5 — Deep Learning
+
+**Weeks 12–18**
+
+Implement:
+
+* autoencoder
+* VAE
+* time-series model
+* GPU support
+* model evaluation
+
+### Result
+
+Advanced ML system.
+
+---
+
+## Phase 6 — Cross-Survey Engine
+
+**Weeks 16–22**
+
+Implement:
+
+* coordinate matching
+* temporal matching
+* independent evidence scoring
+* cross-survey candidate profiles
+
+### Result
+
+Core ASTRA research capability.
+
+---
+
+## Phase 7 — Explainability & Candidate Ranking
+
+**Weeks 20–26**
+
+Implement:
+
+* evidence scoring
+* explanations
+* candidate ranking
+* artifact likelihood
+* recommendation engine
+
+### Result
+
+Astronomer-oriented candidate workflow.
+
+---
+
+## Phase 8 — Research Framework
+
+**Weeks 24–30**
+
+Implement:
+
+* experiment management
+* reproducibility
+* model versioning
+* dataset versioning
+* benchmarks
+* ablation studies
+
+### Result
+
+Research-grade environment.
+
+---
+
+## Phase 9 — Optimization
+
+**Weeks 28–34**
+
+Implement:
+
+* GPU profiling
+* CUDA optimization
+* memory optimization
+* batch processing
+* parallel execution
+
+### Result
+
+Production-level performance.
+
+---
+
+## Phase 10 — Release
+
+**Weeks 32–38**
+
+Implement:
+
+* installer
+* logging
+* crash reporting
+* documentation
+* release testing
+* security review
+
+### Result
+
+ASTRA v1.0.
+
+---
+
+# 30. AI-Agent-Assisted Development
+
+AI agents can significantly accelerate the engineering work.
+
+Recommended organization:
+
+| Agent               | Responsibility                 |
+| ------------------- | ------------------------------ |
+| Architecture Agent  | Overall design and code review |
+| Desktop Agent       | Tauri + Rust                   |
+| Frontend Agent      | React/TypeScript               |
+| Astronomy Agent     | Astropy/Astroquery             |
+| Data Agent          | ZTF/Gaia/TESS pipelines        |
+| ML Agent            | Anomaly models                 |
+| GPU Agent           | CUDA optimization              |
+| Testing Agent       | Automated tests                |
+| Documentation Agent | Technical/research docs        |
+
+One primary architecture/reviewer agent should coordinate changes.
+
+Agents should not independently redesign shared interfaces.
+
+---
+
+# 31. Expected Development Time
+
+| Version                       | Approximate Time |
+| ----------------------------- | ---------------: |
+| Proof of concept              |        3–5 weeks |
+| Initial prototype             |        4–6 weeks |
+| Functional MVP                |       6–10 weeks |
+| Strong v1                     |       4–6 months |
+| Research-grade v1             |       6–9 months |
+| Advanced research system      |      9–15 months |
+| Publication-oriented research |     12–24 months |
+
+With heavy AI-agent assistance, **4–6 months for a strong v1** is a reasonable target for a highly focused solo developer.
+
+The scientific validation and publication work will remain the slower component.
+
+---
+
+# 32. MVP Scope
+
+The first serious release should contain:
+
+```text
+✓ Windows desktop application
+✓ Tauri + Rust
+✓ React + TypeScript
+✓ Python science engine
+✓ ZTF integration
+✓ Gaia integration
+✓ TESS integration
+✓ FITS viewer
+✓ Light-curve viewer
+✓ Sky map
+✓ Cross-survey matching
+✓ Statistical anomaly detection
+✓ Autoencoder
+✓ Candidate ranking
+✓ Explainable reports
+✓ Experiment tracking
+✓ CSV/FITS/PDF export
+✓ CPU/GPU execution
+✓ Local data storage
+```
+
+Do not begin with:
+
+* every astronomical survey
+* cloud infrastructure
+* Kubernetes
+* multi-user SaaS
+* telescope control
+* every possible ML architecture
+
+Those belong later.
+
+---
+
+# 33. Advanced Version
+
+After v1:
+
+```text
+ASTRA
+│
+├── Multimodal embeddings
+├── Transformer models
+├── Rubin integration
+├── Spectroscopy
+├── Radio observations
+├── X-ray observations
+├── Advanced artifact rejection
+├── Automated follow-up planning
+├── Telescope integrations
+├── Research collaboration
+├── Cloud/HPC support
+└── Citizen-science review
+```
+
+---
+
+# 34. Potential Follow-Up System
+
+A future candidate could trigger:
+
+```text
+Interesting candidate
+       ↓
+Check visibility
+       ↓
+Calculate observable windows
+       ↓
+Identify available facilities
+       ↓
+Determine required filters/exposure
+       ↓
+Generate observation request
+```
+
+The software would therefore evolve from:
+
+**Discover**
+
+to:
+
+**Discover → Characterize → Validate → Observe**
+
+---
+
+# 35. Research Publication Strategy
+
+The software should be designed around a potential paper from the beginning.
+
+Possible paper title:
+
+> **Cross-Survey Multimodal Anomaly Detection for Astronomical Object Discovery**
+
+Possible paper structure:
+
+```text
+Abstract
+Introduction
+Related Work
+Datasets
+Methodology
+Cross-Survey Representation
+Anomaly Detection
+Candidate Ranking
+Experimental Design
+Results
+Ablation Studies
+Error Analysis
+Candidate Catalogue
+Discussion
+Limitations
+Future Work
+Conclusion
+```
+
+---
+
+# 36. Important Research Controls
+
+ASTRA must explicitly handle:
+
+### Selection bias
+
+The system should document how candidates enter the pipeline.
+
+### Data leakage
+
+Training and evaluation data must be separated correctly.
+
+### Survey bias
+
+Different instruments have different sensitivities and observational patterns.
+
+### Instrumental artifacts
+
+An anomaly should not automatically be considered astrophysical.
+
+### Class imbalance
+
+Rare astronomical events will be highly imbalanced.
+
+### Uncertainty
+
+The system should report uncertainty rather than pretending every prediction is certain.
+
+---
+
+# 37. Scientific Reproducibility
+
+Every result should be reproducible.
+
+Store:
+
+```text
+Dataset
++
+Code version
++
+Model version
++
+Parameters
++
+Random seed
++
+Hardware
++
+Software environment
++
+Timestamp
+```
+
+A researcher should be able to reopen an old experiment and reproduce it.
+
+---
+
+# 38. Security and Reliability
+
+Implement:
+
+* signed installers
+* integrity checking
+* crash logging
+* local encrypted credentials
+* safe archive downloads
+* sandboxed execution where practical
+* explicit network permissions
+* audit logs for research changes
+* controlled plugin execution
+* versioned model files
+
+---
+
+# 39. Cost Model
+
+The initial project can be built primarily with free/open-source software.
+
+### Software
+
+Most of the proposed core stack:
+
+**$0**
+
+### Astronomical data
+
+Public scientific archives can provide the initial research data.
+
+### Potential costs
+
+| Area                     | Potential Cost   |
+| ------------------------ | ---------------- |
+| Cloud GPU                | Optional         |
+| Cloud storage            | Optional         |
+| Telescope time           | Potentially paid |
+| Large HDD/SSD            | Hardware         |
+| Powerful GPU             | Hardware         |
+| Code-signing certificate | Optional/paid    |
+| Distribution services    | Optional         |
+
+The recommended initial architecture is **local-first**, avoiding cloud costs during research.
+
+---
+
+# 40. Final Recommended Architecture
+
+```text
+                         ASTRA
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+          DESKTOP                    SCIENCE
+              │                         │
+       Tauri + Rust                  Python
+              │                         │
+      React + TypeScript      Astropy / Astroquery
+              │               Lightkurve / SciPy
+              │              NumPy / Polars / Dask
+              │                         │
+              │                    PyTorch / ML
+              │                         │
+              │                      CUDA
+              │                         │
+              └────────────┬────────────┘
+                           │
+                    Local Data Layer
+                           │
+                  DuckDB / SQLite
+                           │
+                     Parquet / FITS
+                           │
+             ┌─────────────┼─────────────┐
+             ↓             ↓             ↓
+            ZTF           Gaia          TESS
+```
+
+---
+
+# 41. Final Product Concept
+
+When a researcher starts ASTRA:
+
+```text
+┌──────────────────────────────────────────────┐
+│ ASTRA                                        │
+│                                              │
+│ Astronomical Survey & Transient Research     │
+│ Analyzer                                     │
+│                                              │
+│ NVIDIA GPU: Detected                         │
+│ Scientific Engine: Ready                     │
+│                                              │
+│ [ New Research Project ]                     │
+│ [ Explore Existing Data ]                    │
+│ [ Investigate Candidates ]                   │
+└──────────────────────────────────────────────┘
+```
+
+They can then:
+
+```text
+Create Project
+      ↓
+Choose Surveys
+      ↓
+Define Search Region / Object Population
+      ↓
+Download or Query Data
+      ↓
+Run Analysis
+      ↓
+Discover Candidates
+      ↓
+Cross-Match
+      ↓
+Investigate
+      ↓
+Rank
+      ↓
+Generate Research Report
+```
+
+---
+
+# 42. Final Recommendation
+
+The project should be built with three clearly separated layers:
+
+### Layer 1 — Desktop
+
+**Tauri + Rust + React + TypeScript**
+
+Responsible for:
+
+* interface
+* files
+* application lifecycle
+* hardware detection
+* user interaction
+
+### Layer 2 — Scientific Engine
+
+**Python + Astropy + Astroquery + Lightkurve + NumPy + SciPy + Polars + Dask**
+
+Responsible for:
+
+* astronomical calculations
+* data ingestion
+* preprocessing
+* feature extraction
+* cross-survey analysis
+
+### Layer 3 — Intelligence
+
+**PyTorch + scikit-learn + CUDA + CuPy + C++ where necessary**
+
+Responsible for:
+
+* anomaly detection
+* multimodal representation
+* candidate ranking
+* pattern discovery
+* GPU acceleration
+
+This separation keeps ASTRA maintainable while allowing each technology to do what it is best at.
+
+---
+
+# 43. Final Project Definition
+
+### ASTRA
+
+**Astronomical Survey & Transient Research Analyzer**
+
+**Type:** Scientific desktop application
+**Platform:** Windows initially
+**Primary language:** Python for science, Rust for desktop core, TypeScript for UI
+**Primary data:** ZTF + Gaia + TESS
+**Primary research:** Cross-survey astronomical anomaly discovery
+**ML:** Unsupervised + self-supervised + multimodal models
+**Acceleration:** NVIDIA CUDA
+**Distribution:** Windows `.exe` installer
+**Architecture:** Local-first with optional cloud/HPC extensions
+
+### Final scientific objective
+
+> **ASTRA will transform large collections of heterogeneous astronomical observations into a ranked, explainable set of unusual astronomical candidates that researchers can independently investigate and validate.**
+
+The strongest long-term version is not merely an AI that says **“this object is weird.”**
+
+It is a complete research loop:
+
+```text
+OBSERVE
+   ↓
+PROCESS
+   ↓
+DISCOVER
+   ↓
+CROSS-CHECK
+   ↓
+EXPLAIN
+   ↓
+INVESTIGATE
+   ↓
+VALIDATE
+   ↓
+FOLLOW-UP
+   ↓
+PUBLISH
+```
+
+That is the version worth building.

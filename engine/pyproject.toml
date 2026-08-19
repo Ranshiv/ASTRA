@@ -1,0 +1,36 @@
+[project]
+name = "astra-engine"
+version = "0.1.0"
+description = "ASTRA scientific engine — astronomical survey and transient analysis"
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    "astropy==8.0.1",
+    "astroquery==0.4.11",
+    "lightkurve==2.6.0",
+    "numpy==2.5.2",
+    "scipy==1.18.0",
+    "polars==1.43.2",
+    "pyarrow==25.0.1",
+    "duckdb==1.5.5",
+    "dask[complete]==2026.7.1",
+    "scikit-learn==1.9.0",
+    "plotly==6.9.0",
+    "matplotlib==3.11.1",
+]
+
+[project.optional-dependencies]
+gpu = ["torch==2.13.0", "cupy-cuda12x==14.1.1"]
+dev = ["pytest==9.1.1", "pyinstaller==6.22.1"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["astra*"]
+
+[tool.pytest.ini_options]
+testpaths = ["../tests"]
+pythonpath = ["."]

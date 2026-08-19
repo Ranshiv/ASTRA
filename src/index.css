@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #06070d;
+  --color-panel: #0e1018;
+  --color-panel-2: #141826;
+  --color-edge: #1c2030;
+  --color-muted: #6b7590;
+  --color-text: #d8dce8;
+  --color-accent: #6ea8ff;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-void);
+  color: var(--color-text);
+  font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-edge) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-edge);
+  border-radius: 999px;
+  border: 3px solid var(--color-void);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-muted);
+}
+
+/* Aladin Lite (src/components/AladinSky.tsx) restyled to match ASTRA's dark
+   theme instead of its own defaults. Scoped to .astra-aladin, the class the
+   component puts on its own wrapper div, so nothing outside the sky map is
+   affected.
+
+   The widget has no init option to disable its "ALADIN" watermark, so it is
+   hidden here instead. Its remaining chrome (zoom, fullscreen, the
+   field-of-view readout) is driven entirely by CSS custom properties that it
+   sets on its own toolbar element via a `data-theme="dark"` attribute --
+   `.astra-aladin [data-theme="dark"]` outranks Aladin's own bare
+   `[data-theme=dark]` rule, so this wins without needing `!important`
+   anywhere except the logo, which Aladin always re-shows via a plain class
+   with no variable to redirect. */
+.astra-aladin .aladin-logo-container {
+  display: none !important;
+}
+
+.astra-aladin [data-theme="dark"] {
+  --bg-color: var(--color-panel);
+  --text-color: var(--color-muted);
+  --border-color: var(--color-edge);
+  --hover-color: var(--color-accent);
+  --toggle-color: var(--color-accent);
+}

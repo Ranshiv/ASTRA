@@ -1,0 +1,52 @@
+{
+  "name": "astra",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "app": "tauri dev",
+    "typecheck": "tsc --noEmit",
+    "test:desktop-entry": "node scripts/check-desktop-entry.mjs",
+    "test:py": ".\\.venv\\Scripts\\python.exe -m pytest tests -q",
+    "test:rs": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "probe": ".\\.venv\\Scripts\\python.exe -m astra --probe",
+    "package:engine": "powershell -ExecutionPolicy Bypass -File scripts/build-engine.ps1",
+    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/release-windows.ps1",
+    "package:windows:production": "powershell -ExecutionPolicy Bypass -File scripts/release-windows.ps1 -Mode Production",
+    "test:ui": "vitest run",
+    "test:ui:watch": "vitest"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "aladin-lite": "3.9.0-beta",
+    "clsx": "^2.1.1",
+    "d3": "^7.9.0",
+    "lucide-react": "^0.544.0",
+    "plotly.js-dist-min": "^3.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.3.1",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/d3": "^7.4.3",
+    "@types/plotly.js-dist-min": "^2.3.4",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "^26.1.0",
+    "tailwindcss": "^4.1.13",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "vitest": "^3.2.7"
+  }
+}

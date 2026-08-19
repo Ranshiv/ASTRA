@@ -1,0 +1,1208 @@
+ASTRA — DEFERRED WORK
+=====================================================================
+Things named in the project plan that are NOT yet built, and why.
+Updated as each slice completes. Last updated: 2026-08-19.
+
+Legend:
+  [BLOCKED]  waits on a later phase that must come first
+  [SCOPED]   deliberately out of scope for now, cheap to add later
+  [GAP]      should exist, simply not written yet
+  [KNOWN]    built but with a stated limitation
+  [PARTIAL]  usable implementation exists, but hardening or scale work remains
+
+
+---------------------------------------------------------------------
+PHASE 1 — FOUNDATION
+---------------------------------------------------------------------
+
+[DONE]    Rust unit tests
+          Eight tests cover packaged/development interpreter resolution,
+          Windows, normalized, and custom Tauri resource-folder layouts, and response framing,
+          including request-ID mismatch rejection.
+
+[DONE]    PyInstaller packaging of the science engine
+          scripts/build-engine.ps1 produces a CPU-only, diagnosable one-folder
+          build and rejects accidental Torch/CuPy inclusion or unbound
+          Lightkurve/Astroquery caches. The 2026-08-17 packaged probe passed.
+          Production AuthentiCode signing still requires a real certificate
+          and timestamp service; that is a release-operation gate, not an
+          unimplemented packaging path.
+
+[DONE]    Project management UI and workspace isolation
+          Projects/<id>/ now has metadata, manifests, candidates,
+          experiments, results, reports, and project-scoped feature matrices,
+          rankings, labels, exports, reports, and resumable checkpoints. The
+          dashboard, Models, Experiments, and Reports views pass the active
+          project ID, so switching projects cannot silently reuse another
+          project's mutable research records. The canonical survey store
+          remains shared by design.
+
+
+---------------------------------------------------------------------
+PHASE 2 — ASTRONOMY DATA LAYER
+---------------------------------------------------------------------
+
+[DONE]    Barycentric time correction to a single frame
+          Built in Phase 6 (astra/timeframe.py). Everything converts to
+          BJD_TDB before comparison.
+          CORRECTION TO AN EARLIER NOTE: this file previously said the
+          ZTF/TESS frames differ by "up to ~8 minutes". That was wrong.
+          The +-8.3 minute figure is the GEOCENTRIC-to-barycentric term,
+          and HJD has already absorbed almost all of it. Measured at the
+          RR Lyr position: total 68.1 s, of which 69.2 s is the UTC->TDB
+          scale change and only -1.0 s is the heliocentric-to-barycentric
+          residual. Direction dependence spans about 66-73 s.
+          Still worth correcting — 68 s is over half a TESS 2-minute
+          cadence bin — but it is ~1 minute, not ~8.
+
+[DONE]    ZTF science-image cutouts / FITS download
+          The IRSA IBE metadata search and science-image cutout contract is
+          implemented with bounded streaming, retries/throttling, declared and
+          observed byte checks, SHA-256 provenance, FITS/WCS validation, and
+          atomic immutable publication under Datasets/ZTF/images/. The dataset
+          quota now includes FITS products and their sidecars. The candidate
+          workspace can search overlapping images, queue a cutout, and open it
+          in the bounded FITS viewer.
+
+[DONE]    TESS target-pixel files / blend-aware aperture photometry
+          Explicit candidate-scale TPF requests now use MAST TESScut: one
+          coordinate, one sector, and a bounded 2--50 pixel cutout (20 pixels
+          by default). Downloads stream under a 128 MiB ceiling, reject unsafe
+          ZIP members/symlinks and decompression expansion, validate the TPF
+          table/WCS/sector, SHA-256 both archive and FITS, and atomically
+          publish immutable FITS plus provenance under Datasets/TESS/tpf/.
+          Aperture curves are background-subtracted, quality-maskable, use a
+          finite uncertainty fallback when a product omits FLUX_ERR, persist
+          as canonical BJD_TDB Parquet, and return a bounded JSON payload.
+          The candidate workspace queues the transfer as a resumable job and
+          can persist its aperture curve. It reports a Gaia-neighbour-aware
+          blend assessment and never calls the result resolved photometry:
+          21-arcsec TESS pixels still need PSF/deblending work for a specific
+          star claim. This is intentionally not bulk acquisition.
+
+[PARTIAL] Gaia epoch photometry
+          Only the DR3 main table (static astrometry + mean photometry)
+          is queried. Gaia's time-series photometry for variables is a
+          separate, much larger table.
+          Gaia DR4, expected 2026-12-02, is the eventual fix: it publishes
+          epoch time series (astrometry, photometry, BP/RP and RVS spectra)
+          for ALL sources rather than DR3's ~12M-source subset — ~400 TB
+          total, against DR3's ~10 TB. That is what would let Gaia become a
+          real time-domain survey and make gaia_only / gaia_tess / all_three
+          answerable the same way the ztf_gaia entry in Phase 8 now is for
+          Gaia-as-static-context. Deliberately not planned around here: it
+          is ~3.5 months out from this writing and enormous in volume; see
+          the ztf_gaia entry for what is answerable today without it.
+          UPDATE 2026-08-19: GaiaEpochAdapter validates offline DR4 fixtures
+          (source_id/time/flux/error), records rejection reasons, and exposes
+          the expected release gate. Live DR4 ingestion remains disabled until
+          the archive release and schema are verified.
+
+[DONE]    Dataset size cap is enforced transactionally
+          Writes are staged, measured, and atomically published only when the
+          configured cap permits them. Existing data is never auto-evicted;
+          acquisition explicitly reports capacity refusals.
+
+[PARTIAL] Future survey connectors
+          The registry now carries explicit capabilities, resolution,
+          credential, and enabled-by-default metadata. Bounded SDSS spectrum
+          metadata, Pan-STARRS DR2 mean-photometry, and Chandra Source
+          Catalog (CSC) X-ray metadata adapters are registered as opt-in
+          connectors; default acquisition remains limited to ZTF/Gaia/TESS
+          until provider contracts are validated.
+          UPDATE 2026-08-19: all three metadata-only connectors
+          (`sdss.py`, `panstarrs.py`, `chandra.py`) now have fixture tests
+          (`tests/test_surveys_sdss.py`, `test_surveys_panstarrs.py`,
+          `test_surveys_chandra.py`) covering row parsing, malformed/missing
+          fields, capability declarations, and the `fetch_light_curves` no-op
+          contract, mocking `astra.netclient.get`. A previous version of this
+          entry claimed such tests already existed for SDSS/Pan-STARRS; they
+          did not (checked: only `tests/test_surveys_base.py` existed) — this
+          is now fixed rather than just corrected.
+          UPDATE 2026-08-19 (2): Swift (SXPS point-source catalog) and
+          XMM-Newton (4XMM-DR13 serendipitous source catalog) adapters
+          (`swift.py`, `xmm.py`) now exist, registered opt-in with the same
+          metadata-only shape, each with its own fixture test file
+          (`tests/test_surveys_swift.py`, `test_surveys_xmm.py`).
+          Chandra/Swift/XMM's `cone_search` implementations target plausible
+          endpoint shapes for each archive's cone-search service; none has
+          been validated against the real, live service yet (exact field
+          names, auth requirements, real rate limits) — only the parsing/
+          registration contract and malformed-response handling are tested
+          against fixture payloads. This is a live-contract validation gap,
+          not a missing capability: run each connector against its real
+          endpoint once network access to validate is available, and adjust
+          field-name fallbacks/rate limits as needed.
+          Rubin/LSST, DES, Hubble, JWST still need isolated adapters.
+          LIGO/Virgo/KAGRA and CHIME are not point-source cone-search
+          surveys and do not fit the current `SurveyConnector` interface
+          as-is; they need a base-class/interface design decision before an
+          adapter can be written, not just an implementation.
+
+
+---------------------------------------------------------------------
+PHASE 3 — SCIENTIFIC VISUALIZATION
+---------------------------------------------------------------------
+
+[DONE]    Sky map (Aladin Lite)
+          Aladin Lite v3 is installed locally and lazy-loaded. Remote HiPS
+          tile origins are narrowly allow-listed; offline mode retains a
+          coordinate fallback.
+
+[DONE]    FITS viewer UI component
+          A lazy canvas paints the backend's bounded 8-bit image payload.
+
+[DONE]    Candidate explorer UI (plan section 18)
+          List/detail, evidence, curve, sky position, FITS, stable labels and
+          CSV/FITS/PDF export are exposed in the desktop app.
+
+[DONE]    Timeline view
+          Candidate detail now exposes a bounded combined multi-survey event
+          timeline. Events carry survey, release/pipeline, band, BJD_TDB
+          coverage, point counts, separation, and resolved-versus-blended
+          status; TESS neighbourhood flux remains explicitly warned.
+
+[DONE]    Plotly bundle deferred from initial load
+          Plotly is now a dynamic chunk and no longer delays initial paint.
+
+[SCOPED]  3D visualisation (Three.js) and custom D3 visuals
+          Both dependencies are installed and typed, neither is used.
+
+
+---------------------------------------------------------------------
+PHASE 4 — BASELINE ANOMALY DETECTION
+---------------------------------------------------------------------
+
+[PARTIAL] Image-derived features (plan section 12)
+          A bounded FITS feature extractor now persists source checksum,
+          background/MAD, thresholded morphology, centroid/moments,
+          ellipticity, peak S/N, residual and target-centroid distance with a
+          versioned schema. The candidate workspace can run it on a verified
+          ZTF cutout. Versioned image sidecars are now persisted as keyed
+          Parquet and can be explicitly left-joined to feature identities with
+          match/missing diagnostics. PSF fitting, multi-source deblending, and
+          publication-grade stellar photometry remain open.
+
+[PARTIAL] Spectral features (plan section 12)
+          A bounded FITS-table spectral extractor now validates wavelength,
+          flux, errors/ivar, ordering, and point limits, then persists
+          continuum, S/N, residual, line-threshold, and equivalent-width proxy
+          features with provenance. SDSS metadata discovery is available as an
+          opt-in connector. Versioned spectral sidecars now use the same keyed
+          Parquet/join contract as image rows. Live spectrum retrieval,
+          instrument-specific frame calibration, and publication-grade line
+          modelling remain open.
+
+[PARTIAL] Period search is single-band by default
+          Lomb-Scargle still runs per light curve in the main matrix path, but
+          multiband_periodic_features() now provides an opt-in shared-period
+          fit for two or more bands. Full hierarchical modelling remains open.
+
+[DONE]    Change-point detection includes bounded BOCPD
+          The original sliding-window score remains for compatibility; a
+          bounded constant-hazard Bayesian online detector now adds posterior
+          change probabilities and an estimated change epoch to feature rows.
+          The fixed-variance approximation is a screening diagnostic, not a
+          publication-grade posterior model, but it is now available as a
+          versioned feature and is covered by regression tests.
+
+[PARTIAL] Period search supports multi-band shared fitting
+          A bounded joint Lomb-Scargle adapter now subtracts per-band baselines
+          and fits a shared period across two or more bands. Full hierarchical
+          heteroscedastic multi-band modelling remains open.
+
+[DONE]    Feature versioning
+          Feature and preprocessing schema hashes are persisted with matrices
+          and experiment provenance; verification reports schema drift.
+
+[DONE]    Supervised evaluation metrics
+          Plan section 20 wants precision/recall/F1/ROC-AUC. These need
+          labels, which come from the human-in-the-loop system in
+          Phase 7 (section 22). Only unsupervised scores exist now.
+
+[DONE]    Survey/band/tier-stratified detection  <-- MEASURED
+          Running the ensemble over a matrix mixing ZTF and TESS ranks
+          the TESS curves top, but largely because they are structurally
+          different (18,000 points at 2-minute cadence in flux, versus
+          ~500 points over years in magnitudes) rather than because they
+          are astrophysically stranger. The detectors partly separate by
+          SURVEY instead of by behaviour.
+          This is exactly the survey bias plan section 36 warns about.
+          Confirmed by re-running on ZTF alone, where the ranking then
+          correctly surfaces the highest-variability sources.
+          => Detection must run within survey/band strata, or survey must
+             be regressed out as a covariate. Until then, always pass
+             `survey=` when building a matrix for detection.
+
+[DONE]    Policy for short light curves
+          23 of 60 real curves produced NaN features (fewer than the 30
+          points a period search needs, or fewer than 10 points at all)
+          and were silently dropped by the detectors. Dropping them is
+          safer than imputing, but a real campaign needs an explicit,
+          reported policy rather than a silent skip.
+
+[PARTIAL] Detector scores have empirical calibration metadata
+          A score of 1.0 means "most anomalous in THIS batch", not an
+          absolute level. Rankings from different runs are not directly
+          comparable. The ensemble now also exposes empirical-CDF calibration
+          metadata and records whether it is batch-relative or backed by an
+          external reference population.
+
+
+---------------------------------------------------------------------
+PHASE 5 — DEEP LEARNING
+---------------------------------------------------------------------
+
+[DONE]    Transformer time-series model
+          Listed in plan section 13. Only the convolutional autoencoder
+          and VAE are built. Attention is O(L^2) in memory: at L=2048
+          and batch 32 the attention matrices alone need ~4 GB, which
+          does not fit here. ASTRA now includes a bounded patch transformer
+          (default patch size 16, configurable token width/depth), exposed in
+          development training and injection-recovery comparisons. It remains
+          opt-in and still needs Stage-B scale evidence before becoming the
+          default method.
+
+[BLOCKED] Multimodal encoder (section 14) and contrastive learning
+          The stated central research innovation. Contrastive objectives
+          get their signal from in-batch negatives and want batches of
+          1024-4096; ~2.2 GB usable VRAM allows perhaps 64-128.
+          Gradient accumulation does NOT fix this — it accumulates
+          gradients but gives the loss no additional negatives.
+          => This one genuinely needs more VRAM, not better engineering.
+
+[KNOWN]   Model capacity is far below what the GPU allows  <-- MEASURED
+          The autoencoder is 93,921 parameters and peaks at 38 MB of
+          VRAM; the VAE is 126,705 parameters at 39 MB. Against ~2.3 GB
+          free that is about 1.5% of the budget. The 4 GB card is NOT
+          the binding constraint for these models.
+          => Capacity should be chosen by the injection-recovery
+             comparison, not by the memory limit. Plan section 13's rule
+             cuts both ways: bigger is not automatically better either.
+
+[KNOWN]   Sequence representation discards absolute brightness
+          Curves are MAD-normalised so ZTF magnitudes and TESS flux are
+          comparable in shape. Absolute brightness survives only in the
+          feature vector. A model that needs it must consume both.
+
+[KNOWN]   Gaps are masked, not modelled
+          Points interpolated across observing gaps are zeroed and
+          flagged in a validity channel so they never enter the loss.
+          A model that reasons about irregular sampling directly (e.g.
+          a neural ODE or a time-aware attention) would use the gaps as
+          information rather than discarding them.
+
+[KNOWN]   Injection-recovery measures the anomalies that were injected
+          The comparison harness scores methods on recovering flares,
+          eclipses, step changes and noise bursts. Winning there proves
+          sensitivity to THOSE shapes. It does not prove sensitivity to
+          phenomena nobody thought to inject, which is the actual
+          discovery case in plan section 4.
+
+[PARTIAL] The method comparison needs re-running at scale  <-- IMPORTANT
+          The first injection-recovery study ran on only 54 ZTF sequences
+          with 8 injected anomalies. On that data the simplest baseline
+          (PCA reconstruction, ROC-AUC 0.742) BEAT both deep models
+          (autoencoder 0.622, VAE 0.609). The VAE early-stopped after 7
+          epochs on 43 training rows.
+          That is a real result and exactly what plan section 13 predicts
+          can happen, but at n=54 it mostly says the deep models are
+          data-starved. It is NOT yet evidence that deep learning does
+          not help here.
+          => A resumable `stageb.compare` job now checkpoints each independent
+             seed, records a dataset fingerprint, survey/release/band strata,
+             sidecar schemas, preprocessing contract, and empirical confidence
+             intervals. It is exposed in Experiments but never starts
+             automatically. It still must be run on a Stage-B population
+             (thousands of curves) before drawing a paper conclusion.
+
+[DONE]    ZTF sequence coverage — season and phase resampling  <-- MEASURED
+          Uniform resampling over the full baseline left mean validity at
+          about 0.40: roughly 60% of every sequence was masked-out gap
+          interpolation carrying no information.
+          Both alternatives this entry proposed are now built.
+          tensors.resample_by_season() splits on gaps larger than 30x the
+          curve's own median spacing (relative, not a fixed number of days,
+          because a 2-minute TESS cadence and a nightly ZTF field share no
+          absolute definition of a gap) and allots grid points to each season
+          in proportion to how many observations it actually contains.
+          tensors.resample_by_phase() folds on a period, used only when
+          period_snr >= 5, read from the feature cache rather than by running
+          a fresh Lomb-Scargle — which would have put the ~1 s/curve cost that
+          feature caching removed straight back into sequence building.
+          MEASURED on three simulated ZTF seasons (120 jittered nights each,
+          445-day gaps, 0.6 d sinusoid):
+            time    mean validity 0.305
+            season  mean validity 0.965
+            phase   mean validity 0.926
+          Selected by tensors.build(mode=...), default UNCHANGED at "time".
+          Seasons share ONE normalisation rather than being normalised
+          separately: per-season normalisation would erase real
+          season-to-season brightness change, which for a long-period
+          variable is the signal rather than a nuisance.
+          A mode that cannot apply to a curve (a single season, no credible
+          period) falls back to the time grid rather than dropping the curve,
+          so switching mode cannot silently change the population trained on.
+          => The comparison this enables has NOT been run. Higher validity is
+             a better representation, not a better result; whether it improves
+             injection recovery is an open question, and answering it needs
+             the Stage-B scale this file already demands elsewhere.
+
+[DONE]    Hyperparameter search — the mechanism, not yet the answer
+          astra/sweep.py grids over capacity and optimisation and scores each
+          configuration by injection recovery, recording the whole study as
+          one reproducible experiment (deep.sweep RPC, Models view UI).
+          Per-kind grids, because sweeping a dimension that does nothing and
+          reporting it as searched would be misleading: autoencoder and VAE
+          get latent_dim / channels / learning_rate (27 configs; the VAE adds
+          kl_weight, 81), and the patch transformer gets transformer_dim /
+          layers / patch_size / learning_rate instead. The current defaults
+          are inside the grid, so the sweep can measure whether changing them
+          helped rather than only which alternative it prefers.
+          Three deliberate guards, each against a way this misleads:
+            - Multi-seed by default (3), with an empirical seed interval. One
+              seed cannot separate "better configuration" from "luckier
+              injection draw" -- this project already has an n=54 run where
+              PCA beat both deep models, which mostly measured data
+              starvation.
+            - Capacity explored in BOTH directions. The autoencoder is 93,921
+              parameters at 38 MB against ~2.3 GB free, about 1.5% of the
+              budget, so memory is not the binding constraint and bigger is
+              not automatically better either.
+            - SweepResult.best() returns None when the leader's seed interval
+              overlaps the runner-up's. The ranking is still shown; the winner
+              is not declared. Ranking by mean alone would turn injection-draw
+              noise into a recommendation.
+          => Built and tested, NOT yet run at scale. Same caveat as the
+             method comparison above: at Stage-A size the intervals will
+             almost certainly overlap, and "no configuration separated" is
+             the honest expected outcome rather than a failure of the sweep.
+
+[DONE]    PYTORCH_CUDA_ALLOC_CONF is set by the engine
+          expandable_segments:True meaningfully reduces fragmentation on
+          a card this tight. Currently left to the user's environment.
+
+
+---------------------------------------------------------------------
+PHASE 6 — CROSS-SURVEY ENGINE
+---------------------------------------------------------------------
+
+[KNOWN]   TESS cannot resolve individual stars  <-- MEASURED, IMPORTANT
+          TESS pixels are 21 arcsec. On the real data, five different ZTF
+          sources all matched the SAME TESS object (TIC 159717514),
+          because the TESS aperture is a sum over the whole
+          neighbourhood. Counting that as independent confirmation would
+          manufacture cross-survey agreement for every star sitting near
+          a bright variable.
+          Now handled: such matches are marked `blended` and excluded
+          from `resolved_surveys`. On the current dataset this takes the
+          count of genuinely two-survey-resolved objects from 5 to 0.
+          => Resolving a specific star in TESS requires PSF fitting or
+             deblending on target-pixel files. Phase 2 now supports explicit
+             candidate-scale TPF downloads and aperture extraction, but not
+             PSF fitting; it therefore remains neighbourhood photometry, not
+             stellar photometry, and does not restore resolved-survey credit.
+           UPDATE 2026-08-19: TGLC (TESS-Gaia Light Curve, MAST HLSP) supplies
+          exactly this as a finished product: it forward-models each FFI
+          with an effective PSF using Gaia DR3 positions/magnitudes as
+           priors, reaching <=2% photometric precision at T=16 even in
+           crowded fields — without downloading a single TPF. TGLC is now
+           wired through the connector with a robust MAD-of-differences
+           per-cadence error estimate when its product omits FLUX_ERR; the
+           provenance marks that estimate explicitly. It still does not
+           restore resolved-survey credit until target-specific recovery is
+           validated against blends and injection tests.
+          QLP (real bulk TESS coverage, no PSF deblending) IS wired in and
+          was used to take tess_only/gaia_tess from refused to scored —
+          real numbers in that same Phase 8 entry, including a measured
+          pipeline-mixing effect from combining it with the 3 pre-existing
+          SPOC curves. It does not resolve the blending problem THIS entry
+          describes; QLP's photometry is still 21-arcsec neighbourhood
+          photometry same as SPOC, just for vastly more targets.
+
+[DONE]    Alias-tolerant period matching has a false-alarm probability
+          periods_agree() still accepts harmonics and 1-day aliases, but
+          period_agreement_fap() measures the covered frequency-window null
+          probability and the profile discounts agreement by (1 - FAP).
+          The FAP is persisted with the profile and exposed in the UI, so a
+          boolean alias match is no longer treated as certainty.
+
+[DONE]    Evidence weights are explicitly versioned
+          The five components in evidence.WEIGHTS sum to 1.0 with fixed
+          values. Plan section 16 says these should become experimental
+          variables. No sweep or sensitivity analysis exists.
+
+[DONE]    Amplitude and colour consistency are scored
+          Cross-survey profiles convert magnitude/flux amplitudes to a
+          fractional scale, compare same- and cross-band ratios, and penalise
+          colour-inconsistent amplitude ordering. Missing/incomparable
+          amplitudes remain unavailable and do not become false disagreement.
+
+[DONE]    Cross-survey engine persists and uses Gaia astrometry
+          gaia.derived_properties() computes distance, colour and
+          absolute magnitude, but the evidence profile does not consume
+          them. Physical-inconsistency scoring (section 16) needs them.
+
+[PARTIAL] Grouping anchors on the largest catalogue
+          group_sources() uses whichever survey has the most detections
+          as the anchor. That is a defensible default but it means the
+          object list is defined by one survey's selection function —
+          a selection bias worth documenting per section 36. The crossmatch
+          response now includes anchor share and per-survey match rates, so
+          downstream studies can stratify or rerun explicitly.
+
+
+---------------------------------------------------------------------
+PHASE 7 — EXPLAINABILITY & CANDIDATE RANKING
+---------------------------------------------------------------------
+
+[PARTIAL] Catalogue cross-reference (SIMBAD / VSX / TNS)
+          An explicit, non-blocking enrichment action now queries SIMBAD and
+          VSX through VizieR, plus TNS when protected credentials are
+          configured. Results use a versioned 30-day local cache and report
+          match/no-match/offline/rate-limit/unavailable states instead of
+          silently turning missing network evidence into novelty. Cached
+          results can be used offline and update catalog-novelty scoring.
+          TNS live behaviour still depends on a user-provided API key and all
+          provider contracts need continued monitoring as their services evolve.
+
+[DONE]    Physical inconsistency receives persisted Gaia records
+          The scoring code consumes Gaia parallax, colour and absolute
+          magnitude, and is tested against them, but the real run scored
+          n/a because the acquired dataset is ZTF-only. Another 15% of
+          the weight is therefore unused in practice.
+          => Acquire Gaia alongside ZTF for the same cones.
+
+[KNOWN]   Composite score renormalises over available components
+          With physical_inconsistency and catalog_novelty both missing,
+          the real run used only 0.75 of the total weight. Scores are
+          renormalised so candidates are not punished for unqueried
+          evidence, but that means a score of 0.70 computed from 75% of
+          the evidence is NOT comparable with 0.70 from 100% of it.
+          `weight_used` is reported alongside every score for this
+          reason. Cross-run comparison must check it.
+
+[PARTIAL] Period-luminosity class centres are approximate
+          PERIOD_LUMINOSITY_CLASSES holds rough class centres for Delta
+          Scuti, RR Lyrae and Cepheids. It is a screen for gross
+          inconsistency, not a classifier, and has no extinction
+          correction — reddening will shift real objects off the locus
+          and can manufacture apparent inconsistency in the plane.
+          Gaia-derived A_G/E(BP-RP) values are now consumed when available;
+          the uncorrected screen remains the explicit fallback.
+
+[DONE]    Labels feed an auditable calibrated supervised ranker
+          interesting/needs_follow_up versus artifact/known_object labels are
+          fitted by a grouped, held-out calibrated logistic ranker. Training
+          requires 50 usable labels, 10 per class, and two independent object
+          groups per class; it persists the model, label snapshot, split,
+          metrics, confidence intervals, schema hashes, and checksum. Applying
+          a trained model is an explicit action that adds supervised
+          probabilities and re-ranks candidates. A new installation remains
+          intentionally untrainable until it satisfies that data gate.
+
+[PARTIAL] Artifact indicator weights are hand-set  <-- UPDATED 2026-08-18
+          The weights in artifact.assess are judgement calls combined as
+          independent probabilities (now centralised in artifact.WEIGHTS,
+          previously inline literals -- same values, just a single place to
+          read and change them).
+          INVESTIGATED: no external dataset fits. SNAD's ZTF DR3 "Dataset of
+          artefacts" (arXiv:2504.08053, 1,127 objects / 1,213 labels), the
+          candidate identified for this in an earlier pass, turns out to
+          publish 28x28 / 63x63 FITS IMAGE cutouts with no ZTF object IDs
+          and no light-curve data at all. artifact.assess operates entirely
+          on one curve's own light-curve statistics (period, chi-square,
+          amplitude/error ratio, kurtosis, change-point score), none of
+          which an image cutout can supply. SNAD's broader anomaly tooling
+          (zwad) does publish real light-curve FEATURES with real object
+          IDs, but no bundled artifact/real ground-truth labels to
+          calibrate against. ASTRA's own human-in-the-loop labels (1 total,
+          "interesting", zero "artifact") are nowhere near usable either.
+          BUILT INSTEAD: artifact.calibrate_from_injection(), a synthetic
+          injection-recovery study for the six indicators that threshold a
+          statistic of one curve's own features (sampling_period,
+          low_significance, consistent_with_constant, sparse_sampling,
+          step_change, extreme_outliers -- collected in
+          FEATURE_INDICATOR_NAMES). Real, unremarkable synthetic variables
+          get label 0; each "artifact" curve carries exactly one
+          deliberately injected defect, so the ground truth is true by
+          construction, the same idea evaluate.py already uses for the
+          anomaly-detection ensemble. Every synthetic curve goes through
+          the real features.extract()/artifact.assess() code paths -- the
+          study does not reimplement assess()'s threshold logic, so it
+          cannot silently drift from what assess() actually checks.
+          The remaining four WEIGHTS entries (single_instrument,
+          blended_photometry, agreement_not_independent,
+          period_disagreement) are structural/categorical -- cross-survey
+          resolution and period agreement, not a threshold on one curve's
+          own statistics -- and a single synthetic curve cannot represent
+          them; they are not calibrated by this study and stay hand-set.
+          MEASURED (5 seeds, 150 real + 150 artifact per seed, held out
+          30%): every one of the six fires reliably on its own injected
+          defect (100% across a 60-sample verification sweep per kind) and
+          essentially never on a clean synthetic real curve (0/80 for five
+          of six; sampling_period false-fired 2/80, ~2.5%, consistent with
+          this codebase's own documented period-aliasing behaviour).
+          Calibrated weights came back 0.95-1.0 for all six -- versus the
+          hand-set 0.20-0.35 -- with held-out AUC improving 0.9807 ->
+          0.9939.
+          NOT ADOPTED, by explicit choice, and correctly so: a synthetic
+          "real" class this clean and well-separated will always make an
+          indicator look more reliable than it is on messy real data (a
+          genuinely eruptive variable with real large outliers, a real
+          eclipsing binary with a real step, a real short-baseline
+          detection). A weight of exactly 1.0 is also a real behavioural
+          change, not just a bigger number: it pins the pre-clearing
+          likelihood at 100% the instant that indicator fires alone,
+          removing any influence from what else did or did not fire. The
+          held-out AUC comparison is weak evidence either way -- both
+          numbers are already near the ceiling because the synthetic
+          populations are easy to separate. WEIGHTS keeps its hand-set
+          values; this is a validated MECHANISM (the code runs, produces
+          directionally sensible, reproducible results) rather than a
+          calibration ready to deploy.
+          => Worth re-running once either a harder/adversarial synthetic
+             "real" class exists (deliberately include sparse, noisy, or
+             large-outlier REAL variables to measure genuine false-positive
+             rates) or ASTRA's own human-in-the-loop labels reach a usable
+             "artifact" count.
+
+[PARTIAL] Candidate investigation UI (plan section 18)  <-- UPDATED 2026-08-19
+          The desktop shell now exposes Dashboard, Projects, Acquire, Sky,
+          Curves, Candidates, Cross-survey, Experiments, Models, Reports,
+          and Settings through a typed internal navigation model. Projects
+          can be created, opened, archived/restored, and validated; project
+          candidate outputs, labels, catalog enrichment, and exports are
+          scoped to the selected workspace.
+          Candidate detail now renders the explanation drivers, recommended
+          actions, artifact verdict/likelihood, evidence counts, research
+          notes, and a bounded combined BJD_TDB timeline with explicit TESS
+          blend warnings.
+          CORRECTION: this entry previously said per-survey curve overlays
+          and project-context threading were still absent. Both are done.
+          CandidateWorkspace.tsx:441-449 already renders a per-survey
+          LightCurvePlot for up to 6 curves inside the combined timeline
+          (labelled resolved/blended), and every routed view in
+          App.tsx:112-130 receives and consumes `projectId` except
+          SettingsView, which correctly does not need it.
+          FIXED 2026-08-19: the main candidate curve now has an interactive
+          period-fold control, reusing the existing `engine.curveFold` RPC
+          and the same fold/unfold UI pattern already used in
+          `CurveExplorer.tsx`. The period field pre-fills from the
+          candidate's own `features.best_period_days` when present and
+          positive, and is otherwise free-text. Timeline overlay curves
+          (CandidateWorkspace.tsx timeline block) remain unfolded by design —
+          they exist to compare raw multi-survey coverage, where folding
+          each independently would need a per-curve period control and
+          adds UI complexity for a secondary view; the primary curve is
+          where folding matters and is now covered.
+          Still absent: no dedicated model/cross-survey explanation pane —
+          the explanation, evidence, and artifact-assessment blocks
+          (CandidateWorkspace.tsx:393-425) are inline in the main detail
+          panel, not a separate view/tab. Whether that is worth splitting
+          out is a UX call, not a missing capability.
+
+
+---------------------------------------------------------------------
+PHASE 8 — RESEARCH FRAMEWORK
+---------------------------------------------------------------------
+
+[DONE]    Consensus now averages ranks, not raw scores  <-- 2026-08-18
+          Detector ablation on 301 real ZTF sequences (original measurement):
+            isolation_forest    0.840
+            lof                 0.827
+            ENSEMBLE            0.824
+            pca_reconstruction  0.801
+            one_class_svm       0.646
+          Averaging four normalised scores let the weakest detector
+          (One-Class SVM, 0.646) drag the mean below Isolation Forest
+          alone. Plan section 16 assigns 10% of the candidate score to
+          "model agreement" on the assumption that consensus helps.
+          On this data it did not.
+          Root cause, precisely: `_normalise` already min-max rescales every
+          detector to [0, 1], so the problem was never raw scale. It is
+          DISTRIBUTION SHAPE -- a detector whose scores plateau or skew (the
+          median_heuristic_gamma docstring in anomaly.py already documents
+          One-Class SVM doing exactly this: many points far from the
+          training mass share close to the same decision value) still gets
+          stretched across the full [0,1] range by min-max normalisation,
+          handing disproportionately high normalised scores to ordinary rows
+          on that plateau. Averaging that skewed distribution into the
+          ensemble let the skew leak through.
+          Fixed: anomaly.detect()'s consensus is now the mean of each
+          detector's RANK (scipy.stats.rankdata, average-tie method,
+          divided by n), not the mean of its raw normalised score
+          (anomaly._rank_consensus). Rank aggregation is invariant to a
+          detector's score distribution by construction, so a plateaued or
+          skewed detector can no longer distort the consensus just by
+          having an unusual shape -- deliberately the safer of the three
+          options this entry originally listed (weight by measured
+          performance / drop the weak detector / rank-aggregate), because it
+          does not bake in weights measured on one dataset with one
+          injection scheme, which is exactly what this entry's own caveat
+          warned against treating as settled.
+          MEASURED, same data, same seed, isolating just the aggregation
+          change (298 real ZTF sequences, seed=42, survey="ztf" so this is
+          not confounded by the TESS population added since the original
+          measurement):
+            ensemble (NEW, rank)   AUC 0.7899   AP 0.3516
+            ensemble (OLD, mean)   AUC 0.7881   AP 0.3878
+            isolation_forest       AUC 0.8444   AP 0.4065  (unaffected; still best)
+          A real but modest AUC improvement (+0.0018), and a real AP
+          REGRESSION (-0.0362) on this one seed -- reported plainly rather
+          than only citing the metric that improved. Neither aggregation
+          method beats Isolation Forest alone. Rank aggregation fixes the
+          specific measured pathology (a mean that scores worse than doing
+          nothing / picking the best member), it does not make the ensemble
+          the best choice; that remains an open question this fix does not
+          resolve.
+          5-seed repeated ablation (experiment EXP-0004) confirms the
+          ranking is seed-stable in the same direction:
+            isolation_forest   AUC mean 0.7166  CI95 [0.6916, 0.7635]
+            ensemble (rank)     AUC mean 0.6327  CI95 [0.5676, 0.7059]
+            lof                 AUC mean 0.6228  CI95 [0.5495, 0.6708]
+            pca_reconstruction  AUC mean 0.5339  CI95 [0.4698, 0.6274]
+            one_class_svm       AUC mean 0.4897  CI95 [0.4369, 0.5509]
+          CAVEAT on those absolute numbers: ablation.detector_ablation()
+          calls tensors.build() with no survey= filter, so this 5-seed run
+          mixes ZTF and TESS sequences (429 total, now that TESS has 131
+          curves instead of 3) -- this is a PRE-EXISTING characteristic of
+          detector_ablation, not something this fix introduced, but it is
+          newly consequential now that the TESS backfill exists, and it
+          reproduces a version of the already-documented ZTF/TESS
+          survey-separation bias inside this specific ablation. That is why
+          these absolute numbers (ensemble 0.63) read lower than the clean
+          ZTF-only comparison above (ensemble 0.79): different, confounded
+          population, not a worse fix.
+          FIXED: detector_ablation() and feature_ablation() now take
+          survey=, threaded through run_all()/run_repeated(), the
+          ablation.run / ablation.repeated RPCs and the Tauri commands, and
+          recorded in the experiment configuration so a stratified run and an
+          older unstratified one stay distinguishable rather than being
+          silently compared. tensors.build() already accepted the filter;
+          nothing upstream was passing it.
+          The default stays None (pooled), because changing it would silently
+          alter what every existing caller measures -- but the Experiments
+          view now surfaces the field with the ZTF-vs-pooled figures beside
+          it, so the choice is visible at the point it is made.
+          Also fixed while here: run_repeated()'s local variable for the
+          survey-group studies was named `survey`, which would have shadowed
+          the new parameter and passed a LIST of AblationStudy objects as the
+          survey filter. Caught before it shipped; renamed to `groups`.
+          => The survey-group study is deliberately never stratified.
+             Comparing survey groups is what it exists to do.
+          => Caveat carried forward: still one dataset (now confounded by
+             two surveys in the repeated run), one injection scheme. The
+             deeper question -- can any combiner beat Isolation Forest
+             alone on this feature representation -- remains open; rank
+             aggregation was the safe default fix, not a claim of victory.
+
+[KNOWN]   Feature ablation shows no family is clearly load-bearing
+          Dropping any one summary-feature family changed AUC by at most
+          +/-0.018 from the 0.824 baseline, and three of five REMOVALS
+          scored higher than keeping everything. That points to redundant
+          or noisy columns rather than to a family worth removing; the
+          differences are within what one injection seed can produce.
+          => Needs repeated seeds and confidence intervals before any
+             feature is cut.
+
+[DONE]    ztf_gaia is scored — Gaia joins as columns, not rows  <-- 2026-08-18
+          The primary research question was unanswerable because Gaia
+          contributes zero rows to any sequence-based study by design
+          (fetch_light_curves() returns [], surveys/gaia.py). Fixed by
+          joining Gaia catalogue data onto existing rows by position instead
+          of stacking it as new ones: featurematrix.join_gaia_columns()
+          crossmatches each ZTF object against stored Gaia sources (reusing
+          crossmatch.match_catalogs(), 2 arcsec default radius) and appends
+          parallax/pm/photometry/derived columns, NaN where unmatched rather
+          than imputed. ablation._injected_matrix() strips "gaia" out of the
+          sequence-building loop and joins it onto the finished summary
+          matrix instead, so ztf_only and ztf_gaia score the IDENTICAL
+          object population (same injected labels) and any AUC delta is
+          attributable to the added columns, not a different population —
+          the same trap that makes ztf_tess uncomparable (below).
+          The live store had zero Gaia catalogue rows despite three prior
+          full three-survey acquisitions recording Gaia object_ids in their
+          manifests — metadata.sqlite3 had been reset without a re-fetch.
+          Replayed all 22 unique ZTF cone queries from the stored manifests
+          against Gaia (dr3, limit 200/cone, ~4s/cone, zero failures):
+          1,849 distinct Gaia DR3 sources now persisted.
+          MEASURED (ablation.run_repeated, 5 seeds, experiment EXP-0002):
+            ztf_only   AUC 0.7952  seed-CI95 [0.7457, 0.8546]  AP 0.3948
+            ztf_gaia   AUC 0.7566  seed-CI95 [0.6933, 0.8037]  AP 0.2744
+          AUC: the intervals overlap — this ensemble shows no seed-stable
+          AUC difference from adding Gaia astrometric/photometric context
+          at this scale (n=298 ZTF objects, 83% Gaia-matched, n=220 with a
+          complete row after Gaia's own masked columns are accounted for).
+          Average precision: 0.3948 vs 0.2744 does NOT overlap across the
+          same 5 seeds — a seed-stable DROP. Plausible mechanism, not yet
+          confirmed: nine mostly-static, unmatched-heavy Gaia columns
+          appended to a compact anomaly feature space can dilute a
+          density/distance-based detector's signal (isolation forest, LOF,
+          PCA-reconstruction, OC-SVM) rather than sharpen it, especially
+          under class imbalance, which AP is more sensitive to than AUC.
+          This is a real, if preliminary, answer to the project's central
+          claim on the data available today — not proof either way at
+          Stage A scale (404 objects), but no longer "unanswerable."
+          Still refused, and for a genuinely different, structural reason
+          each:
+            gaia_only  -> Gaia has no sequence of its own to inject an
+                          anomaly into or join columns onto; this cannot be
+                          fixed by acquiring more Gaia rows, only by Gaia
+                          DR4 epoch photometry (section below) turning Gaia
+                          into an actual time-domain survey.
+            ztf_tess, all_three
+                       -> 404 ZTF against 131 TESS (see the QLP entry
+                          immediately below) still describes different
+                          object populations at the 0.5 shared-fraction
+                          gate; the "improvement" would be a population
+                          artefact.
+
+[DONE]    tess_only and gaia_tess are scored — TESS acquired via QLP
+                                                              <-- 2026-08-18
+          The TESS-scale half of the blocker above. TESSConnector only ever
+          requested SPOC's pre-selected 2-minute-cadence targets
+          (surveys/tess.py), roughly 20,000 stars/sector chosen by mission/
+          Guest-Investigator proposal and essentially uncorrelated with the
+          404 ZTF cone positions already stored — hence only 1 SPOC target
+          (3 sector-curves) ever matched. QLP instead processes every star
+          T<13.5 in every TESS full-frame image with no pre-selection, so
+          cone-searching the same 22 ZTF cones used for the Gaia backfill
+          should surface real TESS coverage for far more of them.
+          Getting there needed two real fixes, not just passing a different
+          author string:
+            - fetch_light_curves() hardcoded "pdcsap_flux" (a SPOC-only
+              column); QLP's FITS tables have no such column, so every QLP
+              download raised KeyError, silently swallowed by a blanket
+              except into an empty result indistinguishable from "nothing
+              here". Fixed with a FLUX_COLUMNS author->column table
+              (surveys/tess.py) and a narrowed exception path that now logs
+              the author/column/error instead of disappearing it.
+            - `release` did not follow `author` -- it defaulted to a fixed
+              "spoc" constant regardless of which pipeline was requested.
+              store.curve_path() keys purely on (survey, release,
+              object_id, band), so a QLP fetch left at the default would
+              have silently overwritten a SPOC parquet for the same
+              TIC/sector, and acquire.py's resumable-fetch cursor (which
+              also keys on release) would have treated "fetched under
+              SPOC" as "already fetched" and skipped the QLP attempt
+              entirely under the default skip_existing=True. Fixed by
+              defaulting release from author (release = author.lower()
+              unless explicitly overridden); SPOC still resolves to "spoc"
+              exactly as before.
+            - acquire.acquire() had no way to pass a connector option like
+              author through to a survey at all -- surveys.get() already
+              forwarded constructor kwargs, but nothing upstream supplied
+              any. Added an additive `survey_options` parameter, threaded
+              through acquire() -> rpc.py's acquire.cone handler.
+          Per an explicit choice: TGLC (the scientifically stronger,
+          Gaia-DR3-prior PSF-deblended product) was evaluated and deferred.
+          It publishes no per-point flux-error column at all ("No errors
+          are provided by this HLSP" -- lightkurve/io/tglc.py), and
+          store.write_curve() drops any point with a non-finite error, so
+          every TGLC curve would store as zero points unless a per-curve
+           error is invented. This is now handled by the connector's robust
+           error-estimation policy and recorded in source provenance. Also per
+           an explicit choice: one
+          canonical author was acquired per target rather than fetching
+          the same star under two pipelines -- this backfill used QLP only
+          and left the pre-existing SPOC curve as-is; checked for overlap
+          rather than assuming none (see below).
+          Replayed the same 22 unique ZTF cone queries used for the Gaia
+          backfill against TESS with author="QLP" (limit 200/cone,
+          6.5-25s/cone -- real FITS downloads, not a catalogue query;
+          zero failures):
+            32 new QLP targets found, 131 curves stored total (128 QLP +
+            the 3 pre-existing SPOC curves for 1 target). Checked for
+            double-counting: the SPOC target (TIC 159717514) was NOT
+            independently rediscovered by the QLP cone search at its
+            specific 10" position, so the 33 unique TESS objects (1 SPOC +
+            32 QLP) are genuinely disjoint, not a double count -- this was
+            verified, not assumed.
+          131/404 = 0.32 is below the 0.5 shared-fraction gate, so
+          ztf_tess/all_three remain correctly refused (above). But
+          tess_only only needs a nonzero count, and gaia_tess only needs
+          TESS nonzero plus Gaia catalogue rows nonzero (no ratio applies
+          once gaia is excluded from the row-contributing surveys) -- both
+          are newly comparable.
+          MEASURED (ablation.run_repeated, 5 seeds, experiment EXP-0003):
+            tess_only   AUC 0.458   seed-CI95 [0.3975, 0.5315]  AP 0.124
+            gaia_tess   AUC 0.5295  seed-CI95 [0.4212, 0.6806]  AP 0.164
+          Both intervals straddle 0.5 (chance): at n=131/n=100 this is not
+          a seed-stable signal either way, not evidence the ensemble works
+          on TESS data, and not evidence it is broken. ztf_only/ztf_gaia
+          were re-checked against this same run and are unchanged (0.7952/
+          0.7566, matching EXP-0002 exactly), confirming the TESS backfill
+          did not disturb the ZTF-side result.
+          A follow-up check (single seed=42, not part of the persisted
+          experiment) found the pipeline-mixing risk predicted when this
+          plan was written is real and measurable: scoring the 128 QLP
+          curves alone gives AUC 0.4796; adding the 3 SPOC curves back in
+          (today's tess_only, mixed) drags it to 0.3807. Three curves out
+          of 131 measurably moved the score -- consistent with, though
+          smaller in magnitude than, the already-documented ZTF-vs-TESS
+          survey-separation bias, now reproduced between PIPELINES within
+          the same survey="TESS" label rather than between surveys. Also
+          notable on its own: QLP-only AUC 0.48 is itself below chance at
+          this sample size -- not investigated further here (out of scope
+          for this backfill), reported rather than tuned away.
+          => release already encodes the pipeline (spoc-sNN / qlp-sNN), so
+             a future stratified-detection pass can filter or weight by it
+             without new plumbing. Re-run once QLP coverage grows enough
+             to cross the 0.5 ratio gate for ztf_tess/all_three, and
+             re-check the pipeline-mixing effect at that larger scale
+             before trusting a combined tess_only number for the paper.
+
+[DONE]    Gaia static rows use the SQLite source-record path
+          Everything downstream assumes light curves. Gaia's value is a
+          single row of astrometry per source, which no current study can
+          consume. Until that exists, Gaia contributes only through the
+          cross-survey profile and the scoring module.
+
+[DONE]    Repeated seeds and uncertainty intervals
+          ablation.repeated runs the suite across five independent injection
+          seeds by default and persists aggregate ROC-AUC/AP summaries with
+          empirical 2.5th--97.5th seed intervals. Missing or incomparable runs
+          remain explicitly unscored rather than becoming zeroes. These are
+          seed-sensitivity intervals, not population confidence intervals;
+          Stage B-scale data is still needed for strong scientific claims.
+
+[KNOWN]   Code version is a source hash, not a commit
+          The project is not a git repository, so experiment provenance
+          hashes every .py file under engine/astra instead. Arguably
+          stronger than a commit — it changes if and only if the code
+          that ran changed, uncommitted edits included — but it cannot
+          be used to check out the exact source again.
+          => `git init` would make provenance recoverable, not just
+             detectable.
+
+[DONE]    Preprocessing and feature contracts are enforced
+          Matrices and resumable Parquet parts carry feature schema hashes;
+          loading or resuming against a changed contract fails closed and
+          requests a rebuild. Experiment provenance stores the preprocessing
+          schema hash and verifies it (including the selected resampling mode),
+          while old files without hashes remain readable for migration.
+
+
+---------------------------------------------------------------------
+PHASE 9 — OPTIMIZATION
+---------------------------------------------------------------------
+
+[KNOWN]   The bottleneck is Lomb-Scargle, not the GPU  <-- MEASURED
+          Profiled on the real store:
+            featurematrix_build   268.1 s   98.6% of pipeline
+            anomaly_detect          3.4 s    1.2%
+            sequence_build          0.5 s    0.2%
+          And inside feature extraction:
+            periodic (Lomb-Scargle)  960.15 ms/curve   98.3%
+            temporal                   9.63 ms/curve    1.1%
+            read_parquet                3.77 ms/curve   0.5%
+            photometric                 0.31 ms/curve   0.0%
+            variability                 0.09 ms/curve   0.0%
+          Cost scales as baseline x max frequency: a 2740-day ZTF curve
+          searched to 0.05 d needs ~274,000 frequencies.
+
+[DONE]    Feature caching — 607x on repeat runs
+          280.3 s -> 0.5 s for 404 curves. Keyed by (path, mtime, size,
+          FEATURE_VERSION), so a changed curve or a bumped feature
+          version invalidates correctly. Verified byte-identical output
+          against the uncached path.
+
+[KNOWN]   Process parallelism caps at ~1.7x, NOT at the core count
+                                                        <-- MEASURED
+          12 logical cores, identical Lomb-Scargle tasks:
+            workers  per-task   throughput  efficiency
+                  1   1097 ms     0.77 /s      100%
+                  2   1533 ms     1.14 /s       75%
+                  4   2743 ms     1.33 /s       44%
+                  8   5941 ms     1.27 /s       21%
+          Per-task time rises 5.4x from 1 to 8 workers while the work is
+          unchanged. Each period search streams a ~274k-point frequency
+          grid plus FFT workspace, far beyond L3, so every worker reads
+          from RAM. This is MEMORY BANDWIDTH saturation, not a CPU limit.
+          Throughput peaks at 4 workers and then DECLINES.
+          => DEFAULT_WORKERS is set to 4 from this measurement. Do not
+             raise it to os.cpu_count(); 10 workers measured slower.
+          => More cores will not help. Faster RAM would.
+
+[KNOWN]   GPU array ops are fast but irrelevant here  <-- MEASURED
+          After proper warm-up (the first CuPy call JIT-compiles kernels
+          and cost 5716 ms, which is warm-up, not steady state):
+            normalise 2M floats   CPU 30.00 ms   GPU 3.50 ms  (8.6x)
+            abs(diff) 2M floats   CPU  3.30 ms   GPU 0.23 ms  (14x)
+            host<->device transfer                    3.44 ms
+          So the GPU genuinely wins on resident data for multi-op work,
+          and loses on single cheap ops once transfer is counted.
+          BUT these operations are 0.4 ms of the 960 ms per curve.
+          Accelerating them 10x saves ~0.04% of runtime. Amdahl's law
+          makes GPU array work the wrong target on this pipeline.
+
+[GAP]     GPU Lomb-Scargle would be the real win
+          The only optimisation that would matter for the 98% is moving
+          the period search itself to the GPU — a CuPy/cuFFT
+          implementation of the Press & Rybicki fast method. Substantial
+          work (NFFT-style gridding, careful float64 handling) and worth
+          estimating properly before committing.
+          EVALUATED 2026-08-18: nifty-ls (NUFFT-based, registers as an
+          Astropy LombScargle backend, cufinufft GPU path) was the intended
+          off-the-shelf fix. It ships no Windows wheel, and its sdist fails
+          to build under MSVC — nifty-ls's own CMakeLists.txt passes
+          -Wno-deprecated-literal-operator unconditionally, a Clang/GCC-only
+          flag cl.exe rejects with "invalid numeric argument." finufft
+          itself (the underlying NUFFT library nifty-ls wraps) DOES ship a
+          genuine win_amd64 wheel; only the nifty-ls wrapper's build is
+          broken. Given ASTRA is Windows-first, this was not forced (no
+          local source patch, no hand-rolled NUFFT Lomb-Scargle — the
+          project's own SAMPLES_PER_PEAK note above establishes that this
+          class of change can silently alter recovered periods, so it needs
+          the validated package, not a rushed reimplementation).
+          Consolation finding: astropy.timeseries.LombScargle.autopower's
+          method="auto" already resolves to method="fast" for every call
+          this codebase makes (autopower always generates a regular
+          frequency grid, which is "fast"'s only precondition) — benchmarked
+          identical on the real 353-point/2740-day curve this file already
+          uses as its reference (~1.5s, 0.50789 d peak, either way).
+          features.py now pins method="fast" explicitly so a future astropy
+          release changing "auto"'s heuristic can't silently regress this,
+          but that is a robustness fix, not a speedup: this GAP is still
+          open. Revisit if nifty-ls ships a Windows wheel, or if a Linux/CI
+          build target is added.
+
+[DONE]    CuPy was silently broken; now fixed
+          cupy-cuda12x failed with "Failed to find CUDA headers" because
+          CUDA_PATH was never set, even though toolkit 13.3 is installed.
+          It looked like a broken GPU rather than a missing environment
+          variable. config.ensure_cuda_path() now discovers the newest
+          installed toolkit and sets CUDA_PATH at engine start.
+
+[KNOWN]   Coarsening the period grid changes the ANSWER, not just speed
+          On a real 353-point ZTF curve (2740-day baseline):
+            samples_per_peak=5 -> 0.50789 d
+            samples_per_peak=3 -> 1.03501 d   (the 2x harmonic)
+          The coarser grid steps over the true peak. This happens when
+          the periodogram holds two near-equal peaks, which is common in
+          sparse ground-based data and is exactly where reliability
+          matters. A single clean injected sinusoid does NOT reproduce
+          it, so there is no synthetic regression test for it — the
+          constant is documented and guarded instead.
+          => The safe speed lever is raising min_period_days (0.05 -> 0.1
+             halves the grid at equal peak resolution), at the cost of
+             missing short-period Delta Scuti pulsators.
+
+[DONE]    Cross-survey profiling was bypassing the feature cache
+          After feature caching landed, the pipeline was still 307.9 s.
+          Profiling located it: evidence.profile_group re-ran a full
+          period search per curve — 970 ms each, x404 groups = 392 s —
+          because build_view called features.extract directly.
+          Fixed by passing a cached (survey, object_id, band) -> features
+          lookup through profile_group.
+          End-to-end pipeline: 307.9 s -> 34.4 s (9x), identical top
+          candidate and score.
+          Lesson worth keeping: caching one stage does not help if a
+          later stage recomputes the same thing. Re-profile after every
+          optimisation rather than assuming the win propagated.
+
+[DONE]    Redundant Parquet reads consolidated — 2 reads/curve -> 1
+                                                              <-- MEASURED
+          Three separate passes each walked the store: load_curves_by_key
+          read every curve, featurematrix.build was called once per survey
+          inside the feature lookup AND again in the per-survey loop, and
+          _position_for re-opened one file per candidate.
+          Fixed in two places.
+            - evidence.load_curve_index() returns the (survey, object_id)
+              index and a path -> position map from ONE walk. pipeline.run
+              builds it once, along with one feature matrix per survey, and
+              passes both into _resolution_index and the feature lookup
+              instead of each stage rebuilding them. _position_for survives
+              only as a fallback for a curve written since the index was
+              built.
+            - The deeper one: a feature-cache HIT still called
+              _identity_from_path, which opened the Parquet file to recover
+              which object the row belonged to. So a fully cached matrix
+              build walked the entire store anyway -- the cache saved the
+              period search but not the read. featurecache now stores
+              object_id/survey/release/band/coverage_tier alongside the
+              feature row, keyed by the same (path, mtime, size,
+              FEATURE_VERSION), so a hit costs no read at all.
+          MEASURED, 30 curves, warm cache: 2.00 store reads per curve -> 1.00.
+          Backwards compatible by construction: a cache written before the
+          identity columns existed still loads, and cache.identity() returns
+          None rather than a placeholder, so those rows fall back to the read
+          they always did instead of silently becoming "unknown".
+          Guarded by tests/test_pipeline.py, which counts store.read_curve
+          calls and asserts the ranking and scores are unchanged -- the same
+          way the earlier 9x win was validated.
+          => Not a headline speedup. The 98% is still Lomb-Scargle on a cold
+             cache; this removes a fixed I/O cost that had grown invisible.
+
+[DONE]    Batch/streaming path for Stage C and D
+          featurematrix.build_resumable() extracts immutable Parquet batches,
+          atomically checkpoints completed source identities, resumes after
+          interruption, retries failed rows, and reports item progress. The
+          desktop Models view exposes the resumable build action.
+
+[GAP]     No CUDA kernels written
+          Plan section 8 lists C++/CUDA for performance-critical kernels.
+          None exist. Before writing any, raise the Windows TdrDelay
+          registry value: the 2-second default will reset the driver
+          mid-kernel on a display-attached GPU.
+
+
+---------------------------------------------------------------------
+CROSS-CUTTING STATUS
+---------------------------------------------------------------------
+
+[DONE]    Cross-survey engine (Phase 6): coordinate matching, temporal
+          matching, independent evidence scoring. Also the natural home
+          for the barycentric correction gap above.
+
+[DONE]    Explainability + candidate ranking (Phase 7), including the
+          composite score weights in section 16 and the artifact
+          likelihood in section 17.
+
+[DONE]    Research framework (Phase 8): experiment management, model
+          versioning, dataset versioning beyond manifests, benchmarks,
+          ablation studies, project-scoped records, and the resumable
+          Stage-B comparison contract. The Stage-B job still requires an
+          explicit run on the larger population before its result can support
+          a publication claim.
+
+[PARTIAL] Optimization (Phase 9): GPU profiling and feature caching exist;
+          streaming batches and custom kernels remain.
+          NOTE: raise the Windows TdrDelay registry value before
+          writing long-running kernels; the 2-second default will reset
+          the driver mid-run on a display-attached GPU.
+
+[PARTIAL] Release (Phase 10): NSIS/offline WebView2, local crash reports,
+          rotating logs, restrictive CSP and path authorization are built.
+          The 2026-08-17 development release successfully built the app, NSIS
+          installer, and verified SHA-256 manifest. Production mode fails
+          closed until a real AuthentiCode certificate and timestamp URL are
+          supplied; updater publication remains unconfigured. TNS credentials
+          use Windows DPAPI rather than an unimplemented Stronghold store.
+
+[DONE]    The installer has now been INSTALLED and verified  <-- 2026-08-18
+          Building an installer is not the same as proving it works, and the
+          specific risk was real: engine.rs falls back to
+          <project_root>/.venv/Scripts/python.exe with project_root baked in
+          at compile time from CARGO_MANIFEST_DIR. On a developer machine
+          that path EXISTS, so a released app could have silently run the
+          development engine and looked perfectly healthy — failing only on a
+          user's machine, which has no dev tree.
+          Verified end to end:
+            - SHA-256 of all three artifacts still matches the manifest.
+            - Silent install (/S) to %LOCALAPPDATA%\ASTRA, exit 0, 54 s,
+              8707 files / 616.2 MB.
+            - Sidecar landed at
+              <install>\_up_\engine\dist\astra-engine\astra-engine.exe,
+              i.e. resolve_interpreter_from candidate #4.
+            - The launched app spawned astra-engine.exe as a child WITH NO
+              ARGUMENTS, and no `python.exe -m astra` existed. The dev
+              fallback did not trigger. This was the point of the exercise.
+            - Packaged probe: protocol 1, root C:\Users\ransh\ASTRA,
+              device cpu, "PyTorch is not installed; running in CPU mode.",
+              both lightkurve and astroquery caches bound.
+            - Live RPC over the installed sidecar: ping, versions, paths,
+              surveys.list, curves.list and store.usage all returned real
+              data (407 stored curves).
+          Installer size is 378 MB rather than roughly 5 GB because the CPU
+          exclusion works: torch is 4009 MB in the venv, of which 3513 MB is
+          27 CUDA DLLs (torch_cuda.dll alone is 1001 MB).
+
+[KNOWN]   Released builds cannot run the Phase 5 deep models
+          By design. The shipped engine excludes torch/torchvision/cupy, so
+          `deep.train` and `deep.compare(include_deep=True)` are unavailable
+          in any installed copy. Everything else — acquisition, features,
+          baseline anomaly detection, cross-survey matching, ranking and
+          export — works normally in the installed app.
+          This is safe because NO engine module imports torch at module top
+          level; all six call sites are function-local and guarded, so the
+          absence degrades rather than breaking startup.
+          The packaged build originally reported a bare "No module named
+          'torch'", which reads like a broken installation. rpc.py now raises
+          an explicit message naming the trade-off and pointing at
+          `uv pip install -e engine[gpu]`, with regression tests in
+          tests/test_rpc.py::TestDeepModelsWithoutTorch that also assert the
+          engine survives the refusal.
+          => To train deep models, run from a development checkout.
+
+[DONE]    Dropped ~213 MB of packages nothing imports  <-- 2026-08-18
+          plotly, polars and duckdb were declared runtime dependencies that
+          no engine module imports: polars and duckdb appear only as STRINGS
+          inside rpc._handle_versions (which reports "not installed"
+          gracefully), and plotly has zero references anywhere — viz.py
+          returns JSON for the frontend to render. All three added to
+          `excludes` in engine/astra-engine.spec.
+            sidecar folder   605.1 MB -> 391.7 MB  (-213.4 MB, -35%)
+            NSIS installer   378.2 MB -> 338.4 MB  (-39.8 MB,  -11%)
+            installed size   616.2 MB -> 402.8 MB
+          The installer shrinks proportionally less because NSIS already
+          compresses the payload.
+          Verified after rebuild against the INSTALLED copy: polars, duckdb
+          and torch all report "not installed"; numpy, astropy, lightkurve
+          and sklearn are present; surveys.list, curves.list, store.usage,
+          features.names and candidates.load all return real data.
+          scipy and scikit-learn were deliberately NOT excluded —
+          anomaly.detect, ranker.*, candidates.evaluate and ablation.* all
+          import sklearn at call time. Excluding matplotlib would cost only
+          candidates.export format="pdf" and was left alone.
+
+[DONE]    Frontend initial bundle is 303 kB gzip; plotly/aladin are on-demand
+                                                              <-- CORRECTED 2026-08-19
+          This entry previously claimed a 7.2 MB bundle delays first paint.
+          MEASURED (`npm run build`): plotly.min (4.84 MB) and aladin
+          (2.39 MB) are real, but they are separate lazily-loaded chunks
+          (`plotly.min-*.js`, `aladin-*.js`), not part of the initial load.
+          The initial chunk is `index-*.js` at 302.64 kB (gzip 90.75 kB) plus
+          25.75 kB CSS. `LightCurvePlot.tsx` and `AladinSky.tsx` already
+          `await import(...)` these libraries inside effects/callbacks
+          (dynamic, not static), and `CandidateWorkspace` (which imports both)
+          is itself `React.lazy`-loaded behind `<Suspense>` in
+          `App.tsx:124-126`. `CurveExplorer`/`SkyExplorer` import those leaf
+          components statically but that does not pull plotly/aladin into
+          their own eager chunks, since the heavy libraries are dynamically
+          imported one level down.
+          The ~30 s "Starting..." window is not JS parse time — it is the
+          Python sidecar spawning lazily on the first `invoke`
+          (`src-tauri/src/engine.rs`), as this file already stated but had
+          filed under the wrong cause. Not re-measured live this pass; if
+          precise sidecar-vs-paint timing is needed, instrument a timestamp
+          around the sidecar spawn and compare to first-paint.
+
+[DONE]    Export formats (CSV / FITS / PDF)
+          Candidate runs export all three formats into Projects/reports.
+
+[DONE]    Frontend tests exist  <-- 2026-08-19
+          There were none. 31 pytest modules and 8 Rust tests covered the
+          engine and the IPC bridge, while `scripts/check-desktop-entry.mjs`
+          was the only check on the entire React application.
+          vitest + @testing-library/react + jsdom, `npm run test:ui`,
+          18 tests in two files.
+          Mocked at the `invoke` boundary rather than at `engine.*`, which is
+          the point: Tauri matches command arguments by NAME, so a wrapper
+          sending `radius_arcsec` where the Rust command declares
+          `radiusArcsec` does not raise -- it arrives as None and the engine
+          quietly uses a default. Mocking `engine.*` would have tested the
+          views while leaving exactly that class of bug invisible.
+          src/lib/engine.test.ts pins command names, camelCase argument
+          names and defaults. src/components/views.test.tsx pins the states a
+          new user actually sees first: an empty engine (no experiments, no
+          matrices, no exports), an engine error, the label gate refusing to
+          report a metric, and the PyTorch-absent refusal rendering as the
+          engine's own explanation rather than a raw error string.
+          Found two real defects while being written, not just test bugs:
+          the period-FAP badge split its text across three nodes, and the
+          Models view had two buttons labelled exactly "Train" (the ranker
+          and the deep model) -- ambiguous for a reader, not only for a
+          query. Both fixed in the components.
+          => Coverage is deliberately shallow and behavioural. There are no
+             snapshot tests: they would lock in markup that is still moving
+             and would not have caught either defect above.
+
+[PARTIAL] Security items (section 38)
+          CSP, narrow capabilities, managed-root file authorization and label
+          audit events exist. TNS credentials are locally DPAPI-protected and
+          never logged or cached with catalog results. Production installer
+          signing, updater metadata signing, and updater publication remain
+          release gates because their external credentials/infrastructure have
+          not been supplied.
