@@ -33,6 +33,8 @@ class PipelineReport:
     likely_artifacts: int = 0
     cross_survey_groups: int = 0
     resolved_multi_survey: int = 0
+    anchor_survey: str | None = None
+    anchor_policy: str = "largest_catalogue"
     output_path: str | None = None
 
     def to_dict(self) -> dict:
@@ -45,14 +47,17 @@ class PipelineReport:
             "likely_artifacts": self.likely_artifacts,
             "cross_survey_groups": self.cross_survey_groups,
             "resolved_multi_survey": self.resolved_multi_survey,
+            "anchor_survey": self.anchor_survey,
+            "anchor_policy": self.anchor_policy,
             "output_path": self.output_path,
         }
 
 
 def _resolution_index(radius_arcsec: float,
                       curve_index: dict[tuple[str, str], list] | None = None,
-                      features_by_key: dict | None = None
-                      ) -> dict[tuple[str, str], dict]:
+                      features_by_key: dict | None = None,
+                      anchor_survey: str | None = None
+                      ) -> tuple[dict[tuple[str, str], dict], int, int, dict]:
     """Map each (survey, object_id) to its cross-survey standing.
 
     `curve_index` and `features_by_key` are accepted so `run` can share the
@@ -72,7 +77,10 @@ def _resolution_index(radius_arcsec: float,
                                      ra_deg=row["ra_deg"], dec_deg=row["dec_deg"],
                                      extra=row["extra"]))
 
-    groups = crossmatch.group_sources(by_survey, radius_arcsec=radius_arcsec)
+    groups = crossmatch.group_sources(by_survey, radius_arcsec=radius_arcsec,
+                                       anchor_survey=anchor_survey)
+    grouping_bias = crossmatch.grouping_bias_report(
+        by_survey, groups, anchor_survey=anchor_survey)
 
     # Reuse cached features rather than re-running a period search per group.
     if features_by_key is None:
@@ -96,7 +104,8 @@ def _resolution_index(radius_arcsec: float,
                 "gaia": _gaia_properties(group),
             }
 
-    return lookup, len(groups), sum(1 for g in groups if g.resolved_surveys > 1)
+    return (lookup, len(groups), sum(1 for g in groups if g.resolved_surveys > 1),
+            grouping_bias)
 
 
 def _gaia_properties(group: crossmatch.MatchGroup) -> dict | None:
@@ -116,7 +125,8 @@ def run(survey_names: list[str] | None = None,
         top: int = 200,
         name: str = "default",
         seed: int = 42,
-        root: Path | None = None) -> tuple[list[candidates_mod.Candidate],
+        root: Path | None = None,
+        anchor_survey: str | None = None) -> tuple[list[candidates_mod.Candidate],
                                            PipelineReport]:
     """Produce a ranked, explained candidate list from the stored data."""
     report = PipelineReport()
@@ -131,10 +141,13 @@ def run(survey_names: list[str] | None = None,
     features_by_key = evidence.feature_lookup_from_matrices(
         survey_names, matrices=matrices)
 
-    lookup, group_count, resolved_multi = _resolution_index(
-        radius_arcsec, curve_index.by_key, features_by_key)
+    lookup, group_count, resolved_multi, grouping_bias = _resolution_index(
+        radius_arcsec, curve_index.by_key, features_by_key,
+        anchor_survey=anchor_survey)
     report.cross_survey_groups = group_count
     report.resolved_multi_survey = resolved_multi
+    report.anchor_survey = grouping_bias.get("anchor_survey")
+    report.anchor_policy = str(grouping_bias.get("anchor_policy", "largest_catalogue"))
 
     positions = curve_index.positions_by_path
     built: list[candidates_mod.Candidate] = []
@@ -186,6 +199,35 @@ def run(survey_names: list[str] | None = None,
             ranked = scores.get(identity["path"], {})
             standing = lookup.get((identity["survey"], identity["object_id"]), {})
 
+            calibrated = ranked.get("consensus_calibrated")
+            significance_context = {
+                "schema_version": 1,
+                "method": "empirical_cdf",
+                "reference_kind": "batch_relative",
+                "ready": False,
+                "reason": "no finite detector score",
+                "tail_probability": None,
+            }
+            if calibrated is not None and np.isfinite(float(calibrated)):
+                calibrated_probability = float(calibrated)
+                significance_context = {
+                    "schema_version": 1,
+                    "method": "empirical_cdf",
+                    "reference_kind": "batch_relative",
+                    "score": float(ranked.get("consensus_score", float("nan"))),
+                    "tail_probability": round(max(0.0, 1.0 - calibrated_probability), 8),
+                    "calibrated_percentile": round(calibrated_probability, 8),
+                    "ready": True,
+                }
+            blended_surveys = list(standing.get("blended", []) or [])
+            resolved_count = int(standing.get("resolved_surveys", 1) or 0)
+            evidence_context = {
+                "available": resolved_count,
+                "total": resolved_count + len(blended_surveys),
+                "resolved_surveys": resolved_count,
+                "blended_surveys": blended_surveys,
+            }
+
             # Already known from the single store walk above; only a curve
             # written since then needs its own read.
             source_position = positions.get(identity["path"]) \
@@ -201,6 +243,15 @@ def run(survey_names: list[str] | None = None,
                 blended=standing.get("blended"),
                 period_agrees=standing.get("period_agrees"),
                 gaia_properties=standing.get("gaia"),
+                significance=significance_context,
+                evidence_completeness=evidence_context,
+                provenance_refs=[{
+                    "kind": "light_curve",
+                    "survey": identity.get("survey"),
+                    "release": identity.get("release"),
+                    "object_id": identity.get("object_id"),
+                    "path": identity.get("path"),
+                }],
             ))
             tier = identity.get("coverage_tier", "A")
             built[-1].explanation["coverage"] = {

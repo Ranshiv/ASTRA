@@ -1,6 +1,7 @@
 """Cached catalogue evidence must remain honest when the network is absent."""
 from __future__ import annotations
 
+import warnings
 from datetime import datetime, timedelta, timezone
 
 from astra import catalogs, credentials, metadata, scoring
@@ -126,3 +127,34 @@ def test_windows_dpapi_secret_is_not_written_in_plaintext(tmp_path):
     assert api_key not in str(status)
     assert credentials.clear_tns_credentials(paths) is True
     assert credentials.load_tns_credentials(paths) is None
+
+
+def test_simbad_empty_cone_warning_is_quiet_but_remains_no_match(monkeypatch):
+    """SIMBAD's expected empty-result warning must not pollute engine logs."""
+    from astroquery.exceptions import NoResultsWarning
+
+    class FakeSimbad:
+        ROW_LIMIT = 20
+
+        def add_votable_fields(self, *_fields):
+            return None
+
+        def query_region(self, *_args, **_kwargs):
+            warnings.warn("empty cone", NoResultsWarning)
+            return None
+
+    # `_fetch_simbad` imports Simbad locally, so provide a tiny module shim
+    # only for this test and restore it automatically through monkeypatch.
+    import sys
+    import types
+
+    simbad_module = types.ModuleType("astroquery.simbad")
+    simbad_module.Simbad = FakeSimbad
+    monkeypatch.setitem(sys.modules, "astroquery.simbad", simbad_module)
+
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        result = catalogs._fetch_simbad(query())
+
+    assert result == []
+    assert not [warning for warning in seen if warning.category is NoResultsWarning]

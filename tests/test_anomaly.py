@@ -168,6 +168,14 @@ class TestGaiaJoin:
         assert joined.column("gaia_parallax")[0] == pytest.approx(5.0)
         assert joined.column("gaia_distance_pc")[0] == pytest.approx(200.0)
         assert joined.column("gaia_bp_rp")[0] == pytest.approx(0.9, abs=1e-6)
+        # Propagated to the current epoch from Gaia's fixed J2016.0 reference
+        # -- with nonzero proper motion and roughly a decade elapsed, the
+        # current-epoch position must differ from the stored J2016.0 one.
+        assert np.isfinite(joined.column("gaia_ra_now_deg")[0])
+        assert np.isfinite(joined.column("gaia_dec_now_deg")[0])
+        # abs tolerance, not the default relative one: at dec=22 degrees, a
+        # relative tolerance would swallow a shift of several arcminutes.
+        assert joined.column("gaia_dec_now_deg")[0] != pytest.approx(22.0, abs=1e-9)
 
     def test_unmatched_row_gets_nan_not_an_imputed_value(self, isolated_root):
         from astra import metadata

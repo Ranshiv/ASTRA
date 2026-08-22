@@ -19,13 +19,16 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (ablation, acquire, anomaly, cache, candidates as candidates_mod,
+from . import (ablation, acquire, alerts, anomaly, artifact, association, cache,
+               candidates as candidates_mod,
                catalogs, config, credentials, crossmatch, evaluate, evidence,
-               experiment, exports, featurematrix, features, fitsio, hardware,
+               events, frb, gw, literature, multiband, significance, tap,
+               experiment, exports, featurematrix, features, fitsio, followup, hardware,
                image_features, modalitymatrix, readiness, spectral_features,
                jobs, manifest as manifest_mod, metadata, pipeline, products,
-               project as project_mod, review, ranker, security, store, surveys,
+               project as project_mod, review, ranker, security, sed, store, surveys,
                stageb, tensors, tess_pixels, timeframe, viz)
+from .surveys import gaia_epoch
 from .surveys.base import ConeQuery
 
 Handler = Callable[[dict[str, Any]], Any]
@@ -95,6 +98,7 @@ def _handle_acquire(params: dict[str, Any], progress=None) -> dict[str, Any]:
         limit=int(params.get("limit", 25)),
         dataset_id=params.get("dataset_id"),
         project_id=params.get("project_id"),
+        skip_existing=bool(params.get("skip_existing", True)),
         progress=progress,
         # Per-survey connector kwargs, e.g. {"tess": {"author": "QLP"}} to
         # acquire via QLP instead of the default SPOC. Optional; absent, this
@@ -104,8 +108,202 @@ def _handle_acquire(params: dict[str, Any], progress=None) -> dict[str, Any]:
     return result.to_dict()
 
 
+def _handle_acquire_project(params: dict[str, Any], progress=None) -> dict[str, Any]:
+    """Run one acquisition per region in a project's query_regions. Long-running."""
+    result = acquire.acquire_project(
+        str(params["project_id"]),
+        survey_names=params.get("surveys"),
+        limit=int(params.get("limit", 25)),
+        skip_existing=bool(params.get("skip_existing", True)),
+        progress=progress,
+        survey_options=params.get("survey_options"),
+    )
+    return result.to_dict()
+
+
 def _handle_store_usage(_params: dict[str, Any]) -> dict[str, Any]:
     return {"surveys": store.survey_usage(), "dataset": store.dataset_status()}
+
+
+def _event_root(params: dict[str, Any]) -> Path | None:
+    """Use a project workspace for mutable event indexes when supplied."""
+    return _workspace_root(params.get("project_id"))
+
+
+def _handle_event_providers(_params: dict[str, Any]) -> list[dict]:
+    return events.providers()
+
+
+def _handle_event_ingest(params: dict[str, Any]) -> dict:
+    if "payload" not in params:
+        raise ValueError("events.ingest requires a payload")
+    return events.ingest(
+        str(params.get("provider", "generic")), params["payload"],
+        root=_event_root(params), release=str(params.get("release", "unknown")),
+        packet_id=params.get("packet_id"),
+        packet_version=str(params.get("packet_version", "1")),
+        received_utc=params.get("received_utc"), project_id=params.get("project_id"),
+    )
+
+
+def _handle_event_list(params: dict[str, Any]) -> list[dict]:
+    return events.list_events(
+        root=_event_root(params), provider=params.get("provider"),
+        event_id=params.get("event_id"), limit=int(params.get("limit", 500)),
+        packets=bool(params.get("packets", False)),
+    )
+
+
+def _handle_event_get(params: dict[str, Any]) -> dict:
+    return events.get_packet(str(params["packet_key"]), root=_event_root(params),
+                             include_raw=bool(params.get("include_raw", False)))
+
+
+def _handle_event_replay(params: dict[str, Any]) -> list[dict]:
+    return events.replay(root=_event_root(params), provider=params.get("provider"),
+                         event_id=params.get("event_id"),
+                         limit=int(params.get("limit", 100)))
+
+
+def _handle_significance_calibrate(params: dict[str, Any]) -> dict:
+    payload = significance.calibrate(
+        params.get("scores", []), reference_scores=params.get("reference_scores"),
+        threshold=params.get("threshold"), strata=params.get("strata"),
+        method=str(params.get("method", "empirical_tail")),
+    )
+    if params.get("save", True):
+        path = significance.save(payload, root=(_workspace_root(params.get("project_id"))
+                                                or config.PATHS.root),
+                                 kind="calibration", name=str(params.get("name", "default")))
+        payload["path"] = str(path)
+    return payload
+
+
+def _handle_selection_evaluate(params: dict[str, Any]) -> dict:
+    dimensions = tuple(str(item) for item in params.get(
+        "dimensions", ("amplitude", "duration_days", "magnitude")))
+    payload = significance.evaluate_selection(
+        params.get("records", []), dimensions=dimensions, edges=params.get("edges"),
+        fit_model=bool(params.get("fit_model", False)),
+        model_features=tuple(str(item) for item in params.get("model_features", dimensions)),
+        bootstrap_samples=int(params.get("bootstrap_samples", 0)),
+        seed=int(params.get("seed", 42)),
+    )
+    if params.get("save", True):
+        path = significance.save(payload, root=(_workspace_root(params.get("project_id"))
+                                                or config.PATHS.root),
+                                 kind="selection", name=str(params.get("name", "default")))
+        payload["path"] = str(path)
+    return payload
+
+
+def _handle_review_next(params: dict[str, Any]) -> list[dict]:
+    name = str(params.get("name", "default"))
+    rows = candidates_mod.load(name, _workspace_root(params.get("project_id")))
+    return review.select_next(rows, limit=int(params.get("limit", 20)))
+
+
+def _handle_followup_plan(params: dict[str, Any]) -> dict:
+    return followup.plan(
+        ra_deg=float(params["ra_deg"]), dec_deg=float(params["dec_deg"]),
+        start_utc=params.get("start_utc"),
+        duration_hours=float(params.get("duration_hours", 12.0)),
+        latitude_deg=float(params.get("latitude_deg", 43.65)),
+        longitude_deg=float(params.get("longitude_deg", -79.38)),
+        min_altitude_deg=float(params.get("min_altitude_deg", 30.0)),
+        cadence_minutes=int(params.get("cadence_minutes", 10)),
+        target_id=params.get("target_id"),
+        twilight_sun_altitude_deg=float(params.get("twilight_sun_altitude_deg", -18.0)),
+        min_moon_separation_deg=float(params.get("min_moon_separation_deg", 0.0)),
+        max_moon_illumination=float(params.get("max_moon_illumination", 1.0)),
+        max_airmass=params.get("max_airmass"),
+        weather=params.get("weather"),
+        facility_name=params.get("facility_name"),
+        facility_constraints=params.get("facility_constraints"),
+    )
+
+
+def _handle_event_associate(params: dict[str, Any]) -> dict:
+    return association.associate_candidates(
+        name=str(params.get("name", "default")),
+        root=_workspace_root(params.get("project_id")),
+        provider=params.get("provider"), event_id=params.get("event_id"),
+        radius_arcsec=float(params.get("radius_arcsec", association.DEFAULT_RADIUS_ARCSEC)),
+        window_days=float(params.get("window_days", association.DEFAULT_WINDOW_DAYS)),
+        allow_unknown_time=bool(params.get("allow_unknown_time", False)),
+    )
+
+
+def _handle_alert_providers(_params: dict[str, Any]) -> list[dict]:
+    return alerts.providers()
+
+
+def _handle_alert_status(params: dict[str, Any]) -> dict:
+    return alerts.status(_workspace_root(params.get("project_id")) or config.PATHS.root)
+
+
+def _handle_alert_poll(params: dict[str, Any]) -> dict:
+    return alerts.poll(
+        str(params["provider"]), endpoint=params.get("endpoint"),
+        root=_workspace_root(params.get("project_id")) or config.PATHS.root,
+        project_id=params.get("project_id"), cursor=params.get("cursor"),
+        limit=int(params.get("limit", 100)), offline=bool(params.get("offline", False)),
+        payload=params.get("payload"), params=params.get("params"),
+    )
+
+
+def _handle_tap_status(params: dict[str, Any]) -> dict:
+    return tap.status(_workspace_root(params.get("project_id")) or config.PATHS.projects)
+
+
+def _handle_tap_query(params: dict[str, Any]) -> dict:
+    return tap.query(
+        str(params["service"]), str(params["adql"]),
+        release=str(params.get("release", "unknown")),
+        root=_workspace_root(params.get("project_id")) or config.PATHS.projects,
+        max_rows=int(params.get("max_rows", 200)), fmt=str(params.get("format", "csv")),
+        refresh=bool(params.get("refresh", False)), offline=bool(params.get("offline", False)),
+        timeout=float(params.get("timeout", 60.0)),
+    )
+
+
+def _handle_literature_status(_params: dict[str, Any]) -> dict:
+    return literature.status()
+
+
+def _handle_literature_search(params: dict[str, Any]) -> dict:
+    providers = params.get("providers", ("ads", "arxiv"))
+    return literature.search(
+        object_id=str(params.get("object_id", "")),
+        terms=params.get("terms", []), event_ids=params.get("event_ids", []),
+        providers=providers, limit=int(params.get("limit", 20)),
+        root=_workspace_root(params.get("project_id")),
+        refresh=bool(params.get("refresh", False)), offline=bool(params.get("offline", False)),
+    )
+
+
+def _handle_literature_enrich(params: dict[str, Any]) -> dict:
+    return literature.enrich_candidates(
+        name=str(params.get("name", "default")),
+        root=_workspace_root(params.get("project_id")),
+        refresh=bool(params.get("refresh", False)), offline=bool(params.get("offline", False)),
+        include_arxiv=bool(params.get("include_arxiv", True)),
+        limit=int(params.get("limit", 20)),
+    )
+
+
+def _handle_physical_characterize(params: dict[str, Any]) -> dict:
+    return sed.characterize(params.get("photometry", {}),
+                            extinction=params.get("extinction"),
+                            source=str(params.get("source", "caller")))
+
+
+def _handle_physical_enrich(params: dict[str, Any]) -> dict:
+    return sed.characterize_candidate(
+        name=str(params.get("name", "default")),
+        root=_workspace_root(params.get("project_id")),
+        extinction=params.get("extinction"),
+    )
 
 
 def _handle_manifest_list(params: dict[str, Any]) -> list[dict]:
@@ -424,9 +622,26 @@ def _handle_ablation_repeated(params: dict[str, Any]) -> dict[str, Any]:
     seeds = tuple(int(seed) for seed in params.get("seeds", (17, 29, 43, 59, 71)))
     kwargs = {"fraction": float(params.get("fraction", 0.1)),
               "seeds": seeds, "survey": params.get("survey")}
+    if params.get("checkpoint"):
+        kwargs["checkpoint"] = Path(params["checkpoint"])
     if params.get("project_id"):
         kwargs["root"] = _workspace_root(params.get("project_id"))
     return ablation.run_repeated(**kwargs)
+
+
+def _handle_artifact_calibrate(params: dict[str, Any]) -> dict[str, Any]:
+    """Propose artifact indicator weights from injection. Never adopts them."""
+    seeds = tuple(int(seed) for seed in params.get("seeds", (17, 29, 43, 59, 71)))
+    kwargs: dict[str, Any] = {
+        "n_per_class": int(params.get("n_per_class", 150)),
+        "test_fraction": float(params.get("test_fraction", 0.3)),
+        "seeds": seeds,
+        "hard_real_fraction": float(
+            params.get("hard_real_fraction", artifact.DEFAULT_HARD_REAL_FRACTION)),
+    }
+    if params.get("project_id"):
+        kwargs["root"] = _workspace_root(params.get("project_id"))
+    return artifact.calibrate_recorded(**kwargs)
 
 
 def _handle_stageb_compare(params: dict[str, Any]) -> dict[str, Any]:
@@ -454,6 +669,7 @@ def _handle_pipeline(params: dict[str, Any]) -> dict[str, Any]:
         name=params.get("name", "default"),
         seed=int(params.get("seed", 42)),
         root=_workspace_root(params.get("project_id")),
+        anchor_survey=params.get("anchor_survey"),
     )
     preview = int(params.get("preview", 25))
     return {**report.to_dict(),
@@ -535,6 +751,83 @@ def _handle_candidates_load(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# scoring.py:178 already refuses a parallax with SNR < 5 ("too noisy to
+# use") when screening period-luminosity consistency. The spatial view reuses
+# that exact threshold rather than inventing a second one: a distance judged
+# unreliable enough to skip a luminosity check is unreliable enough to skip
+# plotting in 3D space.
+GAIA_PARALLAX_SNR_THRESHOLD = 5.0
+
+
+def _handle_candidates_spatial(params: dict[str, Any]) -> dict[str, Any]:
+    """RA/Dec/Gaia-distance per candidate, for the 3D spatial view.
+
+    The live candidate pipeline never joins Gaia distance columns -- only the
+    offline ablation study does, via featurematrix.join_gaia_columns. Rather
+    than changing candidate-build provenance (a FEATURE_VERSION-adjacent
+    concern this view has no business touching), this reuses that same join
+    against a deliberately empty FeatureMatrix built only from the already-
+    loaded candidates' identities. Nothing is re-extracted or recomputed.
+    """
+    import numpy as np
+
+    root = _workspace_root(params.get("project_id"))
+    built = candidates_mod.load(params.get("name", "default"), root)
+    top = int(params.get("top", 200))
+    subset = built[:top]
+
+    identities = [{"path": c.path, "object_id": c.object_id,
+                  "survey": c.survey, "ra_deg": c.ra_deg, "dec_deg": c.dec_deg}
+                 for c in subset]
+    empty = featurematrix.FeatureMatrix(
+        values=np.empty((len(subset), 0)), identities=identities,
+        feature_names=())
+    joined, diagnostics = featurematrix.join_gaia_columns(
+        empty, radius_arcsec=crossmatch.DEFAULT_RADIUS_ARCSEC, projects_root=root)
+
+    distance_col = joined.feature_names.index("gaia_distance_pc")
+    abs_g_col = joined.feature_names.index("gaia_abs_g_mag")
+    snr_col = joined.feature_names.index("gaia_parallax_snr")
+    matched_col = joined.feature_names.index("gaia_matched")
+    ra_now_col = joined.feature_names.index("gaia_ra_now_deg")
+    dec_now_col = joined.feature_names.index("gaia_dec_now_deg")
+
+    points = []
+    reliable = 0
+    for candidate, row in zip(subset, joined.values):
+        snr = row[snr_col]
+        distance_reliable = bool(
+            row[matched_col] == 1.0 and np.isfinite(row[distance_col])
+            and np.isfinite(snr) and snr >= GAIA_PARALLAX_SNR_THRESHOLD)
+        if distance_reliable:
+            reliable += 1
+        points.append({
+            "candidate_id": candidate.candidate_id,
+            "ra_deg": candidate.ra_deg,
+            "dec_deg": candidate.dec_deg,
+            "gaia_distance_pc": (float(row[distance_col])
+                                 if np.isfinite(row[distance_col]) else None),
+            "gaia_abs_g_mag": (float(row[abs_g_col])
+                               if np.isfinite(row[abs_g_col]) else None),
+            "gaia_parallax_snr": float(snr) if np.isfinite(snr) else None,
+            "distance_reliable": distance_reliable,
+            "gaia_ra_now_deg": (float(row[ra_now_col])
+                                if np.isfinite(row[ra_now_col]) else None),
+            "gaia_dec_now_deg": (float(row[dec_now_col])
+                                 if np.isfinite(row[dec_now_col]) else None),
+            "score_total": candidate.score.get("total"),
+        })
+
+    return {
+        "points": points,
+        "total": len(subset),
+        "reliable": reliable,
+        "snr_threshold": GAIA_PARALLAX_SNR_THRESHOLD,
+        "gaia_matched": diagnostics["matched"],
+        "gaia_match_rate": diagnostics["match_rate"],
+    }
+
+
 def _handle_candidate_get(params: dict[str, Any]) -> dict[str, Any]:
     root = _workspace_root(params.get("project_id"))
     built = candidates_mod.load(params.get("name", "default"), root)
@@ -595,6 +888,110 @@ def _handle_catalog_enrich(params: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _handle_gw_events(params: dict[str, Any]) -> dict[str, Any]:
+    """List published GW events in one catalog, without touching candidates."""
+    events = gw.fetch_event_catalog(
+        catalog=params.get("catalog", gw.DEFAULT_CATALOG),
+        refresh=bool(params.get("refresh", False)),
+        offline=bool(params.get("offline", False)),
+    )
+    return {"catalog": params.get("catalog", gw.DEFAULT_CATALOG),
+           "events": [event.to_dict() for event in events]}
+
+
+def _handle_gw_enrich(params: dict[str, Any]) -> dict[str, Any]:
+    """Optional explicit GW coincidence check; never moves the composite score."""
+    return gw.enrich_candidates_gw(
+        name=params.get("name", "default"),
+        catalog=params.get("catalog", gw.DEFAULT_CATALOG),
+        window_days=float(params.get("window_days", gw.DEFAULT_WINDOW_DAYS)),
+        refresh=bool(params.get("refresh", False)),
+        offline=bool(params.get("offline", False)),
+        root=_workspace_root(params.get("project_id")),
+    )
+
+
+def _handle_gaia_epoch_ingest(params: dict[str, Any], progress=None) -> dict[str, Any]:
+    """Chunked, resumable Gaia DR4 epoch ingestion from an offline fixture.
+
+    No live DR4 endpoint exists yet (see surveys/gaia_epoch.py's module
+    docstring): the only source today is a caller-supplied JSON fixture file
+    shaped as `{"chunks": [[{row, ...}, ...], ...]}`, which exercises the
+    same chunked/checkpoint/resume path a real delivery mechanism will use
+    once DR4's access terms are verified. Long-running for a real fixture,
+    so this is meant to be called via job.submit like acquire.cone.
+    """
+    fixture_path = Path(str(params["fixture_path"]))
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    chunks = payload.get("chunks", [])
+    checkpoint = (Path(str(params["checkpoint"])) if params.get("checkpoint")
+                 else config.PATHS.cache / "gaia_epoch" / f"{params.get('name', 'default')}.json")
+    batch_size = int(params.get("batch_size", 256))
+
+    def _on_progress(update: dict[str, Any]) -> None:
+        if progress is None:
+            return
+        progress.raise_if_cancelled()
+        progress.update(fraction=update.get("fraction"), phase="gaia_epoch_ingest",
+                        items_done=update.get("chunks_completed"),
+                        items_total=update.get("chunks_total"))
+
+    report = gaia_epoch.ingest_resumable(
+        chunks, checkpoint=checkpoint, batch_size=batch_size, progress=_on_progress)
+    return report.to_dict()
+
+
+def _handle_gaia_epoch_status(params: dict[str, Any]) -> dict[str, Any]:
+    """Read a checkpoint's current state without ingesting anything."""
+    checkpoint = (Path(str(params["checkpoint"])) if params.get("checkpoint")
+                 else config.PATHS.cache / "gaia_epoch" / f"{params.get('name', 'default')}.json")
+    if not checkpoint.exists():
+        return {"exists": False}
+    state = json.loads(checkpoint.read_text(encoding="utf-8"))
+    rows_available = len(gaia_epoch.read_ingested_rows(checkpoint))
+    return {
+        "exists": True,
+        "chunks_completed": len(state.get("completed_chunk_ids", [])),
+        "chunks_failed": len(state.get("failed_chunk_ids", [])),
+        "rows_accepted": int(state.get("rows_accepted", 0)),
+        "rows_rejected": int(state.get("rows_rejected", 0)),
+        "rejection_histogram": dict(state.get("rejection_histogram", {})),
+        "rows_available": rows_available,
+    }
+
+
+def _handle_multiband_build(params: dict[str, Any]) -> dict[str, Any]:
+    """Explicit, opt-in joint-period sidecar build. Never run by the default
+    pipeline -- see multiband.py's module docstring for why."""
+    kwargs = {"survey": params.get("survey"),
+             "limit": int(params.get("limit", 10_000)),
+             "name": params.get("name", "default")}
+    if params.get("project_id"):
+        kwargs["root"] = _workspace_root(params.get("project_id"))
+    return multiband.build_multiband_sidecar(**kwargs)
+
+
+def _handle_frb_events(params: dict[str, Any]) -> dict[str, Any]:
+    """List published CHIME/FRB bursts, without touching candidates."""
+    bursts = frb.fetch_burst_catalog(
+        refresh=bool(params.get("refresh", False)),
+        offline=bool(params.get("offline", False)),
+    )
+    return {"bursts": [burst.to_dict() for burst in bursts]}
+
+
+def _handle_frb_enrich(params: dict[str, Any]) -> dict[str, Any]:
+    """Optional explicit FRB coincidence check; never moves the composite score."""
+    return frb.enrich_candidates_frb(
+        name=params.get("name", "default"),
+        window_days=float(params.get("window_days", frb.DEFAULT_WINDOW_DAYS)),
+        sigma_threshold=float(params.get("sigma_threshold", frb.DEFAULT_SIGMA_THRESHOLD)),
+        refresh=bool(params.get("refresh", False)),
+        offline=bool(params.get("offline", False)),
+        root=_workspace_root(params.get("project_id")),
+    )
+
+
 def _handle_tns_credentials_configure(params: dict[str, Any]) -> dict[str, Any]:
     """Store the API key with Windows DPAPI; it is never echoed to the UI."""
     return credentials.save_tns_credentials(
@@ -643,13 +1040,17 @@ def _sources_by_survey(root: Path | None = None) -> dict[str, list]:
 def _handle_crossmatch(params: dict[str, Any]) -> dict[str, Any]:
     """Group stored sources across surveys and summarise the result."""
     radius = float(params.get("radius_arcsec", crossmatch.DEFAULT_RADIUS_ARCSEC))
-    groups = crossmatch.group_sources(_sources_by_survey(_workspace_root(params.get("project_id"))), radius_arcsec=radius)
+    anchor_survey = params.get("anchor_survey")
+    groups = crossmatch.group_sources(
+        _sources_by_survey(_workspace_root(params.get("project_id"))),
+        radius_arcsec=radius, anchor_survey=anchor_survey)
 
     summary = crossmatch.summarise(groups)
     summary["resolved_multi_survey"] = sum(1 for g in groups
                                            if g.resolved_surveys > 1)
     summary["grouping_bias"] = crossmatch.grouping_bias_report(
-        _sources_by_survey(_workspace_root(params.get("project_id"))), groups)
+        _sources_by_survey(_workspace_root(params.get("project_id"))), groups,
+        anchor_survey=anchor_survey)
     top = int(params.get("top", 50))
     return {
         "summary": summary,
@@ -663,7 +1064,8 @@ def _handle_profile(params: dict[str, Any]) -> dict[str, Any]:
     radius = float(params.get("radius_arcsec", crossmatch.DEFAULT_RADIUS_ARCSEC))
     index = evidence.load_curves_by_key(root=config.PATHS.datasets)
     by_survey = _sources_by_survey(_workspace_root(params.get("project_id")))
-    groups = crossmatch.group_sources(by_survey, radius_arcsec=radius)
+    groups = crossmatch.group_sources(by_survey, radius_arcsec=radius,
+                                      anchor_survey=params.get("anchor_survey"))
     if params.get("multi_survey_only", True):
         groups = [g for g in groups if g.independent_surveys > 1]
 
@@ -775,6 +1177,14 @@ def _handle_deep_sweep(params: dict[str, Any]) -> dict[str, Any]:
     from . import sweep as sweep_mod
 
     seeds = tuple(int(seed) for seed in params.get("seeds", sweep_mod.DEFAULT_SEEDS))
+    # `overrides` narrows the grid and `limit` caps the population. Without
+    # both, the only sweep reachable over RPC is the full default grid on the
+    # whole population, which is the one run nobody can afford to start.
+    raw_overrides = params.get("overrides")
+    overrides = None
+    if raw_overrides:
+        overrides = {str(key): tuple(value)
+                     for key, value in dict(raw_overrides).items()}
     return sweep_mod.run_recorded(
         kind=params.get("kind", "autoencoder"),
         survey=params.get("survey"),
@@ -782,6 +1192,9 @@ def _handle_deep_sweep(params: dict[str, Any]) -> dict[str, Any]:
         mode=params.get("mode", "time"),
         fraction=float(params.get("fraction", 0.1)),
         epochs=int(params.get("epochs", 20)),
+        limit=int(params.get("limit", 10_000)),
+        strength=float(params.get("strength", 6.0)),
+        overrides=overrides,
     )
 
 
@@ -832,7 +1245,28 @@ HANDLERS: dict[str, Handler] = {
     "surveys.list": _handle_surveys_list,
     "readiness.status": _handle_readiness_status,
     "acquire.cone": _handle_acquire,
+    "acquire.project": _handle_acquire_project,
     "store.usage": _handle_store_usage,
+    "events.providers": _handle_event_providers,
+    "events.ingest": _handle_event_ingest,
+    "events.list": _handle_event_list,
+    "events.get": _handle_event_get,
+    "events.replay": _handle_event_replay,
+    "events.associate": _handle_event_associate,
+    "alerts.providers": _handle_alert_providers,
+    "alerts.status": _handle_alert_status,
+    "alerts.poll": _handle_alert_poll,
+    "tap.status": _handle_tap_status,
+    "tap.query": _handle_tap_query,
+    "significance.calibrate": _handle_significance_calibrate,
+    "selection.evaluate": _handle_selection_evaluate,
+    "review.next": _handle_review_next,
+    "followup.plan": _handle_followup_plan,
+    "literature.status": _handle_literature_status,
+    "literature.search": _handle_literature_search,
+    "literature.enrich": _handle_literature_enrich,
+    "physical.characterize": _handle_physical_characterize,
+    "physical.enrich": _handle_physical_enrich,
     "manifest.list": _handle_manifest_list,
     "project.create": _handle_project_create,
     "project.list": _handle_project_list,
@@ -867,8 +1301,10 @@ HANDLERS: dict[str, Handler] = {
     "ablation.run": _handle_ablation,
     "ablation.repeated": _handle_ablation_repeated,
     "stageb.compare": _handle_stageb_compare,
+    "artifact.calibrate": _handle_artifact_calibrate,
     "pipeline.run": _handle_pipeline,
     "candidates.load": _handle_candidates_load,
+    "candidates.spatial": _handle_candidates_spatial,
     "candidates.get": _handle_candidate_get,
     "candidates.timeline": _handle_candidate_timeline,
     "candidates.export": _handle_candidates_export,
@@ -877,6 +1313,13 @@ HANDLERS: dict[str, Handler] = {
     "candidates.evaluate": _handle_review_evaluate,
     "catalog.status": _handle_catalog_status,
     "catalog.enrich": _handle_catalog_enrich,
+    "gw.events": _handle_gw_events,
+    "gw.enrich": _handle_gw_enrich,
+    "frb.events": _handle_frb_events,
+    "frb.enrich": _handle_frb_enrich,
+    "gaia.epoch_ingest": _handle_gaia_epoch_ingest,
+    "gaia.epoch_status": _handle_gaia_epoch_status,
+    "features.multiband_build": _handle_multiband_build,
     "credentials.tns.configure": _handle_tns_credentials_configure,
     "credentials.tns.clear": _handle_tns_credentials_clear,
     "ranker.train": _handle_ranker_train,

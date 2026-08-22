@@ -131,6 +131,80 @@ def test_dataset_id_is_derived_from_the_cone(cone):
     assert generated.startswith("cone_180.122000_22.411000_10.000")
 
 
+class _RegionScopedFakeConnector(FakeConnector):
+    """Like FakeConnector, but object ids are unique per sky position.
+
+    FakeConnector's object ids ("obj0".."obj2") repeat for any query, which
+    is fine for single-cone tests but would make two genuinely distinct sky
+    regions collide on the same `source_key` -- a coincidence that would
+    never happen against a real catalogue, where object ids are unique across
+    the whole sky. Folding the query position into the id keeps this test's
+    two regions realistically distinct.
+    """
+
+    name = "FAKE_REGION"
+
+    def cone_search(self, query, limit=100):
+        return [
+            SourceRef(survey=self.name,
+                     object_id=f"obj_{query.ra_deg:.3f}_{i}",
+                     ra_deg=query.ra_deg, dec_deg=query.dec_deg)
+            for i in range(min(3, limit))
+        ]
+
+
+def test_acquire_project_iterates_all_regions(registered):
+    from astra import project
+
+    surveys.register("fake-region", _RegionScopedFakeConnector)
+    try:
+        created = project.create(
+            name="Mosaic",
+            query_regions=[
+                {"ra_deg": 180.122, "dec_deg": 22.411, "radius_arcsec": 10},
+                {"ra_deg": 30.0, "dec_deg": -5.0, "radius_arcsec": 10},
+            ],
+        )
+
+        result = acquire.acquire_project(created["project_id"],
+                                         survey_names=["fake-region"], limit=3)
+    finally:
+        surveys._REGISTRY.pop("fake-region", None)
+
+    assert len(result.regions) == 2
+    assert {round(r.query.ra_deg, 3) for r in result.regions} == {180.122, 30.0}
+    assert all(r.outcomes[0].curves_stored == 3 for r in result.regions)
+    payload = result.to_dict()
+    assert payload["totals"]["curves"] == 6
+
+
+def test_acquire_project_rejects_empty_regions(registered):
+    from astra import project
+
+    created = project.create(name="No regions")
+    with pytest.raises(ValueError, match="query_regions"):
+        acquire.acquire_project(created["project_id"], survey_names=["fake"], limit=3)
+
+
+def test_acquire_project_dedupes_overlapping_regions(registered):
+    from astra import metadata, project
+
+    created = project.create(
+        name="Overlap",
+        query_regions=[
+            {"ra_deg": 180.122, "dec_deg": 22.411, "radius_arcsec": 10},
+            {"ra_deg": 180.122, "dec_deg": 22.411, "radius_arcsec": 20},
+        ],
+    )
+
+    acquire.acquire_project(created["project_id"], survey_names=["fake"], limit=3)
+
+    from astra import config
+    stored = metadata.list_sources(config.PATHS.projects)
+    fake_sources = [row for row in stored if row["survey"] == "FAKE"]
+    assert len(fake_sources) == 3
+
+
 class FlakyConnector(SurveyConnector):
     """Fails on a fixed subset of objects, succeeds on the rest."""
 

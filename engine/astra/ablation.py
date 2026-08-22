@@ -20,9 +20,14 @@ than scored.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 import numpy as np
+
+# Bumped when the repeated-ablation checkpoint layout changes, so an old
+# checkpoint is discarded rather than half-read.
+REPEATED_SCHEMA_VERSION = 1
 
 # Plan section 20, verbatim.
 SURVEY_GROUPS: dict[str, tuple[str, ...]] = {
@@ -71,6 +76,17 @@ class AblationRow:
             "note": self.note,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict) -> "AblationRow":
+        return cls(
+            name=str(payload["name"]),
+            roc_auc=payload.get("roc_auc"),
+            average_precision=payload.get("average_precision"),
+            rows_scored=int(payload.get("rows_scored", 0)),
+            comparable=bool(payload.get("comparable", True)),
+            note=str(payload.get("note", "")),
+        )
+
 
 @dataclass
 class AblationStudy:
@@ -106,6 +122,20 @@ class AblationStudy:
             "baseline": self.baseline,
             "deltas_vs_baseline": self.deltas(),
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> "AblationStudy":
+        """Rebuild a study from its serialised form, for checkpoint resume.
+
+        `best` and `deltas_vs_baseline` are derived on write and recomputed on
+        read rather than restored, so a resumed study cannot disagree with a
+        freshly computed one.
+        """
+        return cls(
+            kind=str(payload.get("kind", "")),
+            rows=[AblationRow.from_dict(row) for row in payload.get("rows", [])],
+            baseline=payload.get("baseline"),
+        )
 
 
 def _score_matrix(matrix, labels: np.ndarray, name: str,
@@ -502,12 +532,21 @@ def aggregate_repeated(studies: list[AblationStudy], metric: str = "roc_auc") ->
 
 def run_repeated(fraction: float = 0.1,
                  seeds: tuple[int, ...] = (17, 29, 43, 59, 71),
-                 survey: str | None = None, root=None) -> dict:
+                 survey: str | None = None, root=None,
+                 checkpoint=None) -> dict:
     """Run the full suite across independent injection seeds and persist it.
 
     `survey` stratifies the feature and detector ablations; see `run_all`.
+
+    Each seed is checkpointed as it completes, in the same shape `stageb.run`
+    uses. The inconclusive results this study produced need more seeds to
+    settle, and a twenty-seed run that dies on seed nineteen used to lose all
+    nineteen. Resume is gated on the configuration matching, so changing the
+    fraction or the survey starts cleanly rather than blending populations.
     """
-    from . import experiment
+    from pathlib import Path
+
+    from . import config, experiment, stageb
 
     if len(seeds) < 2:
         raise ValueError("repeated ablation needs at least two distinct seeds")
@@ -515,15 +554,51 @@ def run_repeated(fraction: float = 0.1,
     if len(unique) < 2:
         raise ValueError("repeated ablation needs at least two distinct seeds")
 
+    workspace = root or config.PATHS.projects
+    checkpoint_path = (Path(checkpoint) if checkpoint
+                       else Path(workspace) / "results" / "ablation" / "repeated.json")
+    configuration = {"fraction": fraction, "seeds": list(unique), "survey": survey,
+                     "interval": "empirical seed percentile"}
+
     def work() -> dict:
-        groups = [survey_ablation(fraction, seed) for seed in unique]
-        feature = [feature_ablation(fraction, seed, survey=survey)
-                   for seed in unique]
-        detector = [detector_ablation(fraction, seed, survey=survey)
-                    for seed in unique]
+        state: dict = {}
+        if checkpoint_path.exists():
+            try:
+                state = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                state = {}
+        compatible = (state.get("schema_version") == REPEATED_SCHEMA_VERSION
+                      and state.get("configuration") == configuration)
+        completed: dict[str, dict] = state.get("completed", {}) if compatible else {}
+
+        for seed in unique:
+            key = str(seed)
+            if key in completed:
+                continue
+            completed[key] = {
+                "survey_groups": survey_ablation(fraction, seed).to_dict(),
+                "feature_groups": feature_ablation(fraction, seed,
+                                                   survey=survey).to_dict(),
+                "detectors": detector_ablation(fraction, seed,
+                                               survey=survey).to_dict(),
+            }
+            stageb._atomic_json(checkpoint_path, {
+                "schema_version": REPEATED_SCHEMA_VERSION,
+                "configuration": configuration,
+                "completed": completed,
+            })
+
+        groups = [AblationStudy.from_dict(completed[str(s)]["survey_groups"])
+                  for s in unique]
+        feature = [AblationStudy.from_dict(completed[str(s)]["feature_groups"])
+                   for s in unique]
+        detector = [AblationStudy.from_dict(completed[str(s)]["detectors"])
+                    for s in unique]
         return {
             "seeds": list(unique),
             "survey": survey,
+            "checkpoint": str(checkpoint_path),
+            "resumed": compatible and bool(state.get("completed")),
             "survey_groups": aggregate_repeated(groups),
             "feature_groups": aggregate_repeated(feature),
             "detectors": aggregate_repeated(detector),

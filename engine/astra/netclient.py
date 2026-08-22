@@ -49,6 +49,17 @@ REQUEST_INTERVAL_SECONDS: dict[str, float] = {
     "irsa": 0.2,
     "mast": 0.2,
     "gaia": 0.2,
+    # A TAP sync query is a database job, not a REST lookup; keep more room
+    # between them than the default interval allows.
+    "datalab": 1.0,
+    "gwosc": 0.5,
+    "cadc": 0.5,
+    "ads": 1.0,
+    "arxiv": 3.0,
+    # ALeRCE is a shared community alert broker (NOIRLab), not an
+    # ASTRA-dedicated allocation like MAST/IRSA — keep it out of the generic
+    # 0.2s default and give it its own bucket, matching gwosc/cadc.
+    "alerce": 0.5,
 }
 DEFAULT_INTERVAL_SECONDS = 0.2
 
@@ -143,10 +154,13 @@ def throttle(provider: str) -> None:
 
 
 def get(url: str, params: dict, timeout: float,
-        provider: str = "irsa") -> requests.Response:
+        provider: str = "irsa", headers: dict[str, str] | None = None) -> requests.Response:
     """Throttled, retrying GET. Raises only once the retries are exhausted."""
     throttle(provider)
-    response = session().get(url, params=params, timeout=timeout)
+    kwargs = {"params": params, "timeout": timeout}
+    if headers:
+        kwargs["headers"] = headers
+    response = session().get(url, **kwargs)
     response.raise_for_status()
     return response
 

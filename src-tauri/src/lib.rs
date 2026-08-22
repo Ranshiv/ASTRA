@@ -68,6 +68,174 @@ async fn engine_surveys(state: tauri::State<'_, Arc<Engine>>) -> Result<Value, S
 }
 
 #[tauri::command]
+async fn engine_event_providers(state: tauri::State<'_, Arc<Engine>>) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "events.providers", json!({})).await
+}
+
+#[tauri::command]
+async fn engine_event_ingest(
+    state: tauri::State<'_, Arc<Engine>>,
+    provider: String,
+    payload: Value,
+    release: Option<String>,
+    packet_id: Option<String>,
+    packet_version: Option<String>,
+    received_utc: Option<String>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "events.ingest", json!({
+        "provider": provider,
+        "payload": payload,
+        "release": release,
+        "packet_id": packet_id,
+        "packet_version": packet_version,
+        "received_utc": received_utc,
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_events(
+    state: tauri::State<'_, Arc<Engine>>,
+    provider: Option<String>,
+    event_id: Option<String>,
+    limit: Option<u32>,
+    packets: Option<bool>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "events.list", json!({
+        "provider": provider,
+        "event_id": event_id,
+        "limit": limit.unwrap_or(500),
+        "packets": packets.unwrap_or(false),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_event_packet(
+    state: tauri::State<'_, Arc<Engine>>,
+    packet_key: String,
+    include_raw: Option<bool>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "events.get", json!({
+        "packet_key": packet_key,
+        "include_raw": include_raw.unwrap_or(false),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_event_replay(
+    state: tauri::State<'_, Arc<Engine>>,
+    provider: Option<String>,
+    event_id: Option<String>,
+    limit: Option<u32>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "events.replay", json!({
+        "provider": provider,
+        "event_id": event_id,
+        "limit": limit.unwrap_or(100),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_event_associate(
+    state: tauri::State<'_, Arc<Engine>>,
+    name: Option<String>,
+    provider: Option<String>,
+    event_id: Option<String>,
+    radius_arcsec: Option<f64>,
+    window_days: Option<f64>,
+    allow_unknown_time: Option<bool>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "events.associate", json!({
+        "name": name.unwrap_or_else(|| "default".into()),
+        "provider": provider,
+        "event_id": event_id,
+        "radius_arcsec": radius_arcsec.unwrap_or(30.0),
+        "window_days": window_days.unwrap_or(30.0),
+        "allow_unknown_time": allow_unknown_time.unwrap_or(false),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_alert_providers(state: tauri::State<'_, Arc<Engine>>) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "alerts.providers", json!({})).await
+}
+
+#[tauri::command]
+async fn engine_alert_status(
+    state: tauri::State<'_, Arc<Engine>>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "alerts.status", json!({ "project_id": project_id })).await
+}
+
+#[tauri::command]
+async fn engine_alert_poll(
+    state: tauri::State<'_, Arc<Engine>>,
+    provider: String,
+    endpoint: Option<String>,
+    cursor: Option<String>,
+    limit: Option<u32>,
+    offline: Option<bool>,
+    payload: Option<Value>,
+    params: Option<Value>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "alerts.poll", json!({
+        "provider": provider,
+        "endpoint": endpoint,
+        "cursor": cursor,
+        "limit": limit.unwrap_or(100),
+        "offline": offline.unwrap_or(false),
+        "payload": payload,
+        "params": params,
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_tap_status(
+    state: tauri::State<'_, Arc<Engine>>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "tap.status", json!({ "project_id": project_id })).await
+}
+
+#[tauri::command]
+async fn engine_tap_query(
+    state: tauri::State<'_, Arc<Engine>>,
+    service: String,
+    adql: String,
+    release: Option<String>,
+    max_rows: Option<u32>,
+    format: Option<String>,
+    refresh: Option<bool>,
+    offline: Option<bool>,
+    timeout: Option<f64>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "tap.query", json!({
+        "service": service,
+        "adql": adql,
+        "release": release.unwrap_or_else(|| "unknown".into()),
+        "max_rows": max_rows.unwrap_or(200),
+        "format": format.unwrap_or_else(|| "csv".into()),
+        "refresh": refresh.unwrap_or(false),
+        "offline": offline.unwrap_or(false),
+        "timeout": timeout.unwrap_or(60.0),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
 async fn engine_readiness(state: tauri::State<'_, Arc<Engine>>) -> Result<Value, String> {
     call_blocking(Arc::clone(&state), "readiness.status", json!({})).await
 }
@@ -474,6 +642,106 @@ async fn engine_feature_cache_clear(state: tauri::State<'_, Arc<Engine>>) -> Res
     call_blocking(Arc::clone(&state), "cache.features.clear", json!({})).await
 }
 
+#[tauri::command]
+async fn engine_significance_calibrate(
+    state: tauri::State<'_, Arc<Engine>>,
+    scores: Vec<f64>,
+    reference_scores: Option<Vec<f64>>,
+    threshold: Option<f64>,
+    strata: Option<Value>,
+    name: Option<String>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "significance.calibrate", json!({
+        "scores": scores,
+        "reference_scores": reference_scores,
+        "threshold": threshold,
+        "strata": strata,
+        "name": name.unwrap_or_else(|| "default".into()),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_selection_evaluate(
+    state: tauri::State<'_, Arc<Engine>>,
+    records: Vec<Value>,
+    dimensions: Option<Vec<String>>,
+    edges: Option<Value>,
+    fit_model: Option<bool>,
+    model_features: Option<Vec<String>>,
+    bootstrap_samples: Option<u32>,
+    seed: Option<u64>,
+    name: Option<String>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "selection.evaluate", json!({
+        "records": records,
+        "dimensions": dimensions,
+        "edges": edges,
+        "fit_model": fit_model.unwrap_or(false),
+        "model_features": model_features,
+        "bootstrap_samples": bootstrap_samples.unwrap_or(0),
+        "seed": seed.unwrap_or(42),
+        "name": name.unwrap_or_else(|| "default".into()),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_review_next(
+    state: tauri::State<'_, Arc<Engine>>,
+    name: Option<String>,
+    limit: Option<u32>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "review.next", json!({
+        "name": name.unwrap_or_else(|| "default".into()),
+        "limit": limit.unwrap_or(20),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_followup_plan(
+    state: tauri::State<'_, Arc<Engine>>,
+    ra_deg: f64,
+    dec_deg: f64,
+    start_utc: Option<String>,
+    duration_hours: Option<f64>,
+    latitude_deg: Option<f64>,
+    longitude_deg: Option<f64>,
+    min_altitude_deg: Option<f64>,
+    cadence_minutes: Option<u32>,
+    target_id: Option<String>,
+    twilight_sun_altitude_deg: Option<f64>,
+    min_moon_separation_deg: Option<f64>,
+    max_moon_illumination: Option<f64>,
+    max_airmass: Option<f64>,
+    weather: Option<Value>,
+    facility_name: Option<String>,
+    facility_constraints: Option<Value>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "followup.plan", json!({
+        "ra_deg": ra_deg,
+        "dec_deg": dec_deg,
+        "start_utc": start_utc,
+        "duration_hours": duration_hours.unwrap_or(12.0),
+        "latitude_deg": latitude_deg.unwrap_or(43.65),
+        "longitude_deg": longitude_deg.unwrap_or(-79.38),
+        "min_altitude_deg": min_altitude_deg.unwrap_or(30.0),
+        "cadence_minutes": cadence_minutes.unwrap_or(10),
+        "target_id": target_id,
+        "twilight_sun_altitude_deg": twilight_sun_altitude_deg.unwrap_or(-18.0),
+        "min_moon_separation_deg": min_moon_separation_deg.unwrap_or(0.0),
+        "max_moon_illumination": max_moon_illumination.unwrap_or(1.0),
+        "max_airmass": max_airmass,
+        "weather": weather,
+        "facility_name": facility_name,
+        "facility_constraints": facility_constraints,
+    })).await
+}
+
 /// Profiling runs the real stages, so it takes as long as they do.
 #[tauri::command]
 async fn engine_profile(
@@ -613,6 +881,23 @@ async fn engine_candidates(
         json!({
             "name": name.unwrap_or_else(|| "default".into()),
             "top": top.unwrap_or(50),
+            "project_id": project_id,
+        }),
+    ).await
+}
+
+#[tauri::command]
+async fn engine_candidates_spatial(
+    state: tauri::State<'_, Arc<Engine>>,
+    name: Option<String>,
+    top: Option<u32>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state),
+        "candidates.spatial",
+        json!({
+            "name": name.unwrap_or_else(|| "default".into()),
+            "top": top.unwrap_or(200),
             "project_id": project_id,
         }),
     ).await
@@ -846,6 +1131,183 @@ async fn engine_catalog_enrich(
 }
 
 #[tauri::command]
+async fn engine_literature_status(state: tauri::State<'_, Arc<Engine>>) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "literature.status", json!({})).await
+}
+
+#[tauri::command]
+async fn engine_literature_search(
+    state: tauri::State<'_, Arc<Engine>>,
+    object_id: Option<String>,
+    terms: Option<Vec<String>>,
+    event_ids: Option<Vec<String>>,
+    providers: Option<Vec<String>>,
+    limit: Option<u32>,
+    refresh: Option<bool>,
+    offline: Option<bool>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "literature.search", json!({
+        "object_id": object_id.unwrap_or_default(),
+        "terms": terms.unwrap_or_default(),
+        "event_ids": event_ids.unwrap_or_default(),
+        "providers": providers.unwrap_or_else(|| vec!["ads".into(), "arxiv".into()]),
+        "limit": limit.unwrap_or(20),
+        "refresh": refresh.unwrap_or(false),
+        "offline": offline.unwrap_or(false),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_literature_enrich(
+    state: tauri::State<'_, Arc<Engine>>,
+    name: Option<String>,
+    refresh: Option<bool>,
+    offline: Option<bool>,
+    include_arxiv: Option<bool>,
+    limit: Option<u32>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "literature.enrich", json!({
+        "name": name.unwrap_or_else(|| "default".into()),
+        "refresh": refresh.unwrap_or(false),
+        "offline": offline.unwrap_or(false),
+        "include_arxiv": include_arxiv.unwrap_or(true),
+        "limit": limit.unwrap_or(20),
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_physical_characterize(
+    state: tauri::State<'_, Arc<Engine>>,
+    photometry: Value,
+    extinction: Option<Value>,
+    source: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "physical.characterize", json!({
+        "photometry": photometry,
+        "extinction": extinction,
+        "source": source.unwrap_or_else(|| "caller".into()),
+    })).await
+}
+
+#[tauri::command]
+async fn engine_physical_enrich(
+    state: tauri::State<'_, Arc<Engine>>,
+    name: Option<String>,
+    extinction: Option<Value>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "physical.enrich", json!({
+        "name": name.unwrap_or_else(|| "default".into()),
+        "extinction": extinction,
+        "project_id": project_id,
+    })).await
+}
+
+#[tauri::command]
+async fn engine_gw_events(
+    state: tauri::State<'_, Arc<Engine>>,
+    catalog: Option<String>,
+    refresh: Option<bool>,
+    offline: Option<bool>,
+) -> Result<Value, String> {
+    let params = json!({
+        "catalog": catalog.unwrap_or_else(|| "GWTC-1-confident".into()),
+        "refresh": refresh.unwrap_or(false),
+        "offline": offline.unwrap_or(false),
+    });
+    call_blocking(Arc::clone(&state), "gw.events", params).await
+}
+
+#[tauri::command]
+async fn engine_gw_enrich(
+    state: tauri::State<'_, Arc<Engine>>,
+    name: Option<String>,
+    catalog: Option<String>,
+    window_days: Option<f64>,
+    refresh: Option<bool>,
+    offline: Option<bool>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    let params = json!({
+        "name": name.unwrap_or_else(|| "default".into()),
+        "catalog": catalog.unwrap_or_else(|| "GWTC-1-confident".into()),
+        "window_days": window_days.unwrap_or(30.0),
+        "refresh": refresh.unwrap_or(false),
+        "offline": offline.unwrap_or(false),
+        "project_id": project_id,
+    });
+    call_blocking(Arc::clone(&state), "gw.enrich", params).await
+}
+
+#[tauri::command]
+async fn engine_frb_events(
+    state: tauri::State<'_, Arc<Engine>>,
+    refresh: Option<bool>,
+    offline: Option<bool>,
+) -> Result<Value, String> {
+    let params = json!({
+        "refresh": refresh.unwrap_or(false),
+        "offline": offline.unwrap_or(false),
+    });
+    call_blocking(Arc::clone(&state), "frb.events", params).await
+}
+
+#[tauri::command]
+async fn engine_frb_enrich(
+    state: tauri::State<'_, Arc<Engine>>,
+    name: Option<String>,
+    window_days: Option<f64>,
+    sigma_threshold: Option<f64>,
+    refresh: Option<bool>,
+    offline: Option<bool>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    let params = json!({
+        "name": name.unwrap_or_else(|| "default".into()),
+        "window_days": window_days.unwrap_or(1.0),
+        "sigma_threshold": sigma_threshold.unwrap_or(3.0),
+        "refresh": refresh.unwrap_or(false),
+        "offline": offline.unwrap_or(false),
+        "project_id": project_id,
+    });
+    call_blocking(Arc::clone(&state), "frb.enrich", params).await
+}
+
+#[tauri::command]
+async fn engine_gaia_epoch_ingest(
+    state: tauri::State<'_, Arc<Engine>>,
+    fixture_path: String,
+    checkpoint: Option<String>,
+    name: Option<String>,
+    batch_size: Option<u32>,
+) -> Result<Value, String> {
+    let params = json!({
+        "fixture_path": fixture_path,
+        "checkpoint": checkpoint,
+        "name": name.unwrap_or_else(|| "default".into()),
+        "batch_size": batch_size.unwrap_or(256),
+    });
+    call_blocking(Arc::clone(&state), "gaia.epoch_ingest", params).await
+}
+
+#[tauri::command]
+async fn engine_gaia_epoch_status(
+    state: tauri::State<'_, Arc<Engine>>,
+    checkpoint: Option<String>,
+    name: Option<String>,
+) -> Result<Value, String> {
+    let params = json!({
+        "checkpoint": checkpoint,
+        "name": name.unwrap_or_else(|| "default".into()),
+    });
+    call_blocking(Arc::clone(&state), "gaia.epoch_status", params).await
+}
+
+#[tauri::command]
 async fn engine_tns_credentials_configure(
     state: tauri::State<'_, Arc<Engine>>,
     api_key: String,
@@ -959,12 +1421,14 @@ async fn engine_pipeline(
     name: String,
     radius_arcsec: Option<f64>,
     top: Option<u32>,
+    anchor_survey: Option<String>,
     project_id: Option<String>,
 ) -> Result<Value, String> {
     let params = json!({
         "name": name,
         "radius_arcsec": radius_arcsec.unwrap_or(15.0),
         "top": top.unwrap_or(200),
+        "anchor_survey": anchor_survey,
         "project_id": project_id,
     });
     call_blocking(Arc::clone(&state), "pipeline.run", params).await
@@ -991,9 +1455,14 @@ async fn engine_frame_offset(
 async fn engine_crossmatch(
     state: tauri::State<'_, Arc<Engine>>,
     radius_arcsec: Option<f64>,
+    anchor_survey: Option<String>,
     project_id: Option<String>,
 ) -> Result<Value, String> {
-    let params = json!({ "radius_arcsec": radius_arcsec.unwrap_or(2.0), "project_id": project_id });
+    let params = json!({
+        "radius_arcsec": radius_arcsec.unwrap_or(2.0),
+        "anchor_survey": anchor_survey,
+        "project_id": project_id,
+    });
     call_blocking(Arc::clone(&state), "crossmatch.run", params).await
 }
 
@@ -1002,11 +1471,13 @@ async fn engine_profiles(
     state: tauri::State<'_, Arc<Engine>>,
     radius_arcsec: Option<f64>,
     top: Option<u32>,
+    anchor_survey: Option<String>,
     project_id: Option<String>,
 ) -> Result<Value, String> {
     let params = json!({
         "radius_arcsec": radius_arcsec.unwrap_or(2.0),
         "top": top.unwrap_or(25),
+        "anchor_survey": anchor_survey,
         "project_id": project_id,
     });
     call_blocking(Arc::clone(&state), "crossmatch.profile", params).await
@@ -1049,6 +1520,23 @@ async fn engine_deep_compare(
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(Engine::new()))
+        .setup(|app| {
+            // The window starts hidden (see tauri.conf.json) so the OS never
+            // shows a blank frame while the webview is still loading -- the
+            // frontend shows it itself once real content has painted. If
+            // that signal is ever lost (a crash before mount, a dropped
+            // permission), the window must not stay invisible forever, since
+            // that would look identical to the app failing to launch at all.
+            // This fallback guarantees it appears within a bounded time
+            // regardless.
+            if let Some(window) = app.get_webview_window("main") {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(8));
+                    let _ = window.show();
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             engine_ping,
             engine_hardware,
@@ -1057,6 +1545,17 @@ pub fn run() {
             engine_cache_status,
             engine_cache_enforce,
             engine_surveys,
+            engine_event_providers,
+            engine_event_ingest,
+            engine_events,
+            engine_event_packet,
+            engine_event_replay,
+            engine_event_associate,
+            engine_alert_providers,
+            engine_alert_status,
+            engine_alert_poll,
+            engine_tap_status,
+            engine_tap_query,
             engine_readiness,
             engine_store_usage,
             engine_manifests,
@@ -1096,6 +1595,7 @@ pub fn run() {
             engine_profiles,
             engine_pipeline,
             engine_candidates,
+            engine_candidates_spatial,
             engine_candidate,
             engine_candidate_timeline,
             engine_candidates_export,
@@ -1103,6 +1603,17 @@ pub fn run() {
             engine_label_summary,
             engine_catalog_status,
             engine_catalog_enrich,
+            engine_literature_status,
+            engine_literature_search,
+            engine_literature_enrich,
+            engine_physical_characterize,
+            engine_physical_enrich,
+            engine_gw_events,
+            engine_gw_enrich,
+            engine_frb_events,
+            engine_frb_enrich,
+            engine_gaia_epoch_ingest,
+            engine_gaia_epoch_status,
             engine_tns_credentials_configure,
             engine_tns_credentials_clear,
             engine_ranker_train,
@@ -1122,6 +1633,10 @@ pub fn run() {
             engine_stageb_compare,
             engine_profile,
             engine_feature_cache_clear,
+            engine_significance_calibrate,
+            engine_selection_evaluate,
+            engine_review_next,
+            engine_followup_plan,
             engine_candidates_evaluate,
             engine_feature_names,
             engine_deep_sweep,

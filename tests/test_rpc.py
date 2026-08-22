@@ -96,6 +96,111 @@ def test_paths_handler_reports_the_layout():
     assert {"root", "projects", "datasets", "models", "cache"} <= result.keys()
 
 
+def test_event_handlers_round_trip_in_project_workspace(isolated_root):
+    payload = {
+        "event_id": "rpc-event",
+        "packet_id": "rpc-packet",
+        "event_time": "2026-08-20T12:00:00Z",
+        "localization": {"ra_deg": 1.0, "dec_deg": 2.0},
+    }
+    response = rpc.dispatch({"id": 10, "method": "events.ingest", "params": {
+        "provider": "generic", "payload": payload,
+    }})
+    assert response["ok"] is True
+    packet = response["result"]
+    listed = rpc.dispatch({"id": 11, "method": "events.list", "params": {}})
+    assert listed["ok"] is True
+    assert listed["result"][0]["event_id"] == "rpc-event"
+    replay = rpc.dispatch({"id": 12, "method": "events.replay", "params": {}})
+    assert replay["ok"] is True
+    assert replay["result"][0]["packet_key"] == packet["packet_key"]
+
+
+def test_significance_handlers_persist_explicit_interpretation_layer(isolated_root):
+    response = rpc.dispatch({"id": 13, "method": "significance.calibrate", "params": {
+        "scores": [0.1, 0.5, 0.9], "reference_scores": [0.1, 0.2, 0.3],
+        "threshold": 0.8,
+    }})
+    assert response["ok"] is True
+    assert response["result"]["estimated_fdr"] >= 0
+    assert response["result"]["path"]
+
+
+def test_followup_handler_is_draft_only():
+    response = rpc.dispatch({"id": 14, "method": "followup.plan", "params": {
+        "ra_deg": 180.0, "dec_deg": 22.0,
+        "start_utc": "2026-08-20T00:00:00Z", "duration_hours": 2,
+    }})
+    assert response["ok"] is True
+    assert response["result"]["mode"] == "draft_only"
+
+
+def test_alert_poll_handler_accepts_bounded_payload(isolated_root):
+    response = rpc.dispatch({"id": 16, "method": "alerts.poll", "params": {
+        "provider": "gcn",
+        "payload": {"alerts": [{"event_id": "rpc-alert", "packet_id": "p1"}]},
+    }})
+    assert response["ok"] is True
+    assert response["result"]["ingested"] == 1
+    assert response["result"]["new_packets"] == 1
+
+
+def test_tap_query_handler_forwards_read_only_query(monkeypatch, isolated_root):
+    class Response:
+        headers = {"Content-Type": "text/csv"}
+        text = "ra,dec\n1.0,2.0\n"
+
+    monkeypatch.setattr(rpc.tap.netclient, "get",
+                        lambda *args, **kwargs: Response())
+    response = rpc.dispatch({"id": 17, "method": "tap.query", "params": {
+        "service": "https://example.invalid/tap/sync",
+        "adql": "SELECT ra, dec FROM sources",
+        "max_rows": 3,
+    }})
+    assert response["ok"] is True
+    assert response["result"]["rows"] == [{"ra": 1.0, "dec": 2.0}]
+    assert response["result"]["query"]["limit"] == 3
+
+
+def test_event_association_handler_is_conservative(monkeypatch, isolated_root):
+    from astra.candidates import Candidate
+    from astra import events
+
+    events.ingest("gcn", {"event_id": "assoc-event", "packet_id": "assoc-packet",
+                           "event_time": "2026-08-20T12:00:00Z",
+                           "localization": {"ra_deg": 10.0, "dec_deg": 20.0}},
+                  root=isolated_root.projects)
+    candidate = Candidate(candidate_id="assoc-candidate", object_id="obj",
+                          survey="ZTF", band="g", ra_deg=10.0, dec_deg=20.0,
+                          features={"event_time": "2026-08-20T12:00:00Z"})
+    monkeypatch.setattr(rpc.association.candidates, "load", lambda *args, **kwargs: [candidate])
+    monkeypatch.setattr(rpc.association.candidates, "save", lambda *args, **kwargs: isolated_root.projects / "candidates.json")
+    response = rpc.dispatch({"id": 19, "method": "events.associate", "params": {}})
+    assert response["ok"] is True
+    assert response["result"]["associations"] == 1
+
+
+def test_physical_characterize_handler_returns_context_only():
+    response = rpc.dispatch({"id": 20, "method": "physical.characterize", "params": {
+        "photometry": {"gaia_bp": 15.1, "gaia_g": 14.8, "gaia_rp": 14.5,
+                        "g": 15.0, "r": 14.8, "i": 14.7},
+    }})
+    assert response["ok"] is True
+    assert response["result"]["quality"] == "usable"
+    assert "temperature_k" in response["result"]
+
+
+def test_review_next_uses_candidate_uncertainty(monkeypatch):
+    monkeypatch.setattr(rpc.candidates_mod, "load", lambda name, root: [{
+        "candidate_id": "a", "score": {"model_agreement": 1},
+        "artifact": {"likelihood": 0.5}, "significance": {"tail_probability": 0.5},
+        "features": {"x": 1},
+    }])
+    response = rpc.dispatch({"id": 15, "method": "review.next", "params": {"limit": 1}})
+    assert response["ok"] is True
+    assert response["result"][0]["candidate_id"] == "a"
+
+
 def test_hardware_handler_always_returns_a_device():
     result = rpc.dispatch({"id": 4, "method": "hardware"})["result"]
     assert result["device"] in {"cpu", "cuda"}
@@ -190,6 +295,65 @@ class TestAcquireSurveyOptions:
 
         assert response["ok"] is True
         assert calls[0]["survey_options"] is None
+
+    def test_skip_existing_defaults_true_and_forwards_when_overridden(self, monkeypatch):
+        calls = self._capture_acquire_call(monkeypatch)
+
+        rpc.dispatch({
+            "id": 1, "method": "acquire.cone",
+            "params": {"ra_deg": 180.0, "dec_deg": 22.0},
+        })
+        assert calls[0]["skip_existing"] is True
+
+        rpc.dispatch({
+            "id": 2, "method": "acquire.cone",
+            "params": {"ra_deg": 180.0, "dec_deg": 22.0, "skip_existing": False},
+        })
+        assert calls[1]["skip_existing"] is False
+
+
+class TestAcquireProject:
+    """acquire.project runs one acquisition per region in a project's
+    query_regions, via the same job-dispatch path as acquire.cone."""
+
+    def _capture_acquire_project_call(self, monkeypatch):
+        calls = []
+
+        class FakeResult:
+            def to_dict(self):
+                return {"project_id": "proj", "regions": [], "totals": {}}
+
+        def fake_acquire_project(project_id, **kwargs):
+            calls.append({"project_id": project_id, **kwargs})
+            return FakeResult()
+
+        monkeypatch.setattr(rpc.acquire, "acquire_project", fake_acquire_project)
+        return calls
+
+    def test_dispatches_to_acquire_project_with_params(self, monkeypatch):
+        calls = self._capture_acquire_project_call(monkeypatch)
+
+        response = rpc.dispatch({
+            "id": 1, "method": "acquire.project",
+            "params": {"project_id": "proj", "surveys": ["ztf"], "limit": 5,
+                      "skip_existing": False},
+        })
+
+        assert response["ok"] is True
+        assert calls[0]["project_id"] == "proj"
+        assert calls[0]["survey_names"] == ["ztf"]
+        assert calls[0]["limit"] == 5
+        assert calls[0]["skip_existing"] is False
+
+    def test_skip_existing_defaults_to_true(self, monkeypatch):
+        calls = self._capture_acquire_project_call(monkeypatch)
+
+        rpc.dispatch({
+            "id": 1, "method": "acquire.project",
+            "params": {"project_id": "proj"},
+        })
+
+        assert calls[0]["skip_existing"] is True
 
 
 class _BrokenPipeStdout:

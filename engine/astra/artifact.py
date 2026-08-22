@@ -259,6 +259,35 @@ def assess(feature_values: dict[str, float],
 
 SAMPLING_ARTIFACT_PERIODS_DAYS = (1.0, 0.5, 13.7)
 
+# Fraction of the synthetic "real" class drawn from the awkward-but-genuine
+# population. Without it every real object is clean and no indicator can be
+# shown to be wrong.
+DEFAULT_HARD_REAL_FRACTION = 0.4
+
+# Laplace smoothing on the precision estimate, and a hard ceiling below 1.0.
+#
+# The ceiling is not cosmetic. Indicators combine by noisy-OR, so a weight of
+# exactly 1.0 saturates the product: one indicator firing pins the likelihood
+# at 100% and every other indicator, including all the clearing evidence,
+# stops mattering. A calibration is allowed to say "this indicator is very
+# reliable"; it is not allowed to say "this indicator alone is proof".
+CALIBRATION_SMOOTHING = 2.0
+MAX_CALIBRATED_WEIGHT = 0.85
+
+
+def smoothed_precision(true_positives: int, support: int,
+                       alpha: float = CALIBRATION_SMOOTHING) -> float:
+    """Laplace-smoothed precision, capped below the noisy-OR saturation point.
+
+    Raw precision from a handful of firings is happy to return exactly 1.0 off
+    three observations. Smoothing pulls small-support estimates toward 0.5 so
+    the weight reflects how much was actually seen.
+    """
+    if support <= 0:
+        raise ValueError("smoothed_precision needs at least one observation")
+    estimate = (true_positives + alpha) / (support + 2.0 * alpha)
+    return min(estimate, MAX_CALIBRATED_WEIGHT)
+
 
 @dataclass
 class IndicatorCalibration:
@@ -322,8 +351,18 @@ def _baseline_signal(rng: np.random.Generator, n_points: int,
     return time, value, value_err
 
 
-def _synthetic_real(rng: np.random.Generator, index: int):
-    """A genuine, unremarkable variable: no defect, by construction label 0."""
+def _synthetic_real(rng: np.random.Generator, index: int,
+                    hard: bool = False):
+    """A genuine variable: no defect, by construction label 0.
+
+    `hard` draws an awkward but entirely real object -- sparsely sampled, close
+    to its noise floor, or carrying a few genuine large excursions. Those are
+    the objects on which an indicator can fire without a defect being present,
+    so they are the only way a false-positive rate gets measured rather than
+    assumed. Calibrating against clean variables alone is what made the first
+    calibration return weights of 0.95-1.0: nothing in the population could
+    ever contradict an indicator.
+    """
     n_points = int(rng.integers(60, 300))
     baseline = float(rng.uniform(120.0, 500.0))
     # Kept away from every SAMPLING_ARTIFACT_PERIODS_DAYS value so a real
@@ -335,8 +374,36 @@ def _synthetic_real(rng: np.random.Generator, index: int):
         period = float(rng.uniform(2.0, 90.0))
     error = float(rng.uniform(0.02, 0.06))
     amplitude = error * float(rng.uniform(6.0, 20.0))  # well above the noise
-    time, value, value_err = _baseline_signal(
-        rng, n_points, baseline, period, amplitude, error)
+
+    if not hard:
+        time, value, value_err = _baseline_signal(
+            rng, n_points, baseline, period, amplitude, error)
+        return _make_curve(f"real{index}", time, value, value_err)
+
+    flavour = str(rng.choice(("sparse", "near_noise", "outliers")))
+    if flavour == "sparse":
+        # A real variable a survey simply did not visit often.
+        n_points = int(rng.integers(12, 34))
+        baseline = float(rng.uniform(300.0, 900.0))
+        time, value, value_err = _baseline_signal(
+            rng, n_points, baseline, period, amplitude, error)
+
+    elif flavour == "near_noise":
+        # Genuine low-amplitude variability, only just above the error bars.
+        amplitude = error * float(rng.uniform(1.2, 2.5))
+        time, value, value_err = _baseline_signal(
+            rng, n_points, baseline, period, amplitude, error)
+
+    else:  # outliers
+        # Real flares/dips on top of real variability. Astrophysical, not
+        # instrumental, but they look exactly like the extreme_outliers case.
+        time, value, value_err = _baseline_signal(
+            rng, n_points, baseline, period, amplitude, error)
+        n_excursions = int(rng.integers(2, 6))
+        where = rng.choice(n_points, size=min(n_excursions, n_points),
+                           replace=False)
+        value[where] -= error * rng.uniform(8.0, 18.0, size=len(where))
+
     return _make_curve(f"real{index}", time, value, value_err)
 
 
@@ -453,7 +520,8 @@ def _likelihood_from_fired(fired: set[str], weights: dict[str, float]) -> float:
 
 
 def calibrate_from_injection(n_per_class: int = 150, test_fraction: float = 0.3,
-                             seeds: tuple[int, ...] = (17, 29, 43, 59, 71)
+                             seeds: tuple[int, ...] = (17, 29, 43, 59, 71),
+                             hard_real_fraction: float = DEFAULT_HARD_REAL_FRACTION
                              ) -> CalibrationReport:
     """Calibrate the six feature-based indicator weights against synthetic
     truth-by-construction labels, and validate old vs. new weights held out.
@@ -473,9 +541,10 @@ def calibrate_from_injection(n_per_class: int = 150, test_fraction: float = 0.3,
     for seed in seeds:
         rng = np.random.default_rng(seed)
 
+        n_hard = int(round(n_per_class * float(hard_real_fraction)))
         curves, labels = [], []
         for i in range(n_per_class):
-            curves.append(_synthetic_real(rng, i))
+            curves.append(_synthetic_real(rng, i, hard=i < n_hard))
             labels.append(0)
         for i in range(n_per_class):
             kind = FEATURE_INDICATOR_NAMES[i % len(FEATURE_INDICATOR_NAMES)]
@@ -501,7 +570,8 @@ def calibrate_from_injection(n_per_class: int = 150, test_fraction: float = 0.3,
                 # one from zero observations.
                 per_seed_weights[name].append(WEIGHTS[name])
                 continue
-            precision = float(np.mean([labels[i] for i in fired_train]))
+            true_positives = int(sum(labels[i] for i in fired_train))
+            precision = smoothed_precision(true_positives, support)
             new_weights[name] = precision
             per_seed_weights[name].append(precision)
 
@@ -534,3 +604,48 @@ def calibrate_from_injection(n_per_class: int = 150, test_fraction: float = 0.3,
         n_test=n_test_total // len(seeds),
         seeds=list(seeds),
     )
+
+
+def calibrate_recorded(n_per_class: int = 150, test_fraction: float = 0.3,
+                       seeds: tuple[int, ...] = (17, 29, 43, 59, 71),
+                       hard_real_fraction: float = DEFAULT_HARD_REAL_FRACTION,
+                       root=None) -> dict:
+    """Run the calibration and record it like every other study.
+
+    This was the only study in the codebase with no provenance record, which
+    made its result impossible to cite or to re-verify later. The weights it
+    proposes are still not adopted automatically -- `WEIGHTS` is edited by hand
+    after reading the report, because adopting a weight changes what the
+    verdict bands mean.
+    """
+    from . import experiment
+
+    configuration = {
+        "n_per_class": n_per_class,
+        "test_fraction": test_fraction,
+        "seeds": list(seeds),
+        "hard_real_fraction": hard_real_fraction,
+        "smoothing": CALIBRATION_SMOOTHING,
+        "max_weight": MAX_CALIBRATED_WEIGHT,
+    }
+
+    def work() -> dict:
+        report = calibrate_from_injection(
+            n_per_class=n_per_class, test_fraction=test_fraction,
+            seeds=seeds, hard_real_fraction=hard_real_fraction)
+        payload = report.to_dict()
+        # A top-level headline so `experiment.compare` can line calibration
+        # runs up without a dotted path.
+        payload["auc_delta"] = round(
+            report.auc_new_weights - report.auc_old_weights, 4)
+        payload["adopted"] = False
+        payload["caveat"] = (
+            "Synthetic defect shapes only. Measures sensitivity to the "
+            "injected defects, not proof that real instrumental defects look "
+            "like these. Weights are proposed, not applied."
+        )
+        return payload
+
+    record = experiment.run("artifact_weight_calibration", configuration,
+                            work, seed=int(seeds[0]), root=root)
+    return {"experiment_id": record.provenance.experiment_id, **record.results}

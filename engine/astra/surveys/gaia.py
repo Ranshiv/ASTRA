@@ -85,7 +85,7 @@ class GaiaEpochAdapter:
     required_columns = ("source_id", "time", "g_flux", "g_flux_error")
 
     @classmethod
-    def validate_rows(cls, rows: list[dict]) -> dict:
+    def validate_chunk(cls, rows: list[dict]) -> dict:
         valid, rejected = [], []
         for row in rows:
             if any(key not in row for key in cls.required_columns):

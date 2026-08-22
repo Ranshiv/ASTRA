@@ -250,7 +250,10 @@ def search(request: CutoutRequest, *, limit: int = 25,
     for row in rows:
         # Validate before exposing a row to the UI; malformed archive rows are
         # reported as absent rather than becoming unsafe paths.
-        product_relative_path(row)
+        try:
+            product_relative_path(row)
+        except ProductError:
+            continue
         valid.append(row)
     return valid[:limit]
 

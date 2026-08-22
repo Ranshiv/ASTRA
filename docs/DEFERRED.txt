@@ -133,11 +133,287 @@ PHASE 2 — ASTRONOMY DATA LAYER
           not a missing capability: run each connector against its real
           endpoint once network access to validate is available, and adjust
           field-name fallbacks/rate limits as needed.
-          Rubin/LSST, DES, Hubble, JWST still need isolated adapters.
+          UPDATE 2026-08-19 (3): DES, Hubble, and JWST adapters
+          (`des.py`, `hubble.py`, `jwst.py`) now exist, registered opt-in
+          with the same metadata-only shape, each with its own fixture test
+          file (`tests/test_surveys_des.py`, `test_surveys_hubble.py`,
+          `test_surveys_jwst.py`; 33 tests). DES DR2 goes through NOIRLab
+          Astro Data Lab's anonymous TAP endpoint
+          (https://datalab.noirlab.edu/tap/sync) with fixed, ASTRA-
+          parameterised ADQL against `des_dr2.main` — no user SQL reaches
+          the service. Hubble and JWST share one MAST CAOM helper
+          (`_mast_caom.py`) hitting `Mast.Caom.Filtered.Position` with a
+          server-side `obs_collection` filter, so the 200-row cap is spent
+          on the requested mission. A `datalab` entry was added to
+          `netclient.REQUEST_INTERVAL_SECONDS` at 1.0s because a TAP sync
+          query is a database job rather than a REST lookup; HST/JWST reuse
+          the existing `mast` bucket.
+          These three carry the SAME live-contract validation gap as
+          Chandra/Swift/XMM above: the ADQL column names for `des_dr2.main`
+          and the CAOM field names come from published documentation, not
+          from a live call. Nothing here has been run against the real
+          endpoints. The per-row try/except means a field-name mismatch
+          degrades to "zero sources returned" rather than a crash, but a
+          silent zero is exactly what a fixture test cannot distinguish from
+          a correct empty cone — validate against the live services before
+          trusting a negative result from any of them.
+          Rubin/LSST still needs an isolated adapter, and is additionally
+          blocked on credentials rather than on effort: its TAP endpoint
+          (https://data.lsst.cloud/api/tap) requires a data-rights account
+          token, so it cannot be anonymously reached or fixture-validated
+          the way the others were. It would have to ship as a
+          bring-your-own-credentials connector (`credential_required = True`,
+          the pattern TNS already needs).
           LIGO/Virgo/KAGRA and CHIME are not point-source cone-search
           surveys and do not fit the current `SurveyConnector` interface
           as-is; they need a base-class/interface design decision before an
-          adapter can be written, not just an implementation.
+          adapter can be written, not just an implementation. Both do have
+          usable public APIs (GWOSC at https://gwosc.org/api/, no auth,
+          JSON; CHIME/FRB open data + VOEvent service), so the blocker is
+          genuinely the interface: they publish *events* with sky-
+          localization regions, not sources at a point.
+          UPDATE 2026-08-20: ALeRCE alert-broker adapter (`alerce.py`) now
+          exists, registered opt-in, unblocking real Rubin/LSST photometry
+          through the broker route rather than the credential-gated direct
+          TAP path described above. ALeRCE is one of NOIRLab's official
+          community brokers for LSST (which began its 10-year survey on
+          2026-06-30 and now streams ~7M alerts/night), alongside ANTARES/
+          Fink/Lasair, and its REST API (https://api.alerce.online/) is
+          confirmed genuinely public and unauthenticated -- `credential_
+          required = False`, the first LSST-adjacent connector able to say
+          so. Unlike the nine metadata-only connectors above, it implements
+          a real `fetch_light_curves()`: ALeRCE serves actual ZTF/LSST
+          detections (mjd/magpsf/sigmapsf/fid or band), not just catalogue
+          metadata, making it ASTRA's first new time-domain light-curve
+          source since TESS/QLP. A single `release` kwarg ("ztf" or "lsst",
+          default "ztf") selects the underlying survey, mirroring the
+          ALeRCE Python client's own `query_objects(survey=...)` parameter
+          and the same "one constructor kwarg drives a lookup table"
+          mechanism `tess.py`'s `author` uses; `resolution_arcsec` is set
+          per-release (1.0" for ZTF, 0.2" for LSST) since seeing-limited
+          LSST is meaningfully sharper. ZTF's numeric `fid` (1/2/3 -> g/r/i)
+          and LSST's own lettered bands (u/g/r/i/z/y) are both mapped
+          inside `alerce.py`, not `base.py`, per this module's own "adding
+          a survey means adding a connector" rule.
+          Same live-contract-validation gap as every connector above,
+          arguably wider here: the exact REST endpoint paths and JSON field
+          names (oid/meanra/meandec/classifier/probability for cone search;
+          mjd/magpsf/sigmapsf/fid for detections) come from ALeRCE's
+          documentation and the official Python client's method signature,
+          not a live authenticated fetch -- a direct check this session
+          confirmed `https://api.alerce.online/ztf/v1/` resolves as a real,
+          live API host and that `query_objects(ra=, dec=, radius=,
+          survey=)` needs no auth, but the exact response JSON shape was
+          not observed. One further explicit, unvalidated assumption: LSST
+          queries are requested by passing `survey="lsst"` to that same
+          confirmed `/ztf/v1/objects`-prefixed endpoint, rather than a
+          hypothetical separate `/lsst/v1/` path that was never confirmed
+          to resolve. Run against the real endpoint before trusting a
+          negative cone-search result, exactly as instructed for Chandra/
+          Swift/XMM/DES/Hubble/JWST above. The direct Rubin/LSST TAP path
+          (https://data.lsst.cloud/api/tap) remains blocked on a
+          data-rights credential as before; this entry adds a working
+          credential-free alternative alongside it, it does not remove
+          that blocker.
+          Tests: `tests/test_surveys_alerce.py`, same fixture-mocked
+          `netclient.get` shape as the other nine connectors, plus
+          light-curve-specific coverage (band mapping for both releases,
+          multi-band grouping, malformed-detection-row handling) the
+          metadata-only connectors don't need.
+          UPDATE 2026-08-21: the Rubin/LSST alert path is hardened without
+          building a direct TAP connector. `alerts.poll()` now accepts an
+          optional `params` override merged into the real request (e.g.
+          `alerts.poll("alerce", params={"survey": "lsst"})`), so the
+          existing credential-free `alerce` provider entry can be polled for
+          LSST-labelled alerts through the one existing endpoint rather than
+          adding a second `DEFAULT_ENDPOINTS` key -- no new transport, same
+          dedup/cursor machinery. Two metrics this backlog card names were
+          previously unmeasured anywhere in the codebase and are now part of
+          every `alerts.poll()` response: `duplicate_rate` (derived from the
+          dedup bookkeeping `_stable_packet_id`/`_ingest_outcome` already
+          did, just not reported as a rate) and `latency_summary` (median/
+          p95/n of `received_utc - event_time` in seconds, computed via
+          `association._parse_time` reused rather than a third ISO/JD
+          parser). `surveys/alerce.py` gained `photometric_residual()`, a
+          per-band comparison of ALeRCE-reported magnitudes against a
+          caller-supplied reference (typically built from
+          `crossmatch.match_catalogs()` against stored Gaia/PS1 rows) --
+          diagnostic evidence only, not a correction applied to the stored
+          curve, and explicitly not wired into `scoring.WEIGHTS`.
+          `tests/test_surveys_alerce.py` gained a schema-contract test class
+          that encodes ALeRCE's DOCUMENTED `/objects`/`/detections` field
+          contract as its own fixture (independent of the current parsing
+          code), so a future silent field-name drift in the real service
+          shows up as a fixture/contract mismatch to fix, not a silent pass.
+          The credential-storage half of a future direct Rubin/LSST TAP
+          connector is now built and reusable: `credentials.py`'s
+          TNS-specific DPAPI helpers (`save_tns_credentials` etc.) are now
+          thin wrappers over generic `save_credentials(name, payload)` /
+          `load_credentials(name)` / `credential_status(name)` /
+          `clear_credentials(name)`, keyed by provider name and verified
+          byte-identical for TNS's own on-disk file/entropy/description
+          (`tests/test_credentials.py`). `RubinTAPConnector` itself
+          (direct `data.lsst.cloud/api/tap` access) remains DELIBERATELY
+          DEFERRED, not forgotten: ALeRCE already delivers real,
+          credential-free LSST photometry today, and a direct-TAP connector
+          could only ever be exercised against mocked responses until ASTRA
+          has an actual Rubin data-rights account token in hand -- building
+          it now would be speculative effort with no way to validate it
+          against the live service, the same live-contract-validation gap
+          every other connector in this file already carries, just with no
+          way to even attempt validation yet. When that credential exists,
+          `tap.py`'s hardcoded `provider="datalab"` string and lack of an
+          auth-header parameter on `query()` are the two things that would
+          need to change first; the credential module above is ready.
+
+[DONE]    LIGO/Virgo/KAGRA: built as a catalogs.py-shaped module, not a connector
+          UPDATE 2026-08-19: the interface-design decision above is made and
+          implemented. `gw.py` is a sibling to `catalogs.py`, not a
+          `SurveyConnector` -- same reasoning: candidate generation never
+          calls it, a researcher explicitly runs `gw.enrich` after
+          candidates exist, and results attach to an existing `Candidate`
+          rather than discovering new sources. `crossmatch.match_catalogs`
+          was confirmed unsuitable even with an enlarged radius: it is an
+          unindexed O(n*m) point-radius nearest-neighbour search, wrong both
+          semantically (forces a false uniform-disc assumption onto a
+          frequently multi-modal probability map) and computationally at GW
+          sky-area scales (tens to thousands of square degrees vs. the
+          arcsecond scale everywhere else in this codebase).
+          Two premises checked directly against live services while
+          planning, and corrected before writing code against them:
+            1. GWOSC does NOT host a skymap file. Checked three ways --
+               the structured v2 API, the legacy eventapi JSON, and a full
+               key enumeration of a real event record (GW170817) -- and
+               confirmed it carries only physical/detection parameters
+               (masses, distance, SNR, FAR) and strain data, no RA/Dec, no
+               localization area, no skymap URL.
+            2. GraceDB, the usual skymap host, requires authentication for
+               file access (`gracedb.ligo.org/api/events/<id>/files/`
+               returned 401 on a direct check) -- the same credential wall
+               that blocks Rubin/LSST.
+          What IS genuinely public: the parameter-estimation posterior-
+          samples file GWOSC links to for events with a public PE release
+          (a `dcc.ligo.org/public/...` URL, confirmed downloadable with no
+          auth). Its `right_ascension`/`declination` columns (radians, in an
+          HDF5 dataset whose name ends in `_posterior`) are exactly what a
+          sample-based skymap needs. `gw.py` builds one itself: histogram-
+          bins the samples into HEALPix pixels via `astropy_healpix`
+          (nside=64 default) into a per-pixel probability array, then
+          computes both raw density and cumulative credible-region level at
+          a candidate's position -- the standard "is this point inside the
+          50%/90% credible region" calculation. Deliberately histogram
+          binning, not a smoothed KDE (no bandwidth-selection algorithm to
+          get wrong), and deliberately `astropy_healpix`, not `healpy`
+          (`healpy` has no native Windows wheel -- Linux/macOS only, Windows
+          via WSL -- the same shape of problem as `nifty-ls`'s missing
+          Windows wheel that blocked GPU Lomb-Scargle earlier; verified
+          `astropy-healpix==2.0.1` installs cleanly via `uv pip install`
+          into this project's actual Windows `.venv` with a real wheel).
+          Edge case found and handled, not glossed over: some public
+          releases hold sky position FIXED to a known electromagnetic
+          counterpart rather than sampling it. GW170817's real public
+          posterior has `right_ascension`/`declination` standard deviation
+          of essentially zero (verified directly: min==max across 8078
+          samples) because that re-analysis conditioned on the already-known
+          host galaxy NGC 4993 rather than treating position as free. Such a
+          posterior is flagged `position_source: "em_counterpart_fixed"`
+          rather than presented as an ordinary GW-derived localization --
+          treating it as normal would silently claim impossibly precise
+          GW-only localization for a check that is trivial by construction
+          for that one event. A direct consequence, also verified: the
+          credible_level for a fixed position's own exact pixel is 1.0, not
+          near-zero -- mathematically correct (a single-pixel delta function
+          has no smaller-than-100% region containing any nonzero pixel), not
+          a bug, but surprising enough that `in_90pct_region` must not be
+          trusted without also reading `position_source`.
+          Verified against a genuinely scattered synthetic posterior that
+          the credible-region math is sound in the normal case: a
+          true-position pixel came back at credible_level 0.032 (well inside
+          90%), a 1-sigma offset at 0.486, a 15-sigma-away point at ~1.0.
+          Deliberately NOT wired into `scoring.WEIGHTS`/`combine()`. Doing so
+          would bump `scoring.WEIGHT_VERSION` (currently 1) and change what
+          every historically stored candidate score means, for evidence with
+          no track record yet in this project -- the same restraint already
+          applied to the calibrated artifact weights above, which are
+          measured and built but not adopted into the production score for
+          the same reason. GW coincidence lands as visible evidence
+          (`Candidate.gw`, `explanation["gw_coincidence"]`, a `GwCoincidence`
+          panel in the UI's Explain section) and can move a researcher's
+          attention, not a candidate's rank.
+          Time filtering runs first, before any skymap download: a
+          candidate's stored curve time bounds (read via `store.read_curve`,
+          the same precedent `featurematrix.join_gaia_columns` already
+          uses) are checked against each event's GPS time (converted to
+          JD_UTC) plus a `window_days` margin (default 30, explicitly a
+          tunable starting point, not a settled physical constant -- EM
+          follow-up literature uses windows from days to months depending on
+          the counterpart sought) before any HDF5 is fetched. Verified
+          end-to-end against real, live data: `gw.enrich` run over 200 real
+          local ZTF candidates against the real GWTC-1-confident catalog (11
+          events, 10-year window) completed with zero crashes, correctly
+          reported 0 matches (expected -- none of these candidates are
+          anywhere near a real GW170817-era sky position), and left every
+          candidate's `score` field byte-identical before and after.
+          CHIME/FRB: built as a catalogs.py-shaped module too -- simpler than GW
+          UPDATE 2026-08-19 (2): investigated properly rather than assumed.
+          CHIME/FRB's data model turned out genuinely simpler than GW's, and
+          closer to the ORIGINAL catalogs.py shape (point + scalar error)
+          than gw.py needed to be: the base catalogue reports `ra`/`ra_err`/
+          `dec`/`dec_err` directly per burst (several arcminutes typical),
+          not a probability map needing reconstruction. Only a minority of
+          bursts (baseband-localized) additionally carry a precomputed
+          sparse HEALPix confidence-level map (`ipix`/`CL` pairs, nside
+          4096) -- and unlike GW, that map is already finished, not raw
+          posterior samples needing histogram-binning.
+          Two more dead/broken paths found and routed around, the same
+          pattern as GWOSC/GraceDB before it:
+            1. `cfod`, CHIME/FRB Open Data's own official Python package,
+               depends on `healpy` -- confirmed failing to build on Windows
+               with a direct `uv pip install` attempt
+               (`error: [WinError 193] %1 is not a valid Win32 application`).
+               Its hardcoded catalogue download URL (a Google Cloud Storage
+               bucket) is also dead -- confirmed with a direct request
+               returning 403 "billing account for the owning project is
+               disabled." `cfod`'s last release was 2021; it is abandoned.
+            2. The current data lives on CADC/CANFAR (DOI 10.11570/25.0066,
+               Catalog 2, 4,539 bursts). Its plain website works (confirmed
+               200 on the browsable storage listing), but its
+               machine-readable VOSpace backend (`ws-uv.canfar.net`) was
+               returning 503 on every check made while building this module
+               -- including for the IVOA service registry every other CADC
+               endpoint depends on for discovery, and for the older, more
+               established Catalog 1 DOI. This reads as a genuine
+               infrastructure outage on CADC's side, not a wrong URL: the
+               plain website worked throughout while the API backend did
+               not, checked repeatedly over the course of implementation.
+          `frb.py` was written against the documented VOSpace convention
+          with the same graceful-degradation discipline `catalogs.py`/
+          `gw.py` already establish (a failed fetch with no cache raises a
+          clear top-level error rather than crashing the engine -- verified
+          directly: `frb.events` against the live, still-down service
+          returned `{"ok": false, "error": "could not fetch the CHIME/FRB
+          catalogue: 503 Server Error..."}`, exactly the same behaviour
+          `gw.enrich_candidates_gw` already has for an unreachable GWOSC
+          with no fallback cache). NOT live-validated against a healthy
+          CADC service -- the exact download path needs re-checking once
+          the outage clears, the same caveat already carried by Chandra/
+          Swift/XMM/DES/Hubble/JWST.
+          Position check is two-tier, matching the two-tier data model:
+          `within_error_ellipse()` (RA offset scaled by cos(dec), matching
+          the catalogue's own published convention) handles the common
+          case with no HEALPix at all; `localization_membership()` (reusing
+          `astropy_healpix`, already a dependency from the GW work -- no new
+          library, no new Windows-wheel risk) handles the minority of
+          baseband-localized bursts. Verified directly with a synthetic
+          sparse map: the true pixel reports its stored confidence level, a
+          position outside every listed pixel reports confidence_level 1.0
+          (least confident, not "unknown"), and a burst with no localization
+          product returns None rather than a fabricated result.
+          Same restraint as GW and the calibrated artifact weights: NOT
+          wired into `scoring.WEIGHTS`/`combine()`. Lands as visible
+          evidence only (`Candidate.frb`, `explanation["frb_coincidence"]`,
+          an `FrbCoincidence` panel beside `GwCoincidence` in the UI's
+          Explain section).
 
 
 ---------------------------------------------------------------------
@@ -165,8 +441,64 @@ PHASE 3 — SCIENTIFIC VISUALIZATION
 [DONE]    Plotly bundle deferred from initial load
           Plotly is now a dynamic chunk and no longer delays initial paint.
 
-[SCOPED]  3D visualisation (Three.js) and custom D3 visuals
-          Both dependencies are installed and typed, neither is used.
+[DONE]    3D visualisation: Three.js is now used, as a toggle in Sky Explorer
+          UPDATE 2026-08-19: three was installed and typed with zero imports
+          anywhere in src/. Built because the data behind it was already real
+          -- gaia_distance_pc / gaia_abs_g_mag (surveys/gaia.py, 1000/parallax
+          and the standard absolute-magnitude formula) were computed columns
+          nothing displayed, not a decorative feature.
+          One finding shaped this: the LIVE candidate pipeline never joined
+          Gaia distance columns. featurematrix.join_gaia_columns() has always
+          existed, fully tested, but its only caller was ablation.py's
+          offline study path -- no RPC handler reachable by the frontend
+          returned gaia_distance_pc/gaia_parallax_snr for a candidate. Added
+          candidates.spatial (rpc.py), which reuses that exact join against a
+          deliberately empty FeatureMatrix built only from already-loaded
+          candidates' identities -- nothing is re-extracted or recomputed,
+          no FEATURE_VERSION bump, no ranker/schema impact.
+          Quality gating reuses scoring.py:178's existing SNR &lt; 5 threshold
+          ("too noisy to use") rather than inventing a second one. A
+          candidate with no reliable distance is reported as excluded, not
+          silently dropped or plotted at a fabricated position -- the
+          RPC response carries reliable/total/gaia_matched/gaia_match_rate
+          and the UI states the count and the reason.
+          Placement: a 2D/3D toggle inside the existing Sky Explorer panel
+          (SkyExplorer.tsx), not a new sidebar section -- SkyExplorer had no
+          tab infrastructure before this, so the toggle is the first of its
+          kind there. SpatialScene3D.tsx mirrors AladinSky.tsx's discipline
+          exactly: `import("three")` and the OrbitControls addon are dynamic,
+          inside a useEffect, never a static top-level import, so the bundle-
+          splitting behaviour already established for aladin-lite/plotly
+          applies unchanged (confirmed by grep: no static `from "three"`
+          import anywhere in src/). The renderer is created once and steered
+          by later effects on data change, not rebuilt, matching AladinSky's
+          gotoRaDec pattern -- rebuilding on every refresh would drop camera
+          position on each poll.
+          Distance spans orders of magnitude (parsecs to kiloparsecs); points
+          are placed on a log-scaled radius rather than raw parsecs, or
+          nearby objects would be crushed into the origin. Points are colored
+          by score_total using the same tone bands ui.tsx's Badge already
+          uses, not a new arbitrary palette.
+          VERIFIED in a real browser, not just jsdom (which cannot create a
+          WebGL context at all): launched the Vite dev server, stubbed the
+          Tauri IPC bridge with @tauri-apps/api's own mockIPC/mockWindows
+          (the app needs more than invoke -- TitleBar.tsx calls
+          getCurrentWindow() at module scope, which reads
+          window.__TAURI_INTERNALS__.metadata.currentWindow), and drove it
+          with Playwright/Edge. Confirmed: a real WebGL2 context was created
+          (canvas reported hasWebGL: true), the plotted point was coloured
+          correctly for its score, the "N of M plotted" exclusion message
+          matched the stubbed data exactly, and a mouse-drag on the canvas
+          visibly moved the point -- OrbitControls responding to real input,
+          not just constructed and idle. This is a genuinely stronger check
+          than the jsdom component tests alone provide, since jsdom cannot
+          exercise WebGL/canvas rendering or camera interaction at all.
+          Tests: tests/test_rpc_spatial.py (6 cases: reliable/low-SNR/
+          unmatched/empty/score-passthrough/top-limit against the real join,
+          not a reimplementation of it) and 4 new SkyExplorer cases in
+          views.test.tsx (2D-default, exclusion count, engine error, empty
+          result) plus an engine.test.ts command-name/args pin.
+          d3 remains genuinely unused -- nothing in this change needed it.
 
 
 ---------------------------------------------------------------------
@@ -377,6 +709,65 @@ PHASE 5 — DEEP LEARNING
              method comparison above: at Stage-A size the intervals will
              almost certainly overlap, and "no configuration separated" is
              the honest expected outcome rather than a failure of the sweep.
+          UPDATE 2026-08-19: the RPC surface could not actually express a
+          scale run. `_handle_deep_sweep` forwarded only kind/survey/seeds/
+          mode/fraction/epochs, so `limit` (population cap), `strength`
+          (injection strength) and `overrides` (sub-grid) were unreachable --
+          the only sweep startable over RPC was the full default grid on the
+          whole population, i.e. the one run nobody can afford to begin. All
+          three now forward. See the READY-TO-RUN block at the end of this
+          file.
+
+
+---------------------------------------------------------------------
+EXPERIMENT INFRASTRUCTURE FIXES  <-- 2026-08-19
+---------------------------------------------------------------------
+
+[DONE]    experiment.compare could not read any study's headline metric
+          `compare()` read `record.results.get(metric)` at the top level, but
+          Stage B, the sweep and the ablation suite all NEST their numbers
+          (Stage B records aggregate.roc_auc.mean, not roc_auc). Comparing
+          any two of them returned value: null for every row, which reads as
+          "no result recorded" when it actually meant "looked at the top
+          level only" -- a silent wrong answer, and the exact failure mode
+          this file exists to prevent.
+          `compare` now accepts a dotted path (`aggregate.roc_auc.mean`) via
+          `experiment.read_metric()`. Deliberately a path, not a search:
+          guessing which nested `roc_auc` a caller meant would silently
+          compare different quantities. Fixing it at read time rather than by
+          adding headline metrics at write time means the ALREADY RECORDED
+          EXP-0001..0005 become comparable without re-running anything.
+          Also fixed alongside: a dotted path can now reach booleans (the
+          sweep's `separated`), and `bool` is an `int` subclass, so the
+          ranking would have sorted True above an AUC of 0.79. Booleans are
+          now excluded from ranking.
+
+[DONE]    next_experiment_id() could hand two studies the same ID
+          It scanned for the highest existing number and returned max+1,
+          with no claim on the result. jobs.py runs two studies concurrently
+          (_EXECUTOR max_workers=2), so two long runs starting together both
+          got the same ID and the second silently overwrote the first one's
+          record on completion -- losing a multi-hour result with no error.
+          The ID is now claimed by exclusively creating its file
+          (`touch(exist_ok=False)`); whoever loses the race retries the next
+          number. A reserved-but-unwritten stub does not parse as JSON, so
+          `list_experiments` skips it and it never appears as an experiment.
+
+[DONE]    ablation.run_repeated had no checkpointing
+          The other long study (stageb.run) checkpoints every seed; this one
+          did not, so a twenty-seed run that died on seed nineteen lost all
+          nineteen. Since the recorded ablation results are INCONCLUSIVE and
+          the stated fix is "more seeds", the run most likely to be attempted
+          next was exactly the one with no crash protection.
+          It now checkpoints per seed in the same shape stageb uses (reusing
+          `stageb._atomic_json`), gated on schema version and configuration
+          equality so changing the fraction or the survey starts cleanly
+          rather than blending two populations. Required adding
+          `AblationRow.from_dict` / `AblationStudy.from_dict`; derived fields
+          (`best`, `deltas_vs_baseline`) are recomputed on read rather than
+          restored, so a resumed study cannot disagree with a fresh one.
+          Checkpoint default: <projects>/results/ablation/repeated.json,
+          overridable via the `checkpoint` param on `ablation.repeated`.
 
 [DONE]    PYTORCH_CUDA_ALLOC_CONF is set by the engine
           expandable_segments:True meaningfully reduces fragmentation on
@@ -449,7 +840,13 @@ PHASE 6 — CROSS-SURVEY ENGINE
           object list is defined by one survey's selection function —
           a selection bias worth documenting per section 36. The crossmatch
           response now includes anchor share and per-survey match rates, so
-          downstream studies can stratify or rerun explicitly.
+          downstream studies can stratify or rerun explicitly. UPDATE
+          2026-08-21: callers can now pass an explicit `anchor_survey` through
+          `crossmatch.run`/`crossmatch.profile` (and the UI). The response
+          records `anchor_policy` and the requested anchor. The default still
+          uses the largest catalogue, with lexical tie-breaking so mapping
+          insertion order cannot change a result. This controls the population
+          denominator; it does not remove the underlying selection bias.
 
 
 ---------------------------------------------------------------------
@@ -566,6 +963,44 @@ PHASE 7 — EXPLAINABILITY & CANDIDATE RANKING
              large-outlier REAL variables to measure genuine false-positive
              rates) or ASTRA's own human-in-the-loop labels reach a usable
              "artifact" count.
+          UPDATE 2026-08-19: the first half of that unblock condition is now
+          done. `_synthetic_real(..., hard=True)` draws awkward but genuine
+          objects -- sparsely sampled (12-34 points over 300-900 days), near
+          the noise floor (amplitude 1.2-2.5x the error), or carrying 2-5
+          real large excursions -- and `DEFAULT_HARD_REAL_FRACTION = 0.4` of
+          the real class is drawn that way. The raw train-split precision was
+          replaced by `smoothed_precision()`: Laplace smoothing (alpha 2.0)
+          so a 3-of-3 firing no longer reads as a perfect indicator, and a
+          hard ceiling `MAX_CALIBRATED_WEIGHT = 0.85` so no weight can
+          saturate the noisy-OR. `calibrate_recorded()` plus the new
+          `artifact.calibrate` RPC give the study a provenance record; it was
+          previously the only study in the codebase without one.
+          RE-MEASURED against the hardened population (5 seeds, 150+150 per
+          seed, held out 30%): held-out AUC 0.9689 -> 0.9815, and the
+          proposed weights are
+              sampling_period          0.35 -> 0.85 (ceiling)
+              low_significance         0.30 -> 0.85 (ceiling)
+              consistent_with_constant 0.25 -> 0.85 (ceiling)
+              sparse_sampling          0.20 -> 0.5490
+              step_change              0.20 -> 0.85 (ceiling)
+              extreme_outliers         0.25 -> 0.85 (ceiling)
+          STILL NOT ADOPTED, and the new numbers say why more clearly than
+          the old ones did. `sparse_sampling` fell to 0.549 precisely because
+          the hardened population contains real sparse variables it fires on
+          -- that is a genuine false-positive rate being measured for the
+          first time, and it is the one number here that the data actually
+          set. The other five sit exactly at the 0.85 ceiling, which means
+          the ceiling and not the evidence is choosing them: even the
+          hardened synthetic "real" class still cannot contradict those five.
+          Adopting would also move a single-indicator firing from below the
+          0.3 band to at or above the 0.6 "probably an artifact" band, so the
+          verdict thresholds at artifact.py:88-91 would have to be
+          re-derived, not carried over.
+          => Adopt only after the OTHER half of the unblock condition is met
+             (real human "artifact" labels), or after the hard-real
+             population is extended until the five ceiling-pinned indicators
+             come off the ceiling on their own. The mechanism is now sound
+             and recorded; the population is still too kind.
 
 [PARTIAL] Candidate investigation UI (plan section 18)  <-- UPDATED 2026-08-19
           The desktop shell now exposes Dashboard, Projects, Acquire, Sky,
@@ -596,11 +1031,30 @@ PHASE 7 — EXPLAINABILITY & CANDIDATE RANKING
           each independently would need a per-curve period control and
           adds UI complexity for a secondary view; the primary curve is
           where folding matters and is now covered.
-          Still absent: no dedicated model/cross-survey explanation pane —
-          the explanation, evidence, and artifact-assessment blocks
-          (CandidateWorkspace.tsx:393-425) are inline in the main detail
-          panel, not a separate view/tab. Whether that is worth splitting
-          out is a UX call, not a missing capability.
+          FIXED 2026-08-19 (2): the dedicated explanation pane now exists as
+          its own sidebar section ("Explain", `src/components/ExplainPanel.tsx`),
+          built on the modern ui.tsx primitives rather than extending the
+          older CandidateWorkspace conventions.
+          The substance of this was a DISPLAY gap, not a capability gap:
+          every number it renders was already computed and already shipped
+          inside each candidate record, and none of it reached the screen.
+          Specifically, `ArtifactAssessment.to_dict()` has always emitted
+          `indicators[]` (name/weight/detail) and `clearing_evidence[]`, and
+          the UI showed only `likelihood` and `verdict` -- the assessment's
+          entire argument was discarded and only its conclusion displayed.
+          `ScoreBreakdown.to_dict()` has always emitted per-component
+          `weighted` contributions and `reasons`; the TS type declared only
+          `components`, so the frontend could not have used them.
+          Two things the pane deliberately shows rather than smooths over:
+          a component's score sits next to its weighted contribution, because
+          0.9 at weight 0.05 and 0.5 at weight 0.25 rank the opposite way
+          from how the raw scores read; and `weight_used` is always visible
+          with an explicit note when it is below 1.0, because the total
+          renormalises over whatever evidence existed.
+          One small engine addition supported it: `CrossSurveyProfile.to_dict()`
+          now also emits `weights` and `weighted` alongside `components`
+          (evidence.py). Additive only -- WEIGHT_VERSION stays 2, no stored
+          profile changes value.
 
 
 ---------------------------------------------------------------------
@@ -937,36 +1391,82 @@ PHASE 9 — OPTIMIZATION
           Accelerating them 10x saves ~0.04% of runtime. Amdahl's law
           makes GPU array work the wrong target on this pipeline.
 
-[GAP]     GPU Lomb-Scargle would be the real win
-          The only optimisation that would matter for the 98% is moving
-          the period search itself to the GPU — a CuPy/cuFFT
-          implementation of the Press & Rybicki fast method. Substantial
-          work (NFFT-style gridding, careful float64 handling) and worth
-          estimating properly before committing.
-          EVALUATED 2026-08-18: nifty-ls (NUFFT-based, registers as an
-          Astropy LombScargle backend, cufinufft GPU path) was the intended
-          off-the-shelf fix. It ships no Windows wheel, and its sdist fails
-          to build under MSVC — nifty-ls's own CMakeLists.txt passes
-          -Wno-deprecated-literal-operator unconditionally, a Clang/GCC-only
-          flag cl.exe rejects with "invalid numeric argument." finufft
-          itself (the underlying NUFFT library nifty-ls wraps) DOES ship a
-          genuine win_amd64 wheel; only the nifty-ls wrapper's build is
-          broken. Given ASTRA is Windows-first, this was not forced (no
-          local source patch, no hand-rolled NUFFT Lomb-Scargle — the
-          project's own SAMPLES_PER_PEAK note above establishes that this
-          class of change can silently alter recovered periods, so it needs
-          the validated package, not a rushed reimplementation).
-          Consolation finding: astropy.timeseries.LombScargle.autopower's
-          method="auto" already resolves to method="fast" for every call
-          this codebase makes (autopower always generates a regular
-          frequency grid, which is "fast"'s only precondition) — benchmarked
-          identical on the real 353-point/2740-day curve this file already
-          uses as its reference (~1.5s, 0.50789 d peak, either way).
-          features.py now pins method="fast" explicitly so a future astropy
-          release changing "auto"'s heuristic can't silently regress this,
-          but that is a robustness fix, not a speedup: this GAP is still
-          open. Revisit if nifty-ls ships a Windows wheel, or if a Linux/CI
-          build target is added.
+[DONE]    GPU Lomb-Scargle: a hand-written CUDA kernel, exact not approximate
+          UPDATE 2026-08-19: nifty-ls STILL ships no Windows wheel as of its
+          latest release (1.1.0: macOS + manylinux only) -- the blocker
+          recorded below stands unchanged. The route was wrong, not the
+          capability: a hand-written cupy.RawKernel needs no wheel for
+          nifty-ls at all, and the earlier evaluation of it did not consider
+          writing the kernel directly.
+          Built as gpu_periodogram.py: a direct O[NM] generalised
+          (floating-mean) Lomb-Scargle in double precision throughout -- no
+          float32 (nifty-ls's own paper is explicit that 32-bit floats are
+          not recommended for this problem: the condition number amplifies
+          timing errors by O(N)), no trigonometric recurrence (degrades at
+          the ~270,000-frequency grid this codebase searches).
+          This is NOT a drop-in replacement for the existing CPU path.
+          features.periodic_features calls astropy with method="fast" --
+          Press & Rybicki / Ruiz-Antolin & Townsend extirpolation, an
+          APPROXIMATION. The GPU kernel computes the EXACT periodogram, so
+          the two are not required to agree bit-for-bit with each other,
+          only each with itself. That directly meets, rather than violates,
+          this file's own standard ("an optimisation that changes a result
+          is a bug, not a speedup") once understood correctly: this is a
+          second, more accurate backend, not an optimisation of the first
+          one, and it is opt-in (backend="cpu" stays the default
+          everywhere) precisely so the two are never silently mixed.
+          MEASURED on this machine (GTX 1650, 4 GB): kernel parity against
+          astropy's own EXACT path (method="cython") agrees to ~1e-12
+          relative -- machine precision for float64, not a chosen tolerance.
+          On the real ZTF-scale case (350 points, 2740-day baseline,
+          ~273,000 frequencies): CPU approximate 1.78s, GPU exact 0.15s,
+          12.1x. Against astropy's own exact CPU path: 28.0x. A batch of 32
+          curves through the real featurematrix.build() pool path: CPU
+          1522 ms/curve, GPU 96 ms/curve, 15.8x -- end-to-end, including
+          Python/pickling overhead, not a kernel-only number.
+          Never mixed, by construction: featurecache.cache_key now takes a
+          backend argument folded into the key (omitted for the default
+          "cpu" so every existing cache and stored key is unchanged); a row
+          computed under one backend is never returned for the other. A GPU
+          request on a machine without a usable GPU is checked ONCE per
+          featurematrix.build() call and the whole call downgrades to the
+          "cpu" tag -- not checked per curve, which would let some rows in
+          one build silently fall back while others didn't and still get
+          written to the cache under the "gpu" key, corrupting a later
+          run's cache once a real GPU became available.
+          Runs in the PARENT process, not in worker processes:
+          featurematrix._extract_from_path runs inside a 4-worker
+          ProcessPoolExecutor (DEFAULT_WORKERS), and a GPU call inside each
+          worker would mean four processes each opening their own CUDA
+          context on one shared 4 GB card -- serialising on the device and
+          adding ~200-300 MB of context overhead per worker, strictly worse
+          than the CPU path. _gpu_periodic_prepass computes periods for a
+          whole pending batch here, once, before dispatch; workers receive
+          the result as a precomputed override (features.extract's new
+          periodic_override parameter) and skip the period search entirely,
+          computing only the remaining CPU-only statistics.
+          CUDA_PATH was reconfirmed stale on this machine independent of the
+          earlier fix below: it pointed at a v12.5 directory left behind by
+          an uninstall, while v13.3 is what is actually present.
+          config.ensure_cuda_path() (below) already handles this correctly
+          and needed no changes -- gpu_periodogram.available() calls it
+          before probing. Added nvidia-cuda-runtime-cu12==12.9.* (matching
+          CuPy 14.1.1's reported CUDA build) to the gpu extra in
+          pyproject.toml so kernel compilation does not depend on a system
+          toolkit being installed at all on a fresh machine -- verified this
+          machine's kernel compilation currently only succeeds because of
+          the system-toolkit fallback, since that pip package is not yet
+          installed here.
+          profiling.benchmark_periodogram() (wired into profiling.run_all)
+          reports the real CPU-vs-GPU number on whatever machine runs it,
+          the same pattern benchmark_array_ops already established for
+          array ops -- which correctly found bandwidth-bound work loses to
+          the PCIe transfer. A periodogram is the opposite case: a few
+          hundred points expand to hundreds of thousands of frequency
+          evaluations, compute-bound rather than transfer-bound, which is
+          why this one wins where that one did not.
+          Packaged installers remain CPU-only by design (astra-engine.spec
+          already excludes cupy/torch); nothing here changes that.
 
 [DONE]    CuPy was silently broken; now fixed
           cupy-cuda12x failed with "Failed to find CUDA headers" because
@@ -1041,11 +1541,19 @@ PHASE 9 — OPTIMIZATION
           interruption, retries failed rows, and reports item progress. The
           desktop Models view exposes the resumable build action.
 
-[GAP]     No CUDA kernels written
-          Plan section 8 lists C++/CUDA for performance-critical kernels.
-          None exist. Before writing any, raise the Windows TdrDelay
-          registry value: the 2-second default will reset the driver
-          mid-kernel on a display-attached GPU.
+[DONE]    A CUDA kernel now exists: the Lomb-Scargle periodogram
+          UPDATE 2026-08-19: see the GPU Lomb-Scargle entry above --
+          gpu_periodogram.py is a hand-written cupy.RawKernel, the first
+          (and so far only) custom CUDA kernel in the codebase.
+          TdrDelay was a real, checked concern, not a dismissed one. This
+          machine has two GPUs (an integrated AMD part and the NVIDIA
+          GTX 1650 the kernel targets); measured single-curve kernel launches
+          run 96-200 ms, well under the 2-second WDDM default, so the kernel
+          as shipped does not need the registry change. It becomes relevant
+          again only if a future change fuses many curves into one longer
+          launch (a true multi-curve batched kernel, not the current
+          one-launch-per-curve design) -- raise TdrDelay before attempting
+          that, and measure before assuming it is still safe.
 
 
 ---------------------------------------------------------------------
@@ -1206,3 +1714,156 @@ CROSS-CUTTING STATUS
           signing, updater metadata signing, and updater publication remain
           release gates because their external credentials/infrastructure have
           not been supplied.
+
+
+---------------------------------------------------------------------
+READY-TO-RUN SCALE STUDIES  <-- 2026-08-19
+---------------------------------------------------------------------
+
+Prepared but deliberately NOT started. Each is long-running, and the whole
+point of the entries above is that a result is only worth having if the run
+behind it was explicit. Submit through `job.submit` so the run survives the
+caller and reports progress; the inner params are identical if called direct.
+
+Access is JSON-lines over stdin to `python -m astra`. There is no CLI.
+
+  # Stage-B method comparison at scale, ZTF only, deep models ON.
+  # include_deep defaults to FALSE (released installers ship no torch), so a
+  # run meant to settle deep-vs-PCA MUST pass it explicitly or it silently
+  # compares PCA against nothing.
+  {"id":1,"method":"job.submit","params":{"method":"stageb.compare","params":{
+     "survey":"ztf","limit":10000,"seeds":[17,29,43,59,71],
+     "include_deep":true,"epochs":20,"mode":"time"}}}
+
+  # Same population, season resampling. This is the untested question raised
+  # in the resampling entry above: higher representation validity is not the
+  # same thing as better injection recovery.
+  {"id":2,"method":"job.submit","params":{"method":"stageb.compare","params":{
+     "survey":"ztf","limit":10000,"seeds":[17,29,43,59,71],
+     "include_deep":true,"epochs":20,"mode":"season"}}}
+
+  # Autoencoder sweep, ZTF only. `survey` matters: a sweep on a pooled
+  # ZTF+TESS population tunes for the mixture's separation, not the survey's.
+  # Start with a sub-grid via `overrides` -- the full grid is 27 configs x 3
+  # seeds = 81 trainings (VAE: 243, transformer: 108).
+  {"id":3,"method":"job.submit","params":{"method":"deep.sweep","params":{
+     "kind":"autoencoder","survey":"ztf","seeds":[17,29,43],"epochs":20,
+     "limit":10000,"overrides":{"latent_dim":[8,32]}}}}
+
+  # Repeated ablation with more seeds. Now checkpointed, so this can be
+  # interrupted and resumed. The recorded 5-seed intervals straddle chance
+  # for tess_only and gaia_tess; more seeds is the stated fix.
+  {"id":4,"method":"job.submit","params":{"method":"ablation.repeated","params":{
+     "survey":"ztf","seeds":[17,29,43,59,71,83,97,101,103,107]}}}
+
+  # Artifact weight calibration, recorded. Proposes weights; never adopts.
+  {"id":5,"method":"artifact.calibrate","params":{"n_per_class":150,
+     "seeds":[17,29,43,59,71],"hard_real_fraction":0.4}}
+
+  # Read results back. Nested metrics need a dotted path.
+  {"id":6,"method":"experiment.list","params":{}}
+  {"id":7,"method":"experiment.compare","params":{
+     "experiment_ids":["EXP-0002","EXP-0003"],"metric":"aggregate.roc_auc.mean"}}
+  {"id":8,"method":"experiment.verify","params":{"experiment_id":"EXP-0003"}}
+
+Before starting any of these, fix the parameter set. stageb's checkpoint
+invalidates when ANY configuration key changes (limit, mode, epochs,
+include_deep, seed list), so a mid-run parameter change silently restarts
+from zero rather than resuming. Same for ablation.repeated's checkpoint.
+
+Concurrency: jobs runs two at a time (_EXECUTOR max_workers=2); a third
+queues. Feature extraction underneath is capped at 4 workers by measurement,
+not by core count -- the limit is memory bandwidth (featurematrix.py:30-43).
+
+
+---------------------------------------------------------------------
+DONE: MULTI-BAND PERIOD SEARCH (fast mode) via sidecar  <-- 2026-08-19
+---------------------------------------------------------------------
+
+UPDATE 2026-08-19: built, using the "fast" corner of the design space this
+entry originally scoped, after measuring rather than assuming the accurate
+corner would be affordable. It was not.
+
+The old `multiband_periodic_features()` implementation described below --
+hand-rolled concatenation, per-band weighted-mean subtraction, ONE
+Lomb-Scargle over the union, a single shared sinusoid with no per-band
+amplitude/phase -- is GONE, replaced in place with a call to
+`astropy.timeseries.LombScargleMultiband` (point 1 of the old design,
+confirmed already vendored: astropy==8.0.1 has it importable and working).
+Same function signature and guards, so it is a drop-in for the one existing
+test, which still passes on the new internals.
+
+The measurement that decided the rest of this: at real ZTF production scale
+(2 bands, 350 points/band, 2740-day baseline, ~273k frequencies) --
+  existing single-band production path:                    1.19 s
+  LombScargleMultiband(method="fast"):                      2.35 s
+  LombScargleMultiband(method="flexible", the DEFAULT):    38.76 s  (33x)
+"flexible" is the genuine joint base+per-band regularised fit -- the one
+this entry originally had in mind when it said "per-band amplitude and
+phase." It is not used. `featurematrix.py`'s own profiling already
+established Lomb-Scargle at ~98% of feature-extraction time and justified
+the whole caching/parallelism investment in Phase 9; a 33x multiplier on top
+of that is not a cost this pipeline can absorb. `multiband_periodic_features`
+now pins `method="fast"` explicitly and RAISES if asked for a "gpu" backend
+(rather than silently ignoring it) -- "fast" dispatches to single-band
+LombScargle per band internally via its own sb_method, which is not a clean
+hook for the CUDA kernel in gpu_periodogram.py without patching astropy
+internals. A test (`test_multiband_uses_the_fast_method_never_flexible`)
+monkeypatches `LombScargleMultiband.autopower` and asserts the `method` kwarg
+it actually receives -- a silent regression to "flexible" here is a 33x
+slowdown, not a subtle one, and deserves a loud test, the same way
+SAMPLES_PER_PEAK == 5 is pinned against silent regression.
+`flexible` remains a deliberately-not-built option: if a future confirmatory
+study genuinely needs joint per-band amplitude/phase (not just a combined
+SNR/period), it needs either a small bounded population and ~39s/object
+patience, or a fundamentally different implementation (e.g. a GPU multiband
+kernel) well beyond this pass.
+
+Point 2's group-keying problem (below) is solved exactly as scoped: a new
+`multiband.py` module (`build_multiband_sidecar()`) groups stored curves by
+(survey, release, object_id) across bands, and writes results through
+`modalitymatrix.py` -- the EXISTING keyed-Parquet-sidecar mechanism already
+used for image/spectral features, extended by adding "multiband" to
+`_safe_kind()`'s allow-list. `KEY_COLUMNS` (survey/release/object_id/band)
+was NOT changed -- a multiband row spans a group of bands, not one curve, so
+it is written under a sentinel `band="__multiband__"` key instead. Verified
+end to end with real synthetic data: a 2-band object correctly gets one
+sidecar row with a period recovered to 4.7e-5 relative error; a 1-band
+object is correctly skipped entirely (not given a NaN row); `join_rows`
+correctly reports which objects actually matched.
+This is a genuinely cheaper path than the version-bump alternative: no
+change to `FEATURE_NAMES`, no `FEATURE_VERSION` bump, none of point 5's cost
+(feature cache, saved matrices, resumable checkpoints, ranker manifests, or
+experiment-drift flags) had to move. `stageb.compare`/`ablation.repeated`'s
+"explicit RPC job, never run by the default pipeline" pattern is followed
+exactly: registered as `features.multiband_build`, never called by
+`featurematrix.build()`. Verified live against the real local ZTF store
+(50 real objects): every one is genuinely single-band at this scale, so the
+run correctly produced zero sidecar rows rather than fabricating anything --
+confirmed independently by checking the raw curve files, not assumed to be
+a grouping bug.
+
+Point 3 (cross-survey interaction) is honoured by construction, not merely
+avoided: `evidence.py`'s per-survey independent period fits
+(`SurveyView.best_period_days`, what `score_profile()`'s `period_agreement`
+component actually compares) are completely untouched -- `multiband.py`
+never calls into `evidence.py` at all. A test asserts
+`evidence.WEIGHTS["period_agreement"] == 0.27` is unaffected after a
+multiband build runs, and the full `TestEvidenceScoring`/`TestPeriodAgreement`/
+`TestPeriodFalseAlarm` suite (19 tests) was re-run and confirmed green.
+The multiband sidecar is joinable, additional evidence -- a combined
+cross-band SNR/period for objects where no single band alone has enough
+points to detect one -- not a replacement for the per-survey comparison.
+
+Point 4 (FAP against a hierarchical/Bayesian posterior) does not apply to
+what was actually built: "fast" mode's output is still a periodogram peak on
+a uniform frequency grid (per-band fits combined by weight), not a
+posterior sample, so `period_agreement_fap()`'s existing null is not being
+silently misapplied to it -- the sidecar simply is not fed into that
+function at all yet. This remains open only if `flexible` (a genuinely
+different, sample-based accuracy profile) is ever built.
+
+Points 5 and 6 (version-bump cost, and the "budget for it" performance
+warning) are resolved by the sidecar approach never triggering point 5's
+cost at all, and by point 6's warning being exactly why `flexible` was
+rejected in favour of `fast`.

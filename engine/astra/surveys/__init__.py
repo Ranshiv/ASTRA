@@ -10,8 +10,12 @@ from __future__ import annotations
 
 from .base import (ConeQuery, LightCurve, SourceRef, SurveyConnector,
                    TimeSystem, ValueKind)
+from .alerce import ALeRCEConnector
 from .chandra import ChandraConnector
+from .des import DESConnector
 from .gaia import GaiaConnector
+from .hubble import HubbleConnector
+from .jwst import JWSTConnector
 from .panstarrs import PanSTARRSConnector
 from .sdss import SDSSConnector
 from .swift import SwiftConnector
@@ -28,6 +32,10 @@ _REGISTRY: dict[str, type[SurveyConnector]] = {
     "chandra": ChandraConnector,
     "swift": SwiftConnector,
     "xmm": XMMConnector,
+    "des": DESConnector,
+    "hubble": HubbleConnector,
+    "jwst": JWSTConnector,
+    "alerce": ALeRCEConnector,
 }
 
 
@@ -40,7 +48,15 @@ def available(include_experimental: bool = False) -> list[str]:
 
 
 def register(name: str, connector: type[SurveyConnector]) -> None:
-    """Add a survey. Future connectors (Rubin, SDSS, Pan-STARRS) land here."""
+    """Add a survey.
+
+    ALeRCE (`alerce.py`) already brokers real, credential-free LSST alerts
+    and is registered above. A direct Rubin/LSST TAP connector (credential-
+    required, `data.lsst.cloud/api/tap`) would land here too, once ASTRA has
+    an actual data-rights token to validate it against -- see the ALeRCE
+    entry in docs/DEFERRED.txt for why that is deliberately deferred rather
+    than built speculatively.
+    """
     if not issubclass(connector, SurveyConnector):
         raise TypeError(f"{connector!r} does not implement SurveyConnector")
     _REGISTRY[name.lower()] = connector
@@ -64,5 +80,7 @@ __all__ = [
     "GaiaConnector", "TESSConnector", "ZTFConnector",
     "SDSSConnector", "PanSTARRSConnector", "ChandraConnector",
     "SwiftConnector", "XMMConnector",
+    "DESConnector", "HubbleConnector", "JWSTConnector",
+    "ALeRCEConnector",
     "available", "register", "get", "describe_all",
 ]

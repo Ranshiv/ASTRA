@@ -205,14 +205,32 @@ def capture_environment() -> dict:
 
 
 def next_experiment_id(root: Path | None = None) -> str:
-    """Sequential identifier, in the `#0241` style of plan section 19."""
-    existing = list_experiments(root)
+    """Sequential identifier, in the `#0241` style of plan section 19.
+
+    The identifier is claimed by exclusively creating its file, not merely by
+    scanning for the highest number. Two studies can run concurrently (jobs
+    allows two at a time), and a scan-then-write would hand both the same id,
+    with the second run silently overwriting the first one's record.
+    """
+    root = root or config.PATHS.projects
+    directory = root / "experiments"
+    directory.mkdir(parents=True, exist_ok=True)
+
     numbers = []
-    for entry in existing:
+    for entry in list_experiments(root):
         raw = str(entry.get("experiment_id", ""))
         if raw.startswith("EXP-") and raw[4:].isdigit():
             numbers.append(int(raw[4:]))
-    return f"EXP-{(max(numbers) + 1 if numbers else 1):04d}"
+
+    candidate = max(numbers) + 1 if numbers else 1
+    while True:
+        experiment_id = f"EXP-{candidate:04d}"
+        try:
+            # Exclusive create is the claim; whoever loses the race retries.
+            (directory / f"{experiment_id}.json").touch(exist_ok=False)
+            return experiment_id
+        except FileExistsError:
+            candidate += 1
 
 
 def create(kind: str, configuration: dict, seed: int = 42,
@@ -382,6 +400,24 @@ def verify(experiment_id: str, root: Path | None = None) -> dict:
     }
 
 
+def read_metric(results: dict, metric: str) -> object:
+    """Read `metric` from a results dict, following a dotted path if given.
+
+    The studies that matter most here nest their numbers: a Stage-B run records
+    `aggregate.roc_auc.mean`, not a top-level `roc_auc`. A plain key lookup
+    returned None for every one of them, which read as "no result" rather than
+    "looked in the wrong place", so a dotted path is accepted explicitly. It is
+    deliberately not a search: guessing which nested `roc_auc` a caller meant
+    would silently compare different quantities.
+    """
+    current: object = results
+    for part in metric.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
 def compare(experiment_ids: list[str], metric: str,
             root: Path | None = None) -> dict:
     """Line up one metric across several experiments.
@@ -389,6 +425,9 @@ def compare(experiment_ids: list[str], metric: str,
     Comparability is checked rather than assumed: experiments recorded under
     different feature or preprocessing versions are flagged, because a metric
     computed from different inputs is not the same metric.
+
+    `metric` may be a dotted path into nested results, e.g.
+    `aggregate.roc_auc.mean` for a Stage-B comparison.
     """
     rows = []
     versions: set[tuple[int, int, str, str]] = set()
@@ -405,12 +444,16 @@ def compare(experiment_ids: list[str], metric: str,
         rows.append({
             "experiment_id": experiment_id,
             "kind": record.kind,
-            "value": record.results.get(metric),
+            "value": read_metric(record.results, metric),
             "feature_version": record.provenance.feature_version,
             "runtime_seconds": record.runtime_seconds,
         })
 
-    scored = [r for r in rows if isinstance(r["value"], (int, float))]
+    # bool is an int subclass, and a dotted path can now reach flags such as
+    # the sweep's `separated`. Ranking True above 0.79 would be nonsense.
+    scored = [r for r in rows
+              if isinstance(r["value"], (int, float))
+              and not isinstance(r["value"], bool)]
     scored.sort(key=lambda r: -r["value"])
 
     return {

@@ -34,13 +34,22 @@ CACHE_FILENAME = f"features_v{FEATURE_VERSION}.parquet"
 IDENTITY_FIELDS = ("object_id", "survey", "release", "band", "coverage_tier")
 
 
-def cache_key(path: Path) -> str:
-    """Identity of one extraction: which file, which revision of it."""
+def cache_key(path: Path, backend: str = "cpu") -> str:
+    """Identity of one extraction: which file, which revision, which backend.
+
+    The backend suffix exists because "cpu" (astropy's approximate fast
+    method) and "gpu" (the exact CUDA kernel) are not required to agree
+    bit-for-bit -- see `gpu_periodogram`'s module docstring. Without this,
+    a row computed on one backend could be silently reused as if it were the
+    other. Omitted from the key for the default "cpu" backend so every
+    existing cache and every stored key stays exactly as it was.
+    """
+    suffix = "" if backend == "cpu" else f"::{backend}"
     try:
         stat = path.stat()
     except OSError:
-        return f"{path.as_posix()}::missing"
-    return f"{path.as_posix()}::{stat.st_mtime_ns}::{stat.st_size}"
+        return f"{path.as_posix()}::missing{suffix}"
+    return f"{path.as_posix()}::{stat.st_mtime_ns}::{stat.st_size}{suffix}"
 
 
 @dataclass
@@ -62,29 +71,29 @@ class FeatureCache:
         total = self.hits + self.misses
         return (self.hits / total) if total else 0.0
 
-    def get(self, source: Path) -> np.ndarray | None:
-        row = self.rows.get(cache_key(source))
+    def get(self, source: Path, backend: str = "cpu") -> np.ndarray | None:
+        row = self.rows.get(cache_key(source, backend))
         if row is None:
             self.misses += 1
             return None
         self.hits += 1
         return row
 
-    def identity(self, source: Path) -> dict | None:
+    def identity(self, source: Path, backend: str = "cpu") -> dict | None:
         """Cached identity for a hit, or None when written before this existed.
 
         Returning None rather than a placeholder matters: the caller falls back
         to reading the file, so an older cache degrades to the previous cost
         instead of producing rows labelled "unknown".
         """
-        stored = self.identities.get(cache_key(source))
+        stored = self.identities.get(cache_key(source, backend))
         if not stored:
             return None
         return {**stored, "path": str(source)}
 
     def put(self, source: Path, values: np.ndarray,
-            identity: dict | None = None) -> None:
-        key = cache_key(source)
+            identity: dict | None = None, backend: str = "cpu") -> None:
+        key = cache_key(source, backend)
         self.rows[key] = np.asarray(values, dtype=np.float64)
         if identity:
             self.identities[key] = {field: str(identity.get(field, ""))

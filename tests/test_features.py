@@ -176,6 +176,48 @@ class TestPeriodic:
         assert result["bands"] == 2
         assert result["best_period_days"] == pytest.approx(period, rel=0.03)
 
+    def test_multiband_uses_the_fast_method_never_flexible(self, monkeypatch, rng):
+        """A silent switch to "flexible" is a measured 33x slowdown, not a
+        subtle regression -- see multiband_periodic_features's docstring."""
+        from astropy.timeseries import LombScargleMultiband
+
+        captured = {}
+        real_autopower = LombScargleMultiband.autopower
+
+        def spy(self, *args, **kwargs):
+            captured["method"] = kwargs.get("method")
+            return real_autopower(self, *args, **kwargs)
+
+        monkeypatch.setattr(LombScargleMultiband, "autopower", spy)
+
+        period = 3.25
+        time = 2458000.0 + np.sort(rng.uniform(0, 120, size=160))
+        first = make_curve(18.0 + 0.3 * np.sin(2 * np.pi * time / period)
+                           + rng.normal(0, 0.02, len(time)), time=time)
+        second = make_curve(17.0 + 0.2 * np.sin(2 * np.pi * time / period + 0.2)
+                            + rng.normal(0, 0.02, len(time)), time=time)
+        second = LightCurve(source=second.source, release=second.release, band="r",
+                            value_kind=second.value_kind, time=second.time,
+                            value=second.value, value_err=second.value_err,
+                            time_system=second.time_system)
+
+        features.multiband_periodic_features([first, second])
+
+        assert captured["method"] == "fast"
+
+    def test_multiband_has_no_gpu_backend(self, rng):
+        """Unlike single-band, out of scope rather than silently ignored --
+        LombScargleMultiband's fast method has no clean GPU hook."""
+        time = 2458000.0 + np.sort(rng.uniform(0, 120, size=160))
+        first = make_curve(18.0 + 0.3 * np.sin(2 * np.pi * time / 3.25), time=time)
+        second = LightCurve(source=first.source, release=first.release, band="r",
+                            value_kind=first.value_kind, time=first.time,
+                            value=first.value, value_err=first.value_err,
+                            time_system=first.time_system)
+
+        with pytest.raises(ValueError, match="no 'gpu' backend"):
+            features.multiband_periodic_features([first, second], backend="gpu")
+
     def test_bocpd_finds_a_level_change(self):
         time = np.arange(200, dtype=float)
         value = np.concatenate([np.zeros(100), np.ones(100)])

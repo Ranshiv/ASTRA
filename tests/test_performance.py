@@ -45,6 +45,16 @@ class TestCacheKey:
     def test_missing_file_yields_a_key_not_an_error(self, tmp_path):
         assert "missing" in featurecache.cache_key(tmp_path / "nope.parquet")
 
+    def test_default_backend_key_is_unchanged_from_before_backends_existed(
+            self, curve, tmp_path):
+        """Every existing cache and stored key must keep working unmodified."""
+        path = store.write_curve(curve, tmp_path).path
+        assert featurecache.cache_key(path) == featurecache.cache_key(path, "cpu")
+
+    def test_gpu_backend_gets_a_distinct_key(self, curve, tmp_path):
+        path = store.write_curve(curve, tmp_path).path
+        assert featurecache.cache_key(path, "gpu") != featurecache.cache_key(path, "cpu")
+
 
 class TestCache:
     def test_round_trip(self, tmp_path, curve):
@@ -87,6 +97,26 @@ class TestCache:
             path=featurecache.cache_path(tmp_path)), tmp_path)
         assert featurecache.clear(tmp_path) is True
         assert featurecache.clear(tmp_path) is False
+
+    def test_a_cpu_row_is_not_returned_for_a_gpu_request(self, tmp_path, curve):
+        """The exact and approximate periodograms must never be silently mixed."""
+        path = store.write_curve(curve, tmp_path / "data").path
+        cache = featurecache.FeatureCache()
+        cache.put(path, np.ones(len(FEATURE_NAMES)), backend="cpu")
+
+        assert cache.get(path, backend="gpu") is None
+        assert cache.get(path, backend="cpu") is not None
+
+    def test_cpu_and_gpu_rows_coexist_for_the_same_file(self, tmp_path, curve):
+        path = store.write_curve(curve, tmp_path / "data").path
+        cache = featurecache.FeatureCache()
+        cpu_row = np.ones(len(FEATURE_NAMES))
+        gpu_row = np.full(len(FEATURE_NAMES), 2.0)
+        cache.put(path, cpu_row, backend="cpu")
+        cache.put(path, gpu_row, backend="gpu")
+
+        np.testing.assert_array_equal(cache.get(path, backend="cpu"), cpu_row)
+        np.testing.assert_array_equal(cache.get(path, backend="gpu"), gpu_row)
 
 
 class TestBuildEquivalence:

@@ -49,6 +49,10 @@ MEASURED_SCALING_LIMIT = 4
 # is genuinely faster in-process.
 PARALLEL_THRESHOLD = 8
 
+# Bounds a wedged pool (crashed worker, IPC desync, etc.) so extraction falls
+# back to sequential instead of hanging the caller forever.
+POOL_TIMEOUT_S = 1800
+
 
 @dataclass(frozen=True)
 class BatchReport:
@@ -72,11 +76,15 @@ class BatchReport:
         }
 
 
-def _extract_from_path(path_str: str) -> tuple[str, list[float] | None, dict | None]:
+def _extract_from_path(path_str: str, periodic_override: dict | None = None
+                       ) -> tuple[str, list[float] | None, dict | None]:
     """Worker entry point: read one curve and extract its features.
 
-    Module-level and taking only a string because Windows spawns fresh
-    interpreters for workers, so the callable and its arguments must pickle.
+    Module-level and taking only a string plus a small picklable dict because
+    Windows spawns fresh interpreters for workers, so the callable and its
+    arguments must pickle. `periodic_override`, when given, comes from a
+    parent-process GPU pre-pass -- see `build`'s `periodogram_backend`
+    argument -- so this worker never opens its own CUDA context.
     """
     path = Path(path_str)
     try:
@@ -84,7 +92,8 @@ def _extract_from_path(path_str: str) -> tuple[str, list[float] | None, dict | N
     except Exception:  # noqa: BLE001 - a corrupt file must not kill the pool
         return path_str, None, None
 
-    extracted = features.extract(curve, path=path_str)
+    extracted = features.extract(curve, path=path_str,
+                                 periodic_override=periodic_override)
     row = [float(extracted.values[name]) for name in FEATURE_NAMES]
     identity = {
         "object_id": extracted.object_id,
@@ -144,7 +153,8 @@ class FeatureMatrix:
 
 def build(survey: str | None = None, limit: int = 10_000,
           root: Path | None = None, workers: int | None = None,
-          use_cache: bool = True, cache_root: Path | None = None
+          use_cache: bool = True, cache_root: Path | None = None,
+          periodogram_backend: str = "cpu",
           ) -> FeatureMatrix:
     """Extract features for every stored curve.
 
@@ -156,9 +166,33 @@ def build(survey: str | None = None, limit: int = 10_000,
     Feature extraction is where 98.6% of pipeline time was measured, almost
     all of it in the period search, so these two paths are the whole of the
     Phase 9 speedup for this stage.
+
+    `periodogram_backend="gpu"` computes periods on CUDA instead of astropy's
+    approximate fast method -- see `features.periodic_features`. It is opt-in
+    and never selected implicitly: the two backends are not required to agree
+    bit-for-bit, so cache rows are tagged by backend and a row computed under
+    one is never reused for the other (`featurecache.cache_key`). The period
+    search itself runs once in this process across the whole pending batch,
+    not inside worker processes -- see `_gpu_periodic_prepass`.
     """
     from . import featurecache
 
+    features.backend_token(periodogram_backend)
+    if periodogram_backend == "gpu":
+        from . import gpu_periodogram
+        ok, reason = gpu_periodogram.available()
+        if not ok:
+            # Checked once here rather than left to each curve's own fallback
+            # inside periodic_features: without this, a curve computed via
+            # the internal CPU fallback would still be written to the cache
+            # under the "gpu" key, and a LATER run with a real GPU present
+            # would then treat that CPU-computed row as GPU-exact. Downgrading
+            # the whole build up front keeps the cache tag always true.
+            import logging
+            logging.getLogger(__name__).warning(
+                "GPU periodogram requested but unavailable (%s); this build "
+                "will use the CPU backend throughout.", reason)
+            periodogram_backend = "cpu"
     root = root or config.PATHS.datasets
     search_root = root / survey.upper() if survey else root
 
@@ -178,25 +212,27 @@ def build(survey: str | None = None, limit: int = 10_000,
     pending: list[Path] = []
 
     for path in paths:
-        cached = cache.get(path) if use_cache else None
+        cached = cache.get(path, periodogram_backend) if use_cache else None
         if cached is not None:
             rows[str(path)] = cached
             # Identity comes from the cache when it was recorded there; only a
             # pre-existing cache entry costs a read.
-            identities[str(path)] = (cache.identity(path)
+            identities[str(path)] = (cache.identity(path, periodogram_backend)
                                      or _identity_from_path(path))
         else:
             pending.append(path)
 
     if pending:
-        for path_str, row, identity in _extract_many(pending, workers):
+        overrides = (_gpu_periodic_prepass(pending)
+                    if periodogram_backend == "gpu" else None)
+        for path_str, row, identity in _extract_many(pending, workers, overrides):
             if row is None or identity is None:
                 continue
             values = np.asarray(row, dtype=np.float64)
             rows[path_str] = values
             identities[path_str] = identity
             if use_cache:
-                cache.put(Path(path_str), values, identity)
+                cache.put(Path(path_str), values, identity, periodogram_backend)
 
         if use_cache:
             featurecache.save(cache, cache_root)
@@ -418,13 +454,45 @@ _THREAD_LIMIT_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS",
                       "VECLIB_MAXIMUM_THREADS")
 
 
-def _extract_many(paths: list[Path], workers: int | None):
+def _gpu_periodic_prepass(paths: list[Path]) -> dict[str, dict]:
+    """Compute periods for a batch of curves on GPU, in this process only.
+
+    A GPU call inside `periodic_features` would otherwise run once per worker
+    process. `DEFAULT_WORKERS` (4) each opening a CUDA context on one 4 GB
+    card would serialise on the device and add ~200-300 MB of context
+    overhead per worker -- strictly worse than the CPU path it is meant to
+    beat. Running the period search here, before dispatch, means workers do
+    only the remaining CPU-only statistics.
+
+    A curve that fails to read or is too short for a period search is simply
+    absent from the returned dict; the worker then falls back to computing
+    its own (CPU) period for that one curve, via `extract`'s normal path.
+    """
+    overrides: dict[str, dict] = {}
+    for path in paths:
+        try:
+            curve = store.read_curve(path)
+        except Exception:  # noqa: BLE001 - a corrupt file is the worker's problem
+            continue
+        tidy = curve.dropna().sorted_by_time()
+        if len(tidy) < features.MIN_POINTS:
+            continue
+        overrides[str(path)] = features.periodic_features(
+            tidy.time, tidy.value, tidy.value_err, backend="gpu")
+    return overrides
+
+
+def _extract_many(paths: list[Path], workers: int | None,
+                  overrides: dict[str, dict] | None = None):
     """Run extraction in parallel, falling back to in-process on failure."""
     count = workers if workers is not None else DEFAULT_WORKERS
     count = max(1, min(count, len(paths)))
+    overrides = overrides or {}
+    override_list = [overrides.get(str(p)) for p in paths]
 
     if count == 1 or len(paths) < PARALLEL_THRESHOLD:
-        return [_extract_from_path(str(p)) for p in paths]
+        return [_extract_from_path(str(p), override)
+                for p, override in zip(paths, override_list)]
 
     # Set before the pool starts: workers are spawned fresh on Windows and read
     # these when they import NumPy, so the parent's own already-imported
@@ -433,14 +501,21 @@ def _extract_many(paths: list[Path], workers: int | None):
     for name in _THREAD_LIMIT_VARS:
         os.environ[name] = "1"
 
+    pool = ProcessPoolExecutor(max_workers=count)
     try:
-        with ProcessPoolExecutor(max_workers=count) as pool:
-            return list(pool.map(_extract_from_path,
-                                 [str(p) for p in paths], chunksize=4))
-    except Exception:  # noqa: BLE001 - a pool that cannot start must not
-        # lose the run; sequential extraction produces identical output.
-        return [_extract_from_path(str(p)) for p in paths]
+        return list(pool.map(_extract_from_path,
+                             [str(p) for p in paths], override_list,
+                             chunksize=4, timeout=POOL_TIMEOUT_S))
+    except Exception:  # noqa: BLE001 - a pool that cannot start, or wedges
+        # and hits POOL_TIMEOUT_S, must not lose the run; sequential
+        # extraction produces identical output.
+        return [_extract_from_path(str(p), override)
+                for p, override in zip(paths, override_list)]
     finally:
+        # wait=False: a pool that timed out may have workers stuck forever
+        # (e.g. the Windows frozen-multiprocessing respawn bug); waiting on
+        # them here would silently reintroduce the same hang we just bounded.
+        pool.shutdown(wait=False, cancel_futures=True)
         for name, value in previous.items():
             if value is None:
                 os.environ.pop(name, None)
@@ -546,7 +621,7 @@ def load(name: str, root: Path | None = None) -> FeatureMatrix:
 GAIA_JOIN_COLUMNS = (
     "gaia_parallax", "gaia_parallax_snr", "gaia_pmra", "gaia_pmdec",
     "gaia_phot_g_mean_mag", "gaia_bp_rp", "gaia_distance_pc",
-    "gaia_abs_g_mag", "gaia_matched",
+    "gaia_abs_g_mag", "gaia_ra_now_deg", "gaia_dec_now_deg", "gaia_matched",
 )
 
 
@@ -636,6 +711,18 @@ def join_gaia_columns(matrix: FeatureMatrix, radius_arcsec: float | None = None,
                 if match is None:
                     continue
                 derived = derived_properties(match.counterpart.extra)
+                # Gaia's own ra_deg/dec_deg are fixed at J2016.0 (GAIA_EPOCH).
+                # These two columns are the same object propagated to today by
+                # its proper motion, so a caller who wants "where is it now"
+                # doesn't have to redo that math -- and the survey's own
+                # ra_deg/dec_deg on the candidate stays untouched as the
+                # detecting observation's immutable ground truth.
+                ra_now, dec_now = crossmatch.propagate_position(
+                    match.counterpart.ra_deg, match.counterpart.dec_deg,
+                    match.counterpart.extra.get("pmra"),
+                    match.counterpart.extra.get("pmdec"),
+                    crossmatch.GAIA_EPOCH, crossmatch.current_epoch(),
+                )
                 values = [
                     match.counterpart.extra.get("parallax"),
                     derived.get("parallax_snr"),
@@ -645,6 +732,8 @@ def join_gaia_columns(matrix: FeatureMatrix, radius_arcsec: float | None = None,
                     derived.get("bp_rp"),
                     derived.get("distance_pc"),
                     derived.get("abs_g_mag"),
+                    ra_now,
+                    dec_now,
                     1.0,
                 ]
                 extra[row_index, :] = [

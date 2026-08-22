@@ -5,7 +5,7 @@
  * pasted seven times and drifted apart on the first restyle.
  */
 import type { LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { SectionHeader } from "@/components/SectionHeader";
 
@@ -30,20 +30,33 @@ export function Panel({
   );
 }
 
+const BUTTON_SIZES = {
+  sm: "min-h-8 px-2.5 py-1",
+  md: "min-h-9 px-3 py-1.5",
+} as const;
+
 export function Button({
   children,
   onClick,
   disabled,
   icon: Icon,
   tone = "default",
+  size = "md",
   title,
+  ariaLabel,
+  loading = false,
+  className = "",
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   icon?: LucideIcon;
   tone?: "default" | "accent";
+  size?: "sm" | "md";
   title?: string;
+  ariaLabel?: string;
+  loading?: boolean;
+  className?: string;
 }) {
   const border =
     tone === "accent"
@@ -53,12 +66,14 @@ export function Button({
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
       title={title}
-      className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition hover:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40 ${border}`}
+      aria-label={ariaLabel}
+      aria-busy={loading || undefined}
+      className={`inline-flex items-center justify-center gap-1.5 rounded border text-xs transition-colors hover:border-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)] disabled:cursor-not-allowed disabled:opacity-40 ${BUTTON_SIZES[size]} ${border} ${className}`}
     >
-      {Icon && <Icon size={12} strokeWidth={2} />}
-      {children}
+      {Icon && <Icon aria-hidden="true" size={12} strokeWidth={2} />}
+      {loading ? "Working…" : children}
     </button>
   );
 }
@@ -70,6 +85,15 @@ export function Field({
   placeholder,
   width = "w-28",
   type = "text",
+  name,
+  id,
+  help,
+  error,
+  required = false,
+  min,
+  max,
+  step,
+  autoComplete,
 }: {
   label: string;
   value: string;
@@ -77,17 +101,41 @@ export function Field({
   placeholder?: string;
   width?: string;
   type?: string;
+  name?: string;
+  id?: string;
+  help?: ReactNode;
+  error?: ReactNode;
+  required?: boolean;
+  min?: number | string;
+  max?: number | string;
+  step?: number | string;
+  autoComplete?: string;
 }) {
+  const generatedId = useId();
+  const inputId = id ?? `field-${generatedId}`;
+  const helpId = help ? `${inputId}-help` : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
   return (
-    <label className="flex flex-col gap-1 text-[11px] text-[var(--color-muted)]">
-      {label}
+    <label htmlFor={inputId} className="flex min-w-0 flex-col gap-1 text-xs text-[var(--color-muted)]">
+      <span>{label}{required && <span aria-hidden="true"> · required</span>}</span>
       <input
+        id={inputId}
+        name={name}
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className={`${width} rounded border border-[var(--color-edge)] bg-[var(--color-void)] px-2 py-1 text-xs text-[var(--color-text)]`}
+        required={required}
+        min={min}
+        max={max}
+        step={step}
+        autoComplete={autoComplete}
+        aria-invalid={Boolean(error)}
+        aria-describedby={[helpId, errorId].filter(Boolean).join(" ") || undefined}
+        className={`${width} min-h-9 rounded border ${error ? "border-[var(--color-bad)]" : "border-[var(--color-edge)]"} bg-[var(--color-void)] px-2.5 py-1.5 text-sm text-[var(--color-text)] outline-none transition-colors focus-visible:border-[var(--color-accent)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/40`}
       />
+      {help && <span id={helpId} className="text-[var(--color-muted)]">{help}</span>}
+      {error && <span id={errorId} className="text-[var(--color-bad)]" role="alert">{error}</span>}
     </label>
   );
 }
@@ -97,19 +145,31 @@ export function Select({
   value,
   options,
   onChange,
+  id,
+  name,
+  help,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
+  id?: string;
+  name?: string;
+  help?: ReactNode;
 }) {
+  const generatedId = useId();
+  const selectId = id ?? `select-${generatedId}`;
+  const helpId = help ? `${selectId}-help` : undefined;
   return (
-    <label className="flex flex-col gap-1 text-[11px] text-[var(--color-muted)]">
-      {label}
+    <label htmlFor={selectId} className="flex min-w-0 flex-col gap-1 text-xs text-[var(--color-muted)]">
+      <span>{label}</span>
       <select
+        id={selectId}
+        name={name}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded border border-[var(--color-edge)] bg-[var(--color-void)] px-2 py-1 text-xs text-[var(--color-text)]"
+        aria-describedby={helpId}
+        className="min-h-9 rounded border border-[var(--color-edge)] bg-[var(--color-void)] px-2.5 py-1.5 text-sm text-[var(--color-text)] outline-none transition-colors focus-visible:border-[var(--color-accent)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/40"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -117,6 +177,7 @@ export function Select({
           </option>
         ))}
       </select>
+      {help && <span id={helpId}>{help}</span>}
     </label>
   );
 }
@@ -134,8 +195,13 @@ export function KeyValue({ rows }: { rows: Array<[string, ReactNode]> }) {
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <p className="text-xs text-[var(--color-muted)]">{children}</p>;
+export function Empty({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="rounded border border-dashed border-[var(--color-edge)] bg-[var(--color-void)]/40 p-4 text-sm text-[var(--color-muted)]">
+      <p>{children}</p>
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
 }
 
 export function Note({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "warn" | "bad" | "ok" }) {
@@ -145,7 +211,7 @@ export function Note({ children, tone = "muted" }: { children: ReactNode; tone?:
     bad: "text-[var(--color-bad)]",
     ok: "text-[var(--color-ok)]",
   }[tone];
-  return <p className={`text-xs ${colour}`}>{children}</p>;
+  return <p className={`text-sm ${colour}`} role={tone === "bad" ? "alert" : "status"}>{children}</p>;
 }
 
 export function Badge({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "warn" | "bad" | "ok" | "accent" }) {
@@ -163,14 +229,15 @@ export function Badge({ children, tone = "muted" }: { children: ReactNode; tone?
   );
 }
 
-export function Table({ head, children }: { head: string[]; children: ReactNode }) {
+export function Table({ head, children, caption }: { head: string[]; children: ReactNode; caption?: string }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[32rem] text-left text-xs">
+    <div className="overflow-x-auto rounded border border-[var(--color-edge)]">
+      <table className="w-full min-w-[32rem] text-left text-sm">
+        {caption && <caption className="sr-only">{caption}</caption>}
         <thead>
           <tr className="border-b border-[var(--color-edge)] text-[var(--color-muted)]">
             {head.map((cell) => (
-              <th key={cell} className="px-2 py-1.5 font-medium">
+              <th key={cell} scope="col" className="sticky top-0 bg-[var(--color-panel-2)] px-2.5 py-2 font-medium">
                 {cell}
               </th>
             ))}

@@ -54,6 +54,18 @@ class Candidate:
     features: dict = field(default_factory=dict)
     cross_survey: dict = field(default_factory=dict)
     catalog: dict = field(default_factory=dict)
+    gw: dict = field(default_factory=dict)
+    frb: dict = field(default_factory=dict)
+    # Additive research context.  These fields are deliberately separate from
+    # ``score`` so historical ranking semantics remain unchanged.
+    event_ids: list[str] = field(default_factory=list)
+    significance: dict = field(default_factory=dict)
+    evidence_completeness: dict = field(default_factory=dict)
+    source_attribution: dict = field(default_factory=dict)
+    physical_characterization: dict = field(default_factory=dict)
+    follow_up_plan: dict = field(default_factory=dict)
+    literature: dict = field(default_factory=dict)
+    provenance_refs: list[dict] = field(default_factory=list)
     explanation: dict = field(default_factory=dict)
     rank: int = 0
 
@@ -174,7 +186,14 @@ def build_candidate(index: int, identity: dict, feature_values: dict[str, float]
                     blended: list[str] | None = None,
                     period_agrees: bool | None = None,
                     gaia_properties: dict | None = None,
-                    catalog_evidence: dict | None = None) -> Candidate:
+                    catalog_evidence: dict | None = None,
+                    event_ids: list[str] | None = None,
+                    significance: dict | None = None,
+                    evidence_completeness: dict | None = None,
+                    source_attribution: dict | None = None,
+                    physical_characterization: dict | None = None,
+                    follow_up_plan: dict | None = None,
+                    provenance_refs: list[dict] | None = None) -> Candidate:
     """Assemble one fully explained candidate."""
     breakdown = scoring.score_candidate(
         feature_values, anomaly_score=anomaly_score,
@@ -226,7 +245,15 @@ def build_candidate(index: int, identity: dict, feature_values: dict[str, float]
                   for k, v in feature_values.items()},
         cross_survey={"resolved_surveys": resolved_surveys,
                       "blended": blended or [],
-                      "consistency": consistency},
+                      "consistency": consistency,
+                      "source_attribution": source_attribution or {}},
+        event_ids=list(event_ids or []),
+        significance=dict(significance or {}),
+        evidence_completeness=dict(evidence_completeness or {}),
+        source_attribution=dict(source_attribution or {}),
+        physical_characterization=dict(physical_characterization or {}),
+        follow_up_plan=dict(follow_up_plan or {}),
+        provenance_refs=list(provenance_refs or []),
         explanation=explanation,
     )
 
@@ -287,6 +314,8 @@ def _migrate_run_order_labels(path: Path, current: list[Candidate], root: Path) 
 def load(name: str, root: Path | None = None) -> list[Candidate]:
     root = root or config.PATHS.projects
     path = root / "candidates" / f"{name}_candidates.json"
+    if not path.exists():
+        return []
     payload = json.loads(path.read_text(encoding="utf-8"))
     return [Candidate(**entry) for entry in payload.get("candidates", [])]
 

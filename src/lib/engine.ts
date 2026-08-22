@@ -95,8 +95,217 @@ export interface SurveyInfo {
   enabled_by_default?: boolean;
 }
 
+export interface EventProviderInfo {
+  name: string;
+  kind: string;
+  online: boolean;
+}
+
+export interface EventPacket {
+  packet_key: string;
+  event_id: string;
+  packet_id: string;
+  provider: string;
+  release: string;
+  packet_version: string;
+  event_time: string | null;
+  received_utc: string;
+  localization: Record<string, unknown>;
+  classifications: Array<{ label: string; probability: number | null }>;
+  related_ids: string[];
+  raw_sha256: string;
+  raw_path: string;
+  status: string;
+  project_id?: string | null;
+  raw?: string;
+}
+
+export interface EventCluster {
+  event_id: string;
+  provider: string;
+  first_seen_utc: string;
+  last_seen_utc: string;
+  packet_count: number;
+  packet_ids: string[];
+  localization: Record<string, unknown>;
+  classifications: Array<{ label: string; probability: number | null }>;
+  project_id?: string | null;
+}
+
+export interface AlertProviderInfo {
+  name: string;
+  endpoint: string;
+  mode: string;
+  requires_endpoint_override: boolean;
+}
+
+export interface AlertLatencySummary {
+  median: number;
+  p95: number;
+  n: number;
+}
+
+export interface AlertPollResult {
+  schema_version: number;
+  provider: string;
+  state: string;
+  endpoint: string;
+  cursor?: string | null;
+  packets: EventPacket[];
+  ingested: number;
+  new_packets?: number;
+  duplicate_rate?: number | null;
+  latency_summary?: AlertLatencySummary | null;
+  errors: Array<{ index: number; error: string }>;
+  polled_utc: string;
+}
+
+export interface TapResult {
+  schema_version: number;
+  service: string;
+  release: string;
+  state: string;
+  rows: Array<Record<string, unknown>>;
+  format: "csv" | "votable";
+  query: Record<string, unknown>;
+  error?: string | null;
+  fetched_utc?: string | null;
+  expires_utc?: string | null;
+  cache: { state: string; stale: boolean };
+}
+
+export interface SignificanceReport {
+  schema_version: number;
+  method: string;
+  ready: boolean;
+  reason?: string;
+  reference_kind?: "external_reference" | "batch_relative";
+  n_observed: number;
+  n_reference: number;
+  threshold?: number;
+  score?: number;
+  tail_probability?: number;
+  calibrated_percentile?: number;
+  selected?: number;
+  reference_exceedances?: number;
+  estimated_fdr?: number;
+  score_range?: number[];
+  tail_probability_summary?: { min: number; median: number; max: number };
+  reference_fingerprint?: string;
+  strata?: Record<string, unknown>;
+  generated_utc?: string;
+  path?: string;
+}
+
+export interface SelectionCell {
+  bins: Record<string, string>;
+  detected: number;
+  injected: number;
+  completeness: number | null;
+  ci95: number[] | null;
+  weighted_detected?: number | null;
+  weighted_injected?: number | null;
+  weighted_completeness?: number | null;
+  effective_injected?: number | null;
+}
+
+export interface SelectionReport {
+  schema_version: number;
+  ready: boolean;
+  injected: number;
+  detected: number;
+  dimensions: string[];
+  edges: Record<string, number[]>;
+  cells: SelectionCell[];
+  model?: Record<string, unknown>;
+  generated_utc?: string;
+  path?: string;
+}
+
+export interface ReviewSelection {
+  candidate_id: string;
+  priority: number;
+  reasons: string[];
+}
+
+export interface LiteratureRecord {
+  provider: string;
+  bibcode?: string | null;
+  arxiv_id?: string | null;
+  title?: string | null;
+  authors?: string[];
+  abstract?: string | null;
+  year?: number | null;
+  doi?: string | null;
+  url?: string | null;
+  citation_count?: number | null;
+}
+
+export interface LiteratureProviderResult {
+  provider: string;
+  release: string;
+  state: string;
+  records: LiteratureRecord[];
+  error?: string | null;
+  fetched_utc?: string | null;
+  cache?: { state: string; stale: boolean };
+}
+
+export interface LiteratureSearchResult {
+  schema_version: number;
+  query: { object_id: string; terms: string[]; event_ids: string[]; limit: number };
+  providers: Record<string, LiteratureProviderResult>;
+  records: LiteratureRecord[];
+  complete: boolean;
+  provenance: Array<Record<string, unknown>>;
+}
+
+export interface LiteratureStatus {
+  ttl_days: number;
+  providers: Record<string, string>;
+  cache: { entries: Array<Record<string, unknown>>; total: number };
+  ads_token_configured: boolean;
+}
+
+export interface PhysicalCharacterization {
+  schema_version: number;
+  source: string;
+  bands_used: string[];
+  photometry: Record<string, number>;
+  colors: Record<string, number>;
+  temperature_k: number | null;
+  temperature_spread_k: number | null;
+  blackbody_temperature_k: number | null;
+  sed_residual_rms: number | null;
+  extinction_applied: Record<string, number>;
+  quality: "usable" | "insufficient";
+  warnings: string[];
+}
+
+export interface FollowupPlan {
+  schema_version: number;
+  target_id?: string | null;
+  target: { ra_deg: number; dec_deg: number };
+  site: { latitude_deg: number; longitude_deg: number };
+  constraints: {
+    min_altitude_deg: number; cadence_minutes: number;
+    twilight_sun_altitude_deg?: number; min_moon_separation_deg?: number;
+    max_moon_illumination?: number; max_airmass?: number | null;
+    facility?: Record<string, unknown> | null; weather_supplied?: boolean;
+  };
+  start_utc: string;
+  duration_hours: number;
+  visible: boolean;
+  windows: Array<{ start_utc: string; end_utc: string; slots: number }>;
+  best_slot?: { utc: string; altitude_deg: number; azimuth_deg: number; airmass: number } | null;
+  rejected_slots?: Record<string, number>;
+  samples?: Array<Record<string, unknown>>;
+  mode: "draft_only";
+  caveats: string[];
+}
+
 export interface ReadinessStatus {
-  gaia_epoch: { status: string; expected_release: string; enabled: boolean; reason: string };
+  gaia_epoch: { status: string; expected_release: string; enabled: boolean; code_ready: boolean; reason: string };
   multimodal: { status: string; free_vram_mb?: number; required_min_free_vram_mb: number; enabled: boolean };
   release: { status: string; authenticode_certificate: boolean; timestamp_url: boolean; updater_key: boolean; publication_configured: boolean };
   connectors: SurveyInfo[];
@@ -123,6 +332,44 @@ export interface AcquisitionResult {
   content_hash: string | null;
 }
 
+export interface PipelineResult {
+  candidates: Candidate[];
+  candidates_built: number;
+  output_path: string;
+  anchor_survey?: string | null;
+  anchor_policy?: "empty" | "largest_catalogue" | "explicit";
+  cross_survey_groups?: number;
+  resolved_multi_survey?: number;
+}
+
+/** Result of `acquire.project`: one AcquisitionResult per region in the
+ *  project's `query_regions`, run sequentially, plus the totals summed
+ *  across every region and survey. */
+export interface ProjectAcquisitionResult {
+  project_id: string;
+  regions: AcquisitionResult[];
+  totals: { curves: number; points: number; mb: number };
+}
+
+export interface ArtifactIndicator {
+  name: string;
+  weight: number;
+  detail: string;
+}
+
+/** Why the engine does or does not think a signal is instrumental.
+ *
+ *  `indicators` and `clearing_evidence` ship in every candidate record and are
+ *  the whole substance of the assessment; `likelihood` alone is a number with
+ *  no argument behind it.
+ */
+export interface ArtifactAssessment {
+  likelihood?: number;
+  verdict?: string;
+  indicators?: ArtifactIndicator[];
+  clearing_evidence?: string[];
+}
+
 export interface Candidate {
   candidate_id: string;
   rank: number;
@@ -138,8 +385,15 @@ export interface Candidate {
     supervised_probability?: number;
     ranking_method?: string;
     components?: Record<string, number | null>;
+    /** Per-component contribution (weight x value) and the weight actually
+     *  available. The total renormalises over `weight_used`, so a component
+     *  score means little without both. */
+    weighted?: Record<string, number | null>;
+    weight_used?: number;
+    weight_version?: number;
+    reasons?: string[];
   };
-  artifact: { likelihood?: number; verdict?: string };
+  artifact: ArtifactAssessment;
   features: Record<string, number | null>;
   explanation: {
     what_happened?: string;
@@ -149,7 +403,7 @@ export interface Candidate {
       surveys_resolving?: number;
       blended_in?: string[];
     };
-    could_be_artifact?: Record<string, unknown>;
+    could_be_artifact?: ArtifactAssessment;
     resembles?: string[];
     recommended_actions?: string[];
     coverage?: { tier: string; status: string };
@@ -158,6 +412,16 @@ export interface Candidate {
     summary?: { states?: Record<string, string>; known_variable?: boolean; known_object?: boolean };
     providers?: Record<string, { state: string; matches?: unknown[] }>;
   };
+  gw?: GwEvidence;
+  frb?: FrbEvidence;
+  event_ids?: string[];
+  significance?: SignificanceReport;
+  evidence_completeness?: Record<string, unknown>;
+  source_attribution?: Record<string, unknown>;
+  physical_characterization?: Record<string, unknown>;
+  follow_up_plan?: Record<string, unknown>;
+  literature?: LiteratureSearchResult;
+  provenance_refs?: Array<Record<string, unknown>>;
   label?: string;
   review?: { label: string; note: string; recorded_utc: string };
 }
@@ -188,6 +452,36 @@ export interface CandidateTimeline {
   warning?: string | null;
 }
 
+export interface SpatialCandidatePoint {
+  candidate_id: string;
+  ra_deg: number;
+  dec_deg: number;
+  gaia_distance_pc: number | null;
+  gaia_abs_g_mag: number | null;
+  gaia_parallax_snr: number | null;
+  /** SNR >= 5 (the same threshold scoring.py uses for luminosity checks).
+   *  A distance can be present and still unreliable -- check this, not just
+   *  whether gaia_distance_pc is non-null. */
+  distance_reliable: boolean;
+  /** Gaia's stored ra_deg/dec_deg is fixed at J2016.0; these two are the
+   *  same object propagated to today by its proper motion, for a "where is
+   *  it now" overlay. null when there's no Gaia counterpart or no proper
+   *  motion to propagate. The candidate's own ra_deg/dec_deg above is left
+   *  untouched -- it is the detecting survey's immutable observation. */
+  gaia_ra_now_deg: number | null;
+  gaia_dec_now_deg: number | null;
+  score_total: number | null;
+}
+
+export interface SpatialResult {
+  points: SpatialCandidatePoint[];
+  total: number;
+  reliable: number;
+  snr_threshold: number;
+  gaia_matched: number;
+  gaia_match_rate: number | null;
+}
+
 export interface CatalogStatus {
   ttl_days: number;
   cache: {
@@ -195,6 +489,92 @@ export interface CatalogStatus {
     entries: Array<{ provider: string; status: string; count: number; earliest_expiry?: string }>;
   };
   tns_credentials: { configured: boolean; usable?: boolean; backend: string; bot_name?: string };
+}
+
+export interface GwEventSummary {
+  name: string;
+  catalog: string;
+  gps_time: number;
+}
+
+export interface GwEventsResult {
+  catalog: string;
+  events: GwEventSummary[];
+}
+
+export interface GwCoincidentEvent {
+  event: string;
+  catalog: string;
+  gps_time: number;
+  probability_density: number;
+  credible_level: number;
+  /** False for a fixed/degenerate posterior (EM-counterpart position) even
+   *  at an exact match -- check position_source, not just this flag. */
+  in_90pct_region: boolean;
+  position_source: "gw_posterior" | "em_counterpart_fixed";
+}
+
+/** Never moves a candidate's score -- see gw.py's module docstring for why:
+ *  new, unvalidated evidence should not silently reweight the ranking. */
+export interface GwEvidence {
+  checked_events: number;
+  temporally_coincident?: number;
+  coincident: GwCoincidentEvent[];
+  state: "match" | "no_match" | "unavailable";
+  window_days?: number;
+  reason?: string;
+}
+
+export interface GwEnrichmentResult {
+  catalog: string;
+  events_checked: number;
+  candidates: number;
+  counts: { match: number; no_match: number; unavailable: number };
+}
+
+export interface FrbBurstSummary {
+  tns_name: string;
+  repeater_name: string;
+  ra_deg: number;
+  ra_err_deg: number;
+  dec_deg: number;
+  dec_err_deg: number;
+  mjd_400: number;
+  localization_id: string | null;
+}
+
+export interface FrbEventsResult {
+  bursts: FrbBurstSummary[];
+}
+
+export interface FrbCoincidentBurst {
+  burst: string;
+  repeater_name: string;
+  mjd_400: number;
+  sigma_offset: number;
+  sigma_threshold: number;
+  /** "ellipse" (ra_err/dec_err) for most bursts; "healpix" only for the
+   *  minority with a precomputed baseband localization map. */
+  position_source: "ellipse" | "healpix";
+  confidence_level?: number;
+  in_90pct_region?: boolean;
+}
+
+/** Never moves a candidate's score -- see frb.py's module docstring. */
+export interface FrbEvidence {
+  checked_bursts: number;
+  temporally_coincident?: number;
+  coincident: FrbCoincidentBurst[];
+  state: "match" | "no_match" | "unavailable";
+  window_days?: number;
+  sigma_threshold?: number;
+  reason?: string;
+}
+
+export interface FrbEnrichmentResult {
+  bursts_checked: number;
+  candidates: number;
+  counts: { match: number; no_match: number; unavailable: number };
 }
 
 export interface CatalogEnrichmentResult {
@@ -348,6 +728,15 @@ export interface TessBlendAssessment {
   neighbors_in_cutout: number;
   neighbors_in_aperture: number;
   contamination_fraction: number | null;
+  source_attribution?: Array<{ object_id?: string; flux_fraction: number; kind: string }>;
+  attribution_method?: string;
+  attribution_diagnostics?: {
+    prior_sum: number | null;
+    concentration_index: number | null;
+    target_fraction_sensitivity: number | null;
+    quality: string;
+    neighbor_flux_perturbation: number[];
+  };
   neighbors: Array<Record<string, unknown>>;
   warning: string;
 }
@@ -629,6 +1018,8 @@ export interface CrossmatchResult {
     by_survey_count: Record<string, number>;
     grouping_bias?: {
       anchor_survey: string | null;
+      anchor_policy?: "empty" | "largest_catalogue" | "explicit";
+      requested_anchor_survey?: string | null;
       survey_counts: Record<string, number>;
       groups: number;
       anchor_share: number | null;
@@ -668,6 +1059,10 @@ export interface CrossSurveyProfile {
   /** How often two unrelated periods pass the alias-tolerant agreement test. */
   period_fap: number | null;
   components: Record<string, number>;
+  /** What each component is worth, and what it actually contributed. Raw
+   *  component scores alone cannot be ranked against each other. */
+  weights: Record<string, number>;
+  weighted: Record<string, number>;
   notes: string[];
 }
 
@@ -834,6 +1229,63 @@ export const engine = {
   projectValidate: (projectId: string) =>
     invoke<ProjectValidation>("engine_project_validate", { projectId }),
   surveys: () => invoke<SurveyInfo[]>("engine_surveys"),
+  eventProviders: () => invoke<EventProviderInfo[]>("engine_event_providers"),
+  eventIngest: (args: {
+    provider: string; payload: unknown; release?: string; packetId?: string;
+    packetVersion?: string; receivedUtc?: string; projectId?: string;
+  }) => invoke<EventPacket>("engine_event_ingest", {
+    provider: args.provider,
+    payload: args.payload,
+    release: args.release,
+    packetId: args.packetId,
+    packetVersion: args.packetVersion,
+    receivedUtc: args.receivedUtc,
+    projectId: args.projectId,
+  }),
+  events: (args: { provider?: string; eventId?: string; limit?: number; packets?: boolean; projectId?: string } = {}) =>
+    invoke<Array<EventCluster | EventPacket>>("engine_events", {
+      provider: args.provider,
+      eventId: args.eventId,
+      limit: args.limit ?? 500,
+      packets: args.packets ?? false,
+      projectId: args.projectId,
+    }),
+  eventPacket: (packetKey: string, includeRaw = false, projectId?: string) =>
+    invoke<EventPacket>("engine_event_packet", { packetKey, includeRaw, projectId }),
+  eventReplay: (args: { provider?: string; eventId?: string; limit?: number; projectId?: string } = {}) =>
+    invoke<EventPacket[]>("engine_event_replay", {
+      provider: args.provider, eventId: args.eventId, limit: args.limit ?? 100,
+      projectId: args.projectId,
+    }),
+  eventAssociate: (args: {
+    name?: string; provider?: string; eventId?: string; radiusArcsec?: number;
+    windowDays?: number; allowUnknownTime?: boolean; projectId?: string;
+  } = {}) => invoke<Record<string, unknown>>("engine_event_associate", {
+    name: args.name ?? "default", provider: args.provider, eventId: args.eventId,
+    radiusArcsec: args.radiusArcsec ?? 30, windowDays: args.windowDays ?? 30,
+    allowUnknownTime: args.allowUnknownTime ?? false, projectId: args.projectId,
+  }),
+  alertProviders: () => invoke<AlertProviderInfo[]>("engine_alert_providers"),
+  alertStatus: (projectId?: string) => invoke<Record<string, unknown>>("engine_alert_status", { projectId }),
+  alertPoll: (args: {
+    provider: string; endpoint?: string; cursor?: string; limit?: number;
+    offline?: boolean; payload?: unknown; params?: Record<string, unknown>; projectId?: string;
+  }) => invoke<AlertPollResult>("engine_alert_poll", {
+    provider: args.provider, endpoint: args.endpoint, cursor: args.cursor,
+    limit: args.limit ?? 100, offline: args.offline ?? false,
+    payload: args.payload, params: args.params, projectId: args.projectId,
+  }),
+  tapStatus: (projectId?: string) => invoke<Record<string, unknown>>("engine_tap_status", { projectId }),
+  tapQuery: (args: {
+    service: string; adql: string; release?: string; maxRows?: number;
+    format?: "csv" | "votable"; refresh?: boolean; offline?: boolean;
+    timeout?: number; projectId?: string;
+  }) => invoke<TapResult>("engine_tap_query", {
+    service: args.service, adql: args.adql, release: args.release ?? "unknown",
+    maxRows: args.maxRows ?? 200, format: args.format ?? "csv",
+    refresh: args.refresh ?? false, offline: args.offline ?? false,
+    timeout: args.timeout ?? 60, projectId: args.projectId,
+  }),
   readiness: () => invoke<ReadinessStatus>("engine_readiness"),
   curvesList: (survey?: string, limit = 500, projectId?: string) =>
     invoke<CurveSummary[]>("engine_curves_list", { survey, limit, projectId }),
@@ -860,11 +1312,12 @@ export const engine = {
   versions: () => invoke<Record<string, string>>("engine_versions"),
   cacheStatus: () => invoke<CacheStatus>("engine_cache_status"),
   cacheEnforce: () => invoke<CacheStatus>("engine_cache_enforce"),
-  pipeline: (name = "default", top = 200, projectId?: string) =>
-    invoke<{ candidates: Candidate[]; candidates_built: number; output_path: string }>(
-      "engine_pipeline", { name, top, projectId }),
+  pipeline: (name = "default", top = 200, projectId?: string, anchorSurvey?: string) =>
+    invoke<PipelineResult>("engine_pipeline", { name, top, projectId, anchorSurvey }),
   candidates: (name = "default", top = 50, projectId?: string) =>
     invoke<{ count: number; candidates: Candidate[] }>("engine_candidates", { name, top, projectId }),
+  candidatesSpatial: (name = "default", top = 200, projectId?: string) =>
+    invoke<SpatialResult>("engine_candidates_spatial", { name, top, projectId }),
   candidate: (candidateId: string, name = "default", projectId?: string) =>
     invoke<Candidate>("engine_candidate", { candidateId, name, projectId }),
   candidateTimeline: (candidateId: string, name = "default", projectId?: string) =>
@@ -881,6 +1334,40 @@ export const engine = {
   catalogEnrich: (name = "default", offline = false, refresh = false, projectId?: string) =>
     invoke<CatalogEnrichmentResult>("engine_catalog_enrich", {
       name, offline, refresh, includeTns: true, radiusArcsec: 2, projectId,
+    }),
+  literatureStatus: () => invoke<LiteratureStatus>("engine_literature_status"),
+  literatureSearch: (args: {
+    objectId?: string; terms?: string[]; eventIds?: string[]; providers?: string[];
+    limit?: number; refresh?: boolean; offline?: boolean; projectId?: string;
+  } = {}) => invoke<LiteratureSearchResult>("engine_literature_search", {
+    objectId: args.objectId ?? "", terms: args.terms ?? [], eventIds: args.eventIds ?? [],
+    providers: args.providers ?? ["ads", "arxiv"], limit: args.limit ?? 20,
+    refresh: args.refresh ?? false, offline: args.offline ?? false, projectId: args.projectId,
+  }),
+  literatureEnrich: (name = "default", offline = false, refresh = false,
+                     includeArxiv = true, limit = 20, projectId?: string) =>
+    invoke<Record<string, unknown>>("engine_literature_enrich", {
+      name, offline, refresh, includeArxiv, limit, projectId,
+    }),
+  physicalCharacterize: (photometry: Record<string, unknown>, extinction?: Record<string, unknown>) =>
+    invoke<PhysicalCharacterization>("engine_physical_characterize", {
+      photometry, extinction, source: "caller",
+    }),
+  physicalEnrich: (name = "default", extinction?: Record<string, unknown>, projectId?: string) =>
+    invoke<Record<string, unknown>>("engine_physical_enrich", { name, extinction, projectId }),
+  gwEvents: (catalog = "GWTC-1-confident", refresh = false, offline = false) =>
+    invoke<GwEventsResult>("engine_gw_events", { catalog, refresh, offline }),
+  gwEnrich: (name = "default", catalog = "GWTC-1-confident", windowDays = 30,
+            refresh = false, offline = false, projectId?: string) =>
+    invoke<GwEnrichmentResult>("engine_gw_enrich", {
+      name, catalog, windowDays, refresh, offline, projectId,
+    }),
+  frbEvents: (refresh = false, offline = false) =>
+    invoke<FrbEventsResult>("engine_frb_events", { refresh, offline }),
+  frbEnrich: (name = "default", windowDays = 1, sigmaThreshold = 3,
+             refresh = false, offline = false, projectId?: string) =>
+    invoke<FrbEnrichmentResult>("engine_frb_enrich", {
+      name, windowDays, sigmaThreshold, refresh, offline, projectId,
     }),
   tnsCredentialsConfigure: (apiKey: string, botId = "", botName = "ASTRA") =>
     invoke<{ configured: boolean; backend: string }>("engine_tns_credentials_configure", {
@@ -1003,6 +1490,59 @@ export const engine = {
     }),
   featureNames: () => invoke<FeatureNames>("engine_feature_names"),
   featureCacheClear: () => invoke<{ cleared: number }>("engine_feature_cache_clear"),
+  significanceCalibrate: (args: {
+    scores: number[]; referenceScores?: number[]; threshold?: number;
+    strata?: Record<string, unknown>; name?: string; projectId?: string;
+  }) => invoke<SignificanceReport>("engine_significance_calibrate", {
+    scores: args.scores,
+    referenceScores: args.referenceScores,
+    threshold: args.threshold,
+    strata: args.strata,
+    name: args.name ?? "default",
+    projectId: args.projectId,
+  }),
+  selectionEvaluate: (args: {
+    records: Array<Record<string, unknown>>; dimensions?: string[];
+    edges?: Record<string, number[]>; name?: string; projectId?: string;
+    fitModel?: boolean; modelFeatures?: string[]; bootstrapSamples?: number; seed?: number;
+  }) => invoke<SelectionReport>("engine_selection_evaluate", {
+    records: args.records,
+    dimensions: args.dimensions,
+    edges: args.edges,
+    fitModel: args.fitModel ?? false,
+    modelFeatures: args.modelFeatures,
+    bootstrapSamples: args.bootstrapSamples ?? 0,
+    seed: args.seed ?? 42,
+    name: args.name ?? "default",
+    projectId: args.projectId,
+  }),
+  reviewNext: (name = "default", limit = 20, projectId?: string) =>
+    invoke<ReviewSelection[]>("engine_review_next", { name, limit, projectId }),
+  followupPlan: (args: {
+    raDeg: number; decDeg: number; startUtc?: string; durationHours?: number;
+    latitudeDeg?: number; longitudeDeg?: number; minAltitudeDeg?: number;
+    cadenceMinutes?: number; targetId?: string; twilightSunAltitudeDeg?: number;
+    minMoonSeparationDeg?: number; maxMoonIllumination?: number; maxAirmass?: number;
+    weather?: Array<Record<string, unknown>> | Record<string, unknown>;
+    facilityName?: string; facilityConstraints?: Record<string, unknown>;
+  }) => invoke<FollowupPlan>("engine_followup_plan", {
+    raDeg: args.raDeg,
+    decDeg: args.decDeg,
+    startUtc: args.startUtc,
+    durationHours: args.durationHours ?? 12,
+    latitudeDeg: args.latitudeDeg ?? 43.65,
+    longitudeDeg: args.longitudeDeg ?? -79.38,
+    minAltitudeDeg: args.minAltitudeDeg ?? 30,
+    cadenceMinutes: args.cadenceMinutes ?? 10,
+    targetId: args.targetId,
+    twilightSunAltitudeDeg: args.twilightSunAltitudeDeg ?? -18,
+    minMoonSeparationDeg: args.minMoonSeparationDeg ?? 0,
+    maxMoonIllumination: args.maxMoonIllumination ?? 1,
+    maxAirmass: args.maxAirmass,
+    weather: args.weather,
+    facilityName: args.facilityName,
+    facilityConstraints: args.facilityConstraints,
+  }),
   detect: (name = "default", contamination?: number, top = 50, projectId?: string) =>
     invoke<DetectionResult>("engine_detect", { name, contamination, top, projectId }),
   deepTrain: (name = "default", kind: "autoencoder" | "vae" | "transformer" = "autoencoder",
@@ -1015,10 +1555,10 @@ export const engine = {
     invoke<SweepResult>("engine_deep_sweep", { kind, survey, seeds, epochs, mode }),
 
   // --- Cross-survey engine (plan section 15) -------------------------------
-  crossmatch: (radiusArcsec?: number, projectId?: string) =>
-    invoke<CrossmatchResult>("engine_crossmatch", { radiusArcsec, projectId }),
-  profiles: (radiusArcsec?: number, top?: number, projectId?: string) =>
-    invoke<ProfilesResult>("engine_profiles", { radiusArcsec, top, projectId }),
+  crossmatch: (radiusArcsec?: number, projectId?: string, anchorSurvey?: string) =>
+    invoke<CrossmatchResult>("engine_crossmatch", { radiusArcsec, projectId, anchorSurvey }),
+  profiles: (radiusArcsec?: number, top?: number, projectId?: string, anchorSurvey?: string) =>
+    invoke<ProfilesResult>("engine_profiles", { radiusArcsec, top, projectId, anchorSurvey }),
   frameOffset: (raDeg: number, decDeg: number, timeSystem = "HJD_UTC") =>
     invoke<FrameOffset>("engine_frame_offset", { raDeg, decDeg, timeSystem }),
 

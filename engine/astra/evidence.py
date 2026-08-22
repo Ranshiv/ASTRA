@@ -153,6 +153,13 @@ class CrossSurveyProfile:
             "period_fap": (None if self.period_fap is None
                            else round(self.period_fap, 5)),
             "components": {k: round(v, 4) for k, v in self.components.items()},
+            # The weight each component carries, and what it actually
+            # contributed. A component scoring 0.9 at weight 0.09 moves the
+            # result less than one scoring 0.5 at weight 0.27, and a reader
+            # given only the raw scores cannot tell those apart.
+            "weights": {k: WEIGHTS[k] for k in self.components if k in WEIGHTS},
+            "weighted": {k: round(WEIGHTS[k] * v, 4)
+                         for k, v in self.components.items() if k in WEIGHTS},
             "notes": self.notes,
         }
 

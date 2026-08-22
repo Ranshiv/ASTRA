@@ -95,3 +95,58 @@ class TestCalibrateFromInjection:
 
         report = artifact.calibrate_from_injection(n_per_class=12, seeds=(1,))
         json.dumps(report.to_dict())  # must not raise
+
+    def test_no_weight_can_saturate_the_noisy_or(self):
+        """A weight of 1.0 would make one indicator proof on its own.
+
+        Indicators combine by noisy-OR, so at weight 1.0 the product saturates:
+        the likelihood pins at 100% the instant that indicator fires and every
+        other indicator, clearing evidence included, stops mattering.
+        """
+        report = artifact.calibrate_from_injection(n_per_class=12, seeds=(1, 2))
+
+        for indicator in report.indicators:
+            assert indicator.weight <= artifact.MAX_CALIBRATED_WEIGHT
+
+
+class TestSmoothedPrecision:
+    def test_small_support_is_pulled_toward_a_half(self):
+        """Three firings out of three is not evidence of a perfect indicator."""
+        confident = artifact.smoothed_precision(200, 200)
+        thin = artifact.smoothed_precision(3, 3)
+
+        assert thin < confident
+        assert 0.5 < thin < artifact.MAX_CALIBRATED_WEIGHT
+
+    def test_never_returns_one(self):
+        assert artifact.smoothed_precision(10_000, 10_000) <= artifact.MAX_CALIBRATED_WEIGHT
+
+    def test_a_wrong_indicator_scores_low(self):
+        assert artifact.smoothed_precision(0, 40) < 0.2
+
+    def test_zero_support_is_refused_rather_than_guessed(self):
+        with pytest.raises(ValueError):
+            artifact.smoothed_precision(0, 0)
+
+
+class TestHardRealPopulation:
+    def test_hard_reals_are_drawn_differently_from_clean_ones(self):
+        """The awkward population must actually differ, or it measures nothing."""
+        rng = np.random.default_rng(7)
+        clean = [len(artifact._synthetic_real(rng, i, hard=False)) for i in range(30)]
+        rng = np.random.default_rng(7)
+        hard = [len(artifact._synthetic_real(rng, i, hard=True)) for i in range(30)]
+
+        assert clean != hard
+
+    def test_hard_reals_raise_a_measurable_false_positive_rate(self):
+        """Some indicator must fire on a genuine object, or nothing is learned.
+
+        Calibrating against clean variables alone is what returned weights of
+        0.95-1.0: no real object could ever contradict an indicator.
+        """
+        rng = np.random.default_rng(11)
+        fired = [artifact._fired_indicators(artifact._synthetic_real(rng, i, hard=True))
+                 for i in range(40)]
+
+        assert any(names for names in fired)

@@ -19,6 +19,7 @@ silently returning the nearest one as if it were certain.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -28,11 +29,29 @@ from .surveys.base import SourceRef
 # arcseconds accommodates centroid error without sweeping in the whole field.
 DEFAULT_RADIUS_ARCSEC = 2.0
 
-# Reference epochs, as Julian years.
+# Reference epoch for Gaia positions, as a Julian year. This one is a genuine
+# catalogue constant -- Gaia DR3 astrometry is published at J2016.0 -- and
+# must not track the current date.
 GAIA_EPOCH = 2016.0
-DEFAULT_EPOCH = 2019.0
 
 MAS_PER_YEAR_TO_DEG = 1.0 / (3600.0 * 1000.0)
+
+
+def current_epoch() -> float:
+    """Now, as a fractional Julian year.
+
+    Positions with proper motion (chiefly Gaia's) must be propagated to
+    *today*, not to a fixed year written into the code -- a hardcoded target
+    epoch goes stale the moment the calendar turns, silently drifting every
+    cross-survey match by another year of proper motion. Calling this fresh
+    at match time keeps the target epoch moving with the clock instead.
+    """
+    now = datetime.now(timezone.utc)
+    start_of_year = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+    start_of_next_year = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
+    fraction = ((now - start_of_year).total_seconds()
+               / (start_of_next_year - start_of_year).total_seconds())
+    return now.year + fraction
 
 
 @dataclass(frozen=True)
@@ -134,9 +153,11 @@ def propagate_position(ra_deg: float, dec_deg: float,
     return ra_deg + pm_ra / cos_dec, dec_deg + pm_dec
 
 
-def epoch_corrected(source: SourceRef, to_epoch: float = DEFAULT_EPOCH
+def epoch_corrected(source: SourceRef, to_epoch: float | None = None
                     ) -> tuple[float, float, bool]:
     """Position at a common epoch, using Gaia proper motion when present."""
+    if to_epoch is None:
+        to_epoch = current_epoch()
     pm_ra = source.extra.get("pmra")
     pm_dec = source.extra.get("pmdec")
     if pm_ra is None and pm_dec is None:
@@ -164,53 +185,109 @@ def angular_separation_arcsec(ra1: float, dec1: float,
     return float(np.degrees(2 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))) * 3600.0)
 
 
+def _angular_separation_grid_arcsec(ra1: np.ndarray, dec1: np.ndarray,
+                                    ra2: np.ndarray, dec2: np.ndarray) -> np.ndarray:
+    """Vectorized haversine separation between every (source, counterpart)
+    pair at once, shape (len(ra1), len(ra2)).
+
+    `angular_separation_arcsec` above is correct but scalar; calling it once
+    per pair in a Python loop makes `match_catalogs` scale as
+    len(sources) * len(counterparts) individual numpy dispatches. Against the
+    project-wide Gaia metadata store (thousands of entries, not just the
+    handful near one query) that turns a single UI-facing request into
+    millions of scalar calls -- multiple minutes of wall time. This computes
+    the identical formula over the full pairwise grid in one batch instead.
+    """
+    phi1 = np.radians(dec1)[:, None]
+    phi2 = np.radians(dec2)[None, :]
+    delta_phi = phi2 - phi1
+    delta_lambda = np.radians(ra2)[None, :] - np.radians(ra1)[:, None]
+
+    a = (np.sin(delta_phi / 2) ** 2
+         + np.cos(phi1) * np.cos(phi2) * np.sin(delta_lambda / 2) ** 2)
+    return np.degrees(2 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))) * 3600.0
+
+
 def match_catalogs(sources: list[SourceRef], counterparts: list[SourceRef],
                    radius_arcsec: float = DEFAULT_RADIUS_ARCSEC,
-                   epoch: float = DEFAULT_EPOCH) -> list[Match]:
+                   epoch: float | None = None) -> list[Match]:
     """Match each source to its nearest counterpart within the radius."""
     if not sources or not counterparts:
         return []
+    if epoch is None:
+        epoch = current_epoch()
 
     corrected = [epoch_corrected(c, epoch) for c in counterparts]
+    src_corrected = [epoch_corrected(s, epoch) for s in sources]
+
+    separations = _angular_separation_grid_arcsec(
+        np.array([ra for ra, _, _ in src_corrected]),
+        np.array([dec for _, dec, _ in src_corrected]),
+        np.array([ra for ra, _, _ in corrected]),
+        np.array([dec for _, dec, _ in corrected]),
+    )
 
     matches: list[Match] = []
-    for source in sources:
-        ra, dec, moved_source = epoch_corrected(source, epoch)
-
-        separations = [
-            angular_separation_arcsec(ra, dec, c_ra, c_dec)
-            for c_ra, c_dec, _ in corrected
-        ]
-        within = [i for i, sep in enumerate(separations) if sep <= radius_arcsec]
-        if not within:
+    for i, source in enumerate(sources):
+        row = separations[i]
+        within = np.nonzero(row <= radius_arcsec)[0]
+        if within.size == 0:
             continue
 
-        best = min(within, key=lambda i: separations[i])
+        best = int(within[np.argmin(row[within])])
+        _, _, moved_source = src_corrected[i]
         matches.append(Match(
             source=source,
             counterpart=counterparts[best],
-            separation_arcsec=separations[best],
-            competitors=len(within) - 1,
+            separation_arcsec=float(row[best]),
+            competitors=int(within.size) - 1,
             proper_motion_applied=moved_source or corrected[best][2],
         ))
 
     return matches
 
 
+def _resolve_anchor(by_survey: dict[str, list[SourceRef]],
+                    anchor_survey: str | None = None) -> tuple[str | None, str]:
+    """Choose a deterministic grouping anchor and record how it was chosen."""
+    if not by_survey:
+        return None, "empty"
+    if anchor_survey is not None and str(anchor_survey).strip():
+        requested = str(anchor_survey).strip()
+        matching = next((name for name in by_survey if name.casefold() == requested.casefold()), None)
+        if matching is None:
+            available = ", ".join(sorted(str(name) for name in by_survey)) or "none"
+            raise ValueError(f"anchor survey {requested!r} is not available; choose one of: {available}")
+        if not by_survey[matching]:
+            raise ValueError(f"anchor survey {matching!r} has no sources to anchor grouping")
+        return matching, "explicit"
+    # A lexical tie-break makes the default reproducible even when callers
+    # construct the input mapping in a different insertion order.
+    anchor = min(by_survey, key=lambda name: (-len(by_survey[name]), str(name).casefold(), str(name)))
+    return anchor, "largest_catalogue"
+
+
 def group_sources(by_survey: dict[str, list[SourceRef]],
                   radius_arcsec: float = DEFAULT_RADIUS_ARCSEC,
-                  epoch: float = DEFAULT_EPOCH) -> list[MatchGroup]:
+                  epoch: float | None = None,
+                  anchor_survey: str | None = None) -> list[MatchGroup]:
     """Cluster sources from several surveys into per-object groups.
 
-    The survey with the most detections anchors the grouping, so the largest
-    catalogue defines the object list and the others attach to it. Groups are
-    returned even when only one survey contributes, because "seen by only one
-    instrument" is itself information for the artifact assessment.
+    By default the survey with the most detections anchors the grouping, so
+    the largest catalogue defines the object list and the others attach to it.
+    ``anchor_survey`` makes that denominator explicit and reproducible for a
+    science run. Groups are returned even when only one survey contributes,
+    because "seen by only one instrument" is itself information for the
+    artifact assessment.
     """
     if not by_survey:
         return []
+    if epoch is None:
+        epoch = current_epoch()
 
-    anchor_survey = max(by_survey, key=lambda s: len(by_survey[s]))
+    anchor_survey, _ = _resolve_anchor(by_survey, anchor_survey)
+    if anchor_survey is None:
+        return []
     anchor_sources = by_survey[anchor_survey]
 
     groups = []
@@ -248,6 +325,15 @@ def _flag_blends(groups: list[MatchGroup], anchor_survey: str) -> None:
     usage: dict[tuple[str, str], int] = {}
     for group in groups:
         for survey, source in group.members.items():
+            # A coarse-beam survey is blended even when an explicit anchor
+            # policy makes it the anchor.  Otherwise reversing the grouping
+            # direction would turn the same TESS neighbourhood into resolved
+            # evidence merely because TESS had fewer rows in one run.
+            if (survey.upper() in PIXEL_SCALE_ARCSEC
+                    and PIXEL_SCALE_ARCSEC.get(survey.upper(), 1.0) >= COARSE_BEAM_ARCSEC
+                    and len(group.members) > 1):
+                group.blended.add(survey)
+
             if survey == anchor_survey:
                 continue
             key = (survey, source.object_id)
@@ -275,21 +361,24 @@ def _flag_blends(groups: list[MatchGroup], anchor_survey: str) -> None:
 
 
 def grouping_bias_report(by_survey: dict[str, list[SourceRef]],
-                         groups: list[MatchGroup] | None = None) -> dict:
+                         groups: list[MatchGroup] | None = None,
+                         anchor_survey: str | None = None) -> dict:
     """Quantify selection effects from the largest-catalogue anchor.
 
-    Grouping is intentionally anchored on the survey with the most rows, but
-    a report should make that choice visible instead of presenting the result
-    as an unbiased union.  The returned rates are descriptive diagnostics,
-    not corrected probabilities: callers can stratify acquisition or rerun
-    with a chosen anchor when a science claim depends on completeness.
+    Grouping defaults to the survey with the most rows, but a report should
+    make that choice visible instead of presenting the result as an unbiased
+    union. The returned rates are descriptive diagnostics, not corrected
+    probabilities: callers can stratify acquisition or rerun with a chosen
+    anchor when a science claim depends on completeness.
     """
     counts = {str(name): len(rows) for name, rows in by_survey.items()}
     if not counts:
         return {"anchor_survey": None, "survey_counts": {}, "groups": 0,
-                "anchor_share": None, "matched_share": {}}
-    anchor = max(counts, key=counts.get)
-    result_groups = groups if groups is not None else group_sources(by_survey)
+                "anchor_share": None, "matched_share": {},
+                "anchor_policy": "empty"}
+    anchor, policy = _resolve_anchor(by_survey, anchor_survey)
+    result_groups = groups if groups is not None else group_sources(
+        by_survey, anchor_survey=anchor_survey)
     matched_share = {
         survey: round(sum(1 for group in result_groups if survey in group.members)
                       / max(len(result_groups), 1), 4)
@@ -298,6 +387,8 @@ def grouping_bias_report(by_survey: dict[str, list[SourceRef]],
     total = sum(counts.values())
     return {
         "anchor_survey": anchor,
+        "anchor_policy": policy,
+        "requested_anchor_survey": anchor_survey,
         "survey_counts": counts,
         "groups": len(result_groups),
         "anchor_share": round(counts[anchor] / max(total, 1), 4),

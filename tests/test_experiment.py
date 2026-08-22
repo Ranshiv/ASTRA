@@ -207,3 +207,54 @@ class TestCompare:
     def test_unknown_experiment_is_skipped(self, tmp_path):
         result = experiment.compare(["EXP-9999"], "roc_auc", tmp_path)
         assert result["rows"] == []
+
+    def test_nested_metric_is_reachable_by_dotted_path(self, tmp_path):
+        """Stage B, sweep and ablation all nest their headline numbers.
+
+        A plain key lookup returned None for every one of them, which reads as
+        "no result" when it actually meant "looked at the top level only".
+        """
+        record = experiment.run(
+            "stage_b_injection_recovery", {},
+            lambda: {"aggregate": {"roc_auc": {"mean": 0.742, "std": 0.03}}},
+            root=tmp_path)
+        result = experiment.compare([record.provenance.experiment_id],
+                                    "aggregate.roc_auc.mean", tmp_path)
+
+        assert result["rows"][0]["value"] == pytest.approx(0.742)
+        assert result["best"]["value"] == pytest.approx(0.742)
+
+    def test_dotted_path_into_a_missing_branch_is_tolerated(self, tmp_path):
+        record = experiment.run("a", {}, lambda: {"aggregate": {}}, root=tmp_path)
+        result = experiment.compare([record.provenance.experiment_id],
+                                    "aggregate.roc_auc.mean", tmp_path)
+
+        assert result["rows"][0]["value"] is None
+        assert result["best"] is None
+
+    def test_boolean_results_are_not_ranked_as_numbers(self, tmp_path):
+        """`separated` is a flag; ranking True above an AUC would be nonsense."""
+        record = experiment.run("hyperparameter_sweep", {},
+                                lambda: {"separated": True}, root=tmp_path)
+        result = experiment.compare([record.provenance.experiment_id],
+                                    "separated", tmp_path)
+
+        assert result["best"] is None
+
+
+class TestIdAllocation:
+    def test_id_is_claimed_immediately_not_just_scanned(self, tmp_path):
+        """Two concurrent studies must not be handed the same identifier.
+
+        Jobs runs two at a time, so a scan-then-write would give both the same
+        id and let the second silently overwrite the first one's record.
+        """
+        first = experiment.next_experiment_id(tmp_path)
+        second = experiment.next_experiment_id(tmp_path)
+
+        assert first != second
+        assert (first, second) == ("EXP-0001", "EXP-0002")
+
+    def test_reserved_but_unwritten_ids_do_not_appear_as_experiments(self, tmp_path):
+        experiment.next_experiment_id(tmp_path)
+        assert experiment.list_experiments(tmp_path) == []

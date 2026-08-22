@@ -738,6 +738,40 @@ def _blend_assessment(*, ra_deg: float, dec_deg: float, target_pixel: tuple[floa
     else:
         risk = "unknown"
     total_ratio = sum(ratios)
+    # This is a photometric prior, not a PSF posterior: it expresses how much
+    # of the aperture's catalogued flux each known neighbour could contribute.
+    # Keeping it explicit lets downstream evidence weighting distinguish a
+    # useful source-attribution hint from resolved stellar confirmation.
+    attribution = []
+    target_fraction = 1.0 / (1.0 + total_ratio) if total_ratio >= 0 else None
+    if target_fraction is not None:
+        attribution.append({"object_id": "target", "flux_fraction": target_fraction,
+                            "kind": "target_prior"})
+    for entry in entries:
+        ratio = entry.get("relative_flux")
+        if ratio is not None and total_ratio >= 0:
+            entry["flux_fraction"] = float(ratio / (1.0 + total_ratio))
+            attribution.append({"object_id": entry.get("object_id"),
+                                "flux_fraction": entry["flux_fraction"],
+                                "kind": "neighbor_prior"})
+    prior_values = [float(item["flux_fraction"]) for item in attribution
+                    if isinstance(item.get("flux_fraction"), (int, float))]
+    prior_sum = float(sum(prior_values)) if prior_values else None
+    # A catalog-relative prior is not a PSF posterior.  Still expose its
+    # concentration and a sensitivity diagnostic so a reviewer can see how
+    # unstable the attribution is to plausible catalog flux perturbations.
+    uncertainty = None
+    if prior_values:
+        perturbations = []
+        for scale in (0.7, 1.0, 1.3):
+            scaled_total = sum(
+                (entry.get("relative_flux") or 0.0) * scale
+                for entry in entries if entry.get("relative_flux") is not None
+            )
+            perturbations.append(1.0 / (1.0 + scaled_total))
+        uncertainty = float(max(perturbations) - min(perturbations))
+    concentration = float(sum(value * value for value in prior_values)) if prior_values else None
+    attribution_quality = "informative" if prior_values and total_ratio > 0 else "uninformative"
     return {
         "resolved": False,
         "risk": risk,
@@ -748,6 +782,15 @@ def _blend_assessment(*, ra_deg: float, dec_deg: float, target_pixel: tuple[floa
         "neighbors_in_aperture": len(in_aperture),
         "contamination_fraction": (total_ratio / (1.0 + total_ratio)
                                     if ratios else None),
+        "source_attribution": attribution,
+        "attribution_method": "catalog_relative_flux_prior",
+        "attribution_diagnostics": {
+            "prior_sum": prior_sum,
+            "concentration_index": concentration,
+            "target_fraction_sensitivity": uncertainty,
+            "quality": attribution_quality,
+            "neighbor_flux_perturbation": [0.7, 1.0, 1.3],
+        },
         "neighbors": entries,
         "warning": "TESS aperture photometry is neighborhood flux; target-specific "
                    "confirmation requires pixel-level deblending/PSF modelling.",

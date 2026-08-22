@@ -26,11 +26,30 @@ export function SettingsView() {
 
   const dataset = usage.data?.dataset;
 
+  const SECTIONS = [
+    { id: "settings-readiness", label: "Readiness" },
+    { id: "settings-tns", label: "TNS credentials" },
+    { id: "settings-storage", label: "Storage" },
+    { id: "settings-paths", label: "Engine paths" },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
-      <Panel icon={KeyRound} title="Capability readiness" description="External gates are reported without exposing secrets or pretending unavailable resources are active.">
+      <nav aria-label="Settings sections" className="flex flex-wrap gap-2 text-xs">
+        {SECTIONS.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className="rounded-full border border-[var(--color-edge)] px-2.5 py-1 text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          >
+            {section.label}
+          </a>
+        ))}
+      </nav>
+
+      <Panel icon={KeyRound} title={<span id="settings-readiness">Capability readiness</span>} description="External gates are reported without exposing secrets or pretending unavailable resources are active.">
         {readiness.data ? <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded border border-[var(--color-edge)] p-2 text-xs"><p className="font-medium">Gaia epoch photometry</p><p className="mt-1 text-[var(--color-muted)]">{readiness.data.gaia_epoch.status} · expected {readiness.data.gaia_epoch.expected_release}</p></div>
+          <div className="rounded border border-[var(--color-edge)] p-2 text-xs"><p className="font-medium">Gaia epoch photometry</p><p className="mt-1 text-[var(--color-muted)]">{readiness.data.gaia_epoch.status} · expected {readiness.data.gaia_epoch.expected_release} · pipeline {readiness.data.gaia_epoch.code_ready ? "ready" : "not built"}</p></div>
           <div className="rounded border border-[var(--color-edge)] p-2 text-xs"><p className="font-medium">Multimodal training</p><p className="mt-1 text-[var(--color-muted)]">{readiness.data.multimodal.status} · {readiness.data.multimodal.free_vram_mb ?? "—"} MB free</p></div>
           <div className="rounded border border-[var(--color-edge)] p-2 text-xs"><p className="font-medium">Production release</p><p className="mt-1 text-[var(--color-muted)]">{readiness.data.release.status}</p></div>
         </div> : <Empty>{readiness.error ?? "Checking readiness…"}</Empty>}
@@ -38,7 +57,7 @@ export function SettingsView() {
 
       <Panel
         icon={KeyRound}
-        title="Transient Name Server credentials"
+        title={<span id="settings-tns">Transient Name Server credentials</span>}
         description="Optional. SIMBAD and VSX need no credentials; only TNS does."
         actions={
           <>
@@ -63,11 +82,11 @@ export function SettingsView() {
               icon={Trash2}
               disabled={credentials.busy}
               onClick={() =>
-                void credentials.run("Clearing stored credentials…", async () => {
+                void (window.confirm("Clear the stored TNS credentials? You will need to enter them again for TNS queries.") && credentials.run("Clearing stored credentials…", async () => {
                   const { cleared } = await engine.tnsCredentialsClear();
                   await catalog.reload();
                   return cleared ? "Credentials cleared." : "No credentials were stored.";
-                })
+                }))
               }
             >
               Clear
@@ -92,7 +111,7 @@ export function SettingsView() {
                   {catalog.data.tns_credentials.usable ? "usable" : "unusable"}
                 </Badge>
               )}
-              <span className="text-xs text-[var(--color-muted)]">
+              <span className="text-xs text-[var(--color-muted)]" title="The secure storage backend used for this credential.">
                 backend: {catalog.data.tns_credentials.backend}
               </span>
             </div>
@@ -121,7 +140,7 @@ export function SettingsView() {
 
       <Panel
         icon={HardDrive}
-        title="Storage"
+        title={<span id="settings-storage">Storage</span>}
         description="Existing data is never auto-evicted; acquisition reports capacity refusals instead."
         actions={
           <>
@@ -194,7 +213,7 @@ export function SettingsView() {
         </div>
       </Panel>
 
-      <Panel icon={Database} title="Engine paths" description="Where ASTRA keeps everything on this machine.">
+      <Panel icon={Database} title={<span id="settings-paths">Engine paths</span>} description="Where ASTRA keeps everything on this machine.">
         {paths.data ? (
           <KeyValue rows={Object.entries(paths.data).map(([key, value]) => [key, value])} />
         ) : (

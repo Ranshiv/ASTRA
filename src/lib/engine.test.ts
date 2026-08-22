@@ -60,6 +60,74 @@ describe("camelCase argument names", () => {
     });
   });
 
+  it("candidatesSpatial sends camelCase args to the right command", async () => {
+    invoke.mockResolvedValue({ points: [] });
+    await engine.candidatesSpatial("default", 200, "proj-1");
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_candidates_spatial");
+    expect(args).toMatchObject({ name: "default", top: 200, projectId: "proj-1" });
+  });
+
+  it("crossmatch sends an optional explicit anchor survey", async () => {
+    invoke.mockResolvedValue({ summary: {}, groups: [] });
+    await engine.crossmatch(2, "proj-1", "Gaia");
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_crossmatch");
+    expect(args).toMatchObject({ radiusArcsec: 2, projectId: "proj-1", anchorSurvey: "Gaia" });
+  });
+
+  it("pipeline forwards the anchor survey without changing defaults", async () => {
+    invoke.mockResolvedValue({ candidates: [], candidates_built: 0, output_path: "" });
+    await engine.pipeline("default", 200, "proj-1", "ZTF");
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_pipeline");
+    expect(args).toMatchObject({ name: "default", top: 200, projectId: "proj-1", anchorSurvey: "ZTF" });
+  });
+
+  it("gwEnrich sends camelCase args to the right command", async () => {
+    invoke.mockResolvedValue({ catalog: "GWTC-1-confident", events_checked: 0,
+                              candidates: 0, counts: {} });
+    await engine.gwEnrich("default", "GWTC-2-confident", 7, false, false, "proj-1");
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_gw_enrich");
+    expect(args).toMatchObject({
+      name: "default", catalog: "GWTC-2-confident", windowDays: 7, projectId: "proj-1",
+    });
+  });
+
+  it("gwEvents sends camelCase args to the right command", async () => {
+    invoke.mockResolvedValue({ catalog: "GWTC-1-confident", events: [] });
+    await engine.gwEvents("GWTC-3-confident", true);
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_gw_events");
+    expect(args).toMatchObject({ catalog: "GWTC-3-confident", refresh: true });
+  });
+
+  it("frbEnrich sends camelCase args to the right command", async () => {
+    invoke.mockResolvedValue({ bursts_checked: 0, candidates: 0, counts: {} });
+    await engine.frbEnrich("default", 2, 5, false, false, "proj-1");
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_frb_enrich");
+    expect(args).toMatchObject({
+      name: "default", windowDays: 2, sigmaThreshold: 5, projectId: "proj-1",
+    });
+  });
+
+  it("frbEvents sends camelCase args to the right command", async () => {
+    invoke.mockResolvedValue({ bursts: [] });
+    await engine.frbEvents(true);
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_frb_events");
+    expect(args).toMatchObject({ refresh: true });
+  });
+
   it("experimentCompare sends an id list and a metric", async () => {
     invoke.mockResolvedValue({ rows: [] });
     await engine.experimentCompare(["EXP-0001", "EXP-0002"], "average_precision");
@@ -68,6 +136,29 @@ describe("camelCase argument names", () => {
     expect(command).toBe("engine_experiment_compare");
     expect(args.experimentIds).toEqual(["EXP-0001", "EXP-0002"]);
     expect(args.metric).toBe("average_precision");
+  });
+
+  it("eventIngest sends packet fields in camelCase", async () => {
+    invoke.mockResolvedValue({ event_id: "evt" });
+    await engine.eventIngest({
+      provider: "gcn", payload: { event_id: "evt" },
+      packetId: "notice-1", packetVersion: "2", projectId: "proj-1",
+    });
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_event_ingest");
+    expect(args).toMatchObject({
+      provider: "gcn", packetId: "notice-1", packetVersion: "2", projectId: "proj-1",
+    });
+  });
+
+  it("significance calibration targets the dedicated command", async () => {
+    invoke.mockResolvedValue({ ready: true });
+    await engine.significanceCalibrate({ scores: [0.1, 0.9], projectId: "proj-1" });
+
+    const [command, args] = lastCall();
+    expect(command).toBe("engine_significance_calibrate");
+    expect(args).toMatchObject({ scores: [0.1, 0.9], name: "default", projectId: "proj-1" });
   });
 });
 

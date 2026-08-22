@@ -385,7 +385,7 @@ class TestTESSAuthorAndRelease:
         assert curve.source.extra["flux_error"] == "estimated_mad_differences"
 
     def test_gaia_epoch_fixture_validation_is_offline_and_bounded(self):
-        result = gaia.GaiaEpochAdapter.validate_rows([
+        result = gaia.GaiaEpochAdapter.validate_chunk([
             {"source_id": 1, "time": 2459000.1, "g_flux": 100.0, "g_flux_error": 2.0},
             {"source_id": 2, "time": 2459000.2, "g_flux": "bad", "g_flux_error": 2.0},
         ])

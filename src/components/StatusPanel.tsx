@@ -46,20 +46,23 @@ export function StatusStrip({
   error,
   curvesCount,
   candidatesCount,
+  onRetry,
 }: {
   device: DeviceReport | null;
   cache: CacheStatus | null;
   error: string | null;
   curvesCount?: number;
   candidatesCount?: number;
+  onRetry?: () => void;
 }) {
   if (error) {
     return (
-      <div className="flex items-start gap-3 rounded-lg border border-[var(--color-bad)]/40 bg-[var(--color-bad)]/5 p-4">
+      <div role="alert" className="flex items-start gap-3 rounded-lg border border-[var(--color-bad)]/40 bg-[var(--color-bad)]/5 p-4">
         <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[var(--color-bad)]" />
         <div>
           <p className="text-sm text-[var(--color-bad)]">Scientific engine unavailable</p>
           <p className="mt-1 font-mono text-xs text-[var(--color-muted)]">{error}</p>
+          {onRetry && <button type="button" onClick={onRetry} className="mt-3 min-h-9 rounded border border-[var(--color-bad)]/50 px-3 py-1.5 text-xs text-[var(--color-bad)] hover:bg-[var(--color-bad)]/10">Retry connection</button>}
         </div>
       </div>
     );
@@ -70,7 +73,13 @@ export function StatusStrip({
   const cachePressure = (cache?.usage_fraction ?? 0) > 0.8;
 
   return (
-    <div>
+    <details className="rounded-lg border border-[var(--color-edge)] bg-[var(--color-panel)]">
+      <summary className="cursor-pointer list-none px-3 py-2 text-sm text-[var(--color-muted)] marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
+        <span className="font-medium text-[var(--color-text)]">System status</span>
+        <span className="ml-2">{device ? `${device.device.toUpperCase()} engine` : "Starting engine…"}</span>
+        <span className="float-right text-xs">View details</span>
+      </summary>
+      <div className="border-t border-[var(--color-edge)] p-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Tile
           icon={Cpu}
@@ -85,35 +94,28 @@ export function StatusStrip({
           detail={device?.gpu?.name}
           tone={device ? gpuTone : "neutral"}
         />
-        {device?.gpu && (
-          <Tile
-            icon={Database}
-            label="VRAM free"
-            value={`${device.gpu.free_vram_mb} MB`}
-            detail={`of ${device.gpu.total_vram_mb} MB`}
-            tone={vramLow ? "warn" : "ok"}
-          />
-        )}
-        {cache && (
-          <Tile
-            icon={Database}
-            label="Cache"
-            value={`${cache.total_gb.toFixed(2)} GB`}
-            detail={`of ${cache.cap_gb.toFixed(0)} GB cap`}
-            tone={cachePressure ? "warn" : "ok"}
-          />
-        )}
-        {typeof curvesCount === "number" && (
-          <Tile icon={Activity} label="Light curves" value={curvesCount.toLocaleString()} tone="neutral" />
-        )}
-        {typeof candidatesCount === "number" && (
-          <Tile icon={ListChecks} label="Candidates" value={candidatesCount.toLocaleString()} tone="neutral" />
-        )}
+        <Tile
+          icon={Database}
+          label="VRAM free"
+          value={device?.gpu ? `${device.gpu.free_vram_mb} MB` : "Not available"}
+          detail={device?.gpu ? `of ${device.gpu.total_vram_mb} MB` : "CPU execution"}
+          tone={device?.gpu ? (vramLow ? "warn" : "ok") : "neutral"}
+        />
+        <Tile
+          icon={Database}
+          label="Cache"
+          value={cache ? `${cache.total_gb.toFixed(2)} GB` : "Starting…"}
+          detail={cache ? `of ${cache.cap_gb.toFixed(0)} GB cap` : "Reading storage"}
+          tone={cache ? (cachePressure ? "warn" : "ok") : "neutral"}
+        />
+        <Tile icon={Activity} label="Light curves" value={typeof curvesCount === "number" ? curvesCount.toLocaleString() : "Starting…"} tone="neutral" />
+        <Tile icon={ListChecks} label="Candidates" value={typeof candidatesCount === "number" ? candidatesCount.toLocaleString() : "Starting…"} tone="neutral" />
       </div>
 
       {device && (
         <p className="mt-2 text-xs leading-relaxed text-[var(--color-muted)]">{device.reason}</p>
       )}
-    </div>
+      </div>
+    </details>
   );
 }

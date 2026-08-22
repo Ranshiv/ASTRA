@@ -3,12 +3,17 @@
 //! The engine speaks one JSON object per line over stdin/stdout. A single
 //! mutex guards the pipes so concurrent Tauri commands cannot interleave a
 //! write with another request's read, which would desynchronise the stream.
+//! stdout is read by a dedicated background thread and relayed over a
+//! channel so `Engine::request` can wait for a reply with a timeout instead
+//! of blocking indefinitely -- a plain `read_line` has no way to time out.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -23,15 +28,32 @@ pub struct EngineResponse {
     pub error: Option<String>,
 }
 
+/// Bounds how long `Engine::request` waits for a reply. Generous enough for
+/// the heaviest known call (repeated-seed ablation, dozens of model fits),
+/// while still turning a genuinely wedged engine (e.g. a deadlocked worker
+/// pool) into a visible error instead of an unbounded hang that also blocks
+/// every other command behind the single request mutex.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(900);
+
 pub struct Engine {
     child: Mutex<Option<EngineProcess>>,
     next_id: AtomicU64,
 }
 
+/// One line read from the engine's stdout, or the reason none arrived.
+enum ReaderEvent {
+    Line(String),
+    Closed,
+    Error(String),
+}
+
 struct EngineProcess {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    /// Fed by a background thread that owns the stdout pipe, so `request`
+    /// can wait on it with a timeout instead of blocking on `read_line`
+    /// directly (a plain blocking read has no way to time out).
+    rx: mpsc::Receiver<ReaderEvent>,
 }
 
 impl Engine {
@@ -122,11 +144,32 @@ impl Engine {
         let stdin = child.stdin.take().ok_or("engine stdin unavailable")?;
         let stdout = child.stdout.take().ok_or("engine stdout unavailable")?;
 
-        Ok(EngineProcess {
-            child,
-            stdin,
-            stdout: BufReader::new(stdout),
-        })
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut reader = BufReader::new(stdout);
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) => {
+                        let _ = tx.send(ReaderEvent::Closed);
+                        break;
+                    }
+                    Ok(_) => {
+                        if tx.send(ReaderEvent::Line(line)).is_err() {
+                            // Receiver dropped: request() timed out and
+                            // abandoned this process. Nothing left to do.
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(ReaderEvent::Error(e.to_string()));
+                        break;
+                    }
+                }
+            }
+        });
+
+        Ok(EngineProcess { child, stdin, rx })
     }
 
     /// Send one request, lazily starting the engine on first use.
@@ -160,27 +203,44 @@ impl Engine {
             return Err(format!("engine flush failed: {e}"));
         }
 
-        let mut line = String::new();
-        let read = match process.stdout.read_line(&mut line) {
-            Ok(read) => read,
-            Err(e) => {
-                *guard = None;
-                return Err(format!("engine read failed: {e}"));
+        match process.rx.recv_timeout(REQUEST_TIMEOUT) {
+            Ok(ReaderEvent::Line(line)) => match parse_response(&line, id) {
+                Ok(response) => Ok(response),
+                Err(e) => {
+                    // A malformed line or an id mismatch means the stream is
+                    // desynced; there is no way to resynchronise it by
+                    // reading further, so treat it the same as a dead
+                    // process.
+                    *guard = None;
+                    Err(e)
+                }
+            },
+            Ok(ReaderEvent::Closed) => {
+                *guard = None; // engine died; next request respawns it
+                Err("engine closed the connection".into())
             }
-        };
-        if read == 0 {
-            *guard = None; // engine died; next request respawns it
-            return Err("engine closed the connection".into());
-        }
-
-        match parse_response(&line, id) {
-            Ok(response) => Ok(response),
-            Err(e) => {
-                // A malformed line or an id mismatch means the stream is
-                // desynced; there is no way to resynchronise it by reading
-                // further, so treat it the same as a dead process.
+            Ok(ReaderEvent::Error(e)) => {
                 *guard = None;
-                Err(e)
+                Err(format!("engine read failed: {e}"))
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // The engine is wedged (e.g. a deadlocked worker pool). Kill
+                // it rather than leaving the guard populated with a process
+                // that will never answer -- that would hang every later
+                // request behind this same mutex, indistinguishable from the
+                // app itself being frozen.
+                if let Some(mut dead) = guard.take() {
+                    let _ = dead.child.kill();
+                    let _ = dead.child.wait();
+                }
+                Err(format!(
+                    "engine request timed out after {}s; the engine was restarted",
+                    REQUEST_TIMEOUT.as_secs()
+                ))
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                *guard = None;
+                Err("engine reader thread exited unexpectedly".into())
             }
         }
     }

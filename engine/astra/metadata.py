@@ -11,7 +11,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 6
 
 
 def database_path(root: Path) -> Path:
@@ -78,6 +78,76 @@ def connect(root: Path) -> sqlite3.Connection:
       );
       CREATE INDEX IF NOT EXISTS idx_catalog_cache_lookup
         ON catalog_cache(provider, release, query_hash);
+      CREATE TABLE IF NOT EXISTS event_packets (
+        packet_key TEXT PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        packet_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        release TEXT NOT NULL,
+        packet_version TEXT NOT NULL,
+        event_time TEXT,
+        received_utc TEXT NOT NULL,
+        localization_json TEXT NOT NULL,
+        classifications_json TEXT NOT NULL,
+        related_ids_json TEXT NOT NULL,
+        raw_sha256 TEXT NOT NULL,
+        raw_path TEXT NOT NULL,
+        status TEXT NOT NULL,
+        project_id TEXT,
+        UNIQUE(provider, packet_id, packet_version)
+      );
+      CREATE INDEX IF NOT EXISTS idx_event_packets_event
+        ON event_packets(event_id, event_time);
+      CREATE INDEX IF NOT EXISTS idx_event_packets_provider
+        ON event_packets(provider, received_utc);
+      CREATE TABLE IF NOT EXISTS event_clusters (
+        event_id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        first_seen_utc TEXT NOT NULL,
+        last_seen_utc TEXT NOT NULL,
+        packet_count INTEGER NOT NULL DEFAULT 0,
+        packet_ids_json TEXT NOT NULL,
+        localization_json TEXT NOT NULL,
+        classifications_json TEXT NOT NULL,
+        project_id TEXT
+      );
+      CREATE TABLE IF NOT EXISTS literature_cache (
+        cache_key TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        release TEXT NOT NULL,
+        query_hash TEXT NOT NULL,
+        query_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        response_json TEXT,
+        error TEXT,
+        fetched_utc TEXT NOT NULL,
+        expires_utc TEXT NOT NULL,
+        accessed_utc TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_literature_cache_lookup
+        ON literature_cache(provider, release, query_hash);
+      CREATE TABLE IF NOT EXISTS tap_cache (
+        cache_key TEXT PRIMARY KEY,
+        service TEXT NOT NULL,
+        release TEXT NOT NULL,
+        query_hash TEXT NOT NULL,
+        query_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        response_json TEXT,
+        error TEXT,
+        fetched_utc TEXT NOT NULL,
+        expires_utc TEXT NOT NULL,
+        accessed_utc TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_tap_cache_lookup
+        ON tap_cache(service, release, query_hash);
+      CREATE TABLE IF NOT EXISTS alert_cursors (
+        provider TEXT PRIMARY KEY,
+        cursor TEXT,
+        packet_count INTEGER NOT NULL DEFAULT 0,
+        last_poll_utc TEXT,
+        last_error TEXT
+      );
     """)
     _add_missing_columns(db)
     db.execute("INSERT OR IGNORE INTO schema_migrations VALUES (?, ?)",
@@ -428,6 +498,271 @@ def put_catalog_cache(root: Path, *, cache_key: str, provider: str,
                     json.dumps(response, sort_keys=True) if response is not None else None,
                     error, fetched_utc, expires_utc, _now()))
         db.commit()
+
+
+def get_literature_cache(root: Path, cache_key: str) -> dict | None:
+    """Read one literature response and refresh its access timestamp."""
+    with connect(root) as db:
+        row = db.execute("SELECT * FROM literature_cache WHERE cache_key=?",
+                         (cache_key,)).fetchone()
+        if row is None:
+            return None
+        db.execute("UPDATE literature_cache SET accessed_utc=? WHERE cache_key=?",
+                   (_now(), cache_key))
+        db.commit()
+    return {
+        "cache_key": row["cache_key"], "provider": row["provider"],
+        "release": row["release"], "query_hash": row["query_hash"],
+        "query": json.loads(row["query_json"]), "status": row["status"],
+        "response": json.loads(row["response_json"]) if row["response_json"] else None,
+        "error": row["error"], "fetched_utc": row["fetched_utc"],
+        "expires_utc": row["expires_utc"], "accessed_utc": row["accessed_utc"],
+    }
+
+
+def put_literature_cache(root: Path, *, cache_key: str, provider: str,
+                         release: str, query_hash: str, query: dict,
+                         status: str, response: object | None, error: str | None,
+                         fetched_utc: str, expires_utc: str) -> None:
+    """Persist a literature response with explicit provider provenance."""
+    with connect(root) as db:
+        db.execute("""INSERT INTO literature_cache
+          (cache_key,provider,release,query_hash,query_json,status,response_json,
+           error,fetched_utc,expires_utc,accessed_utc)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(cache_key) DO UPDATE SET
+            provider=excluded.provider, release=excluded.release,
+            query_hash=excluded.query_hash, query_json=excluded.query_json,
+            status=excluded.status, response_json=excluded.response_json,
+            error=excluded.error, fetched_utc=excluded.fetched_utc,
+            expires_utc=excluded.expires_utc, accessed_utc=excluded.accessed_utc""",
+                   (cache_key, provider, release, query_hash,
+                    json.dumps(query, sort_keys=True, separators=(",", ":")),
+                    status, json.dumps(response, sort_keys=True) if response is not None else None,
+                    error, fetched_utc, expires_utc, _now()))
+        db.commit()
+
+
+def literature_cache_summary(root: Path) -> dict:
+    """Return cache counts for the literature status surface."""
+    with connect(root) as db:
+        rows = db.execute("""SELECT provider,status,COUNT(*) AS count,
+                                   MIN(expires_utc) AS earliest_expiry
+                              FROM literature_cache
+                          GROUP BY provider,status
+                          ORDER BY provider,status""").fetchall()
+    return {"entries": [dict(row) for row in rows],
+            "total": sum(int(row["count"]) for row in rows)}
+
+
+def get_tap_cache(root: Path, cache_key: str) -> dict | None:
+    with connect(root) as db:
+        row = db.execute("SELECT * FROM tap_cache WHERE cache_key=?", (cache_key,)).fetchone()
+        if row is None:
+            return None
+        db.execute("UPDATE tap_cache SET accessed_utc=? WHERE cache_key=?",
+                   (_now(), cache_key))
+        db.commit()
+    return {
+        "cache_key": row["cache_key"], "service": row["service"],
+        "release": row["release"], "query_hash": row["query_hash"],
+        "query": json.loads(row["query_json"]), "status": row["status"],
+        "response": json.loads(row["response_json"]) if row["response_json"] else None,
+        "error": row["error"], "fetched_utc": row["fetched_utc"],
+        "expires_utc": row["expires_utc"], "accessed_utc": row["accessed_utc"],
+    }
+
+
+def put_tap_cache(root: Path, *, cache_key: str, service: str, release: str,
+                  query_hash: str, query: dict, status: str, response: object | None,
+                  error: str | None, fetched_utc: str, expires_utc: str) -> None:
+    with connect(root) as db:
+        db.execute("""INSERT INTO tap_cache
+          (cache_key,service,release,query_hash,query_json,status,response_json,
+           error,fetched_utc,expires_utc,accessed_utc)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(cache_key) DO UPDATE SET
+            service=excluded.service, release=excluded.release,
+            query_hash=excluded.query_hash, query_json=excluded.query_json,
+            status=excluded.status, response_json=excluded.response_json,
+            error=excluded.error, fetched_utc=excluded.fetched_utc,
+            expires_utc=excluded.expires_utc, accessed_utc=excluded.accessed_utc""",
+                   (cache_key, service, release, query_hash,
+                    json.dumps(query, sort_keys=True, separators=(",", ":")),
+                    status, json.dumps(response, sort_keys=True) if response is not None else None,
+                    error, fetched_utc, expires_utc, _now()))
+        db.commit()
+
+
+def tap_cache_summary(root: Path) -> dict:
+    with connect(root) as db:
+        rows = db.execute("""SELECT service,status,COUNT(*) AS count,
+                                   MIN(expires_utc) AS earliest_expiry
+                              FROM tap_cache
+                          GROUP BY service,status
+                          ORDER BY service,status""").fetchall()
+    return {"entries": [dict(row) for row in rows],
+            "total": sum(int(row["count"]) for row in rows)}
+
+
+def get_alert_cursor(root: Path, provider: str) -> dict | None:
+    with connect(root) as db:
+        row = db.execute("SELECT * FROM alert_cursors WHERE provider=?", (provider,)).fetchone()
+    return dict(row) if row else None
+
+
+def put_alert_cursor(root: Path, provider: str, *, cursor: str | None,
+                     packet_count: int, last_poll_utc: str | None,
+                     last_error: str | None = None) -> None:
+    with connect(root) as db:
+        db.execute("""INSERT INTO alert_cursors(provider,cursor,packet_count,last_poll_utc,last_error)
+          VALUES (?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET
+            cursor=excluded.cursor, packet_count=excluded.packet_count,
+            last_poll_utc=excluded.last_poll_utc, last_error=excluded.last_error""",
+                   (provider, cursor, int(packet_count), last_poll_utc, last_error))
+        db.commit()
+
+
+def alert_cursor_summary(root: Path) -> list[dict]:
+    with connect(root) as db:
+        rows = db.execute("SELECT * FROM alert_cursors ORDER BY provider").fetchall()
+    return [dict(row) for row in rows]
+
+
+def put_event_packet(root: Path, packet: dict) -> dict:
+    """Index one immutable event packet and update its event cluster.
+
+    The raw packet is stored by :mod:`astra.events`; this table is only the
+    searchable, mutable index.  ``packet_key`` is content-addressed so a
+    replay or provider retry cannot create duplicate records.
+    """
+    packet_key = str(packet["packet_key"])
+    event_id = str(packet["event_id"])
+    packet_id = str(packet["packet_id"])
+    provider = str(packet["provider"])
+    release = str(packet.get("release", "unknown"))
+    packet_version = str(packet.get("packet_version", "1"))
+    received_utc = str(packet["received_utc"])
+    cluster_packet_id = f"{packet_id}@{packet_version}"
+    with connect(root) as db:
+        db.execute("""INSERT INTO event_packets
+          (packet_key,event_id,packet_id,provider,release,packet_version,
+           event_time,received_utc,localization_json,classifications_json,
+           related_ids_json,raw_sha256,raw_path,status,project_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(provider, packet_id, packet_version) DO UPDATE SET
+            packet_key=excluded.packet_key,event_id=excluded.event_id,
+            event_time=excluded.event_time,
+            localization_json=excluded.localization_json,
+            classifications_json=excluded.classifications_json,
+            related_ids_json=excluded.related_ids_json,
+            raw_sha256=excluded.raw_sha256,raw_path=excluded.raw_path,
+            status=excluded.status,project_id=excluded.project_id""", (
+            packet_key, event_id, packet_id, provider, release, packet_version,
+            packet.get("event_time"), received_utc,
+            json.dumps(packet.get("localization", {}), sort_keys=True),
+            json.dumps(packet.get("classifications", []), sort_keys=True),
+            json.dumps(packet.get("related_ids", []), sort_keys=True),
+            str(packet["raw_sha256"]), str(packet["raw_path"]),
+            str(packet.get("status", "received")), packet.get("project_id")))
+
+        existing = db.execute(
+            "SELECT packet_ids_json,first_seen_utc,last_seen_utc,provider "
+            "FROM event_clusters WHERE event_id=?", (event_id,)).fetchone()
+        if existing:
+            packet_ids = json.loads(existing["packet_ids_json"])
+            if cluster_packet_id not in packet_ids:
+                packet_ids.append(cluster_packet_id)
+            first_seen = min(existing["first_seen_utc"], received_utc)
+            last_seen = max(existing["last_seen_utc"], received_utc)
+            cluster_provider = existing["provider"]
+        else:
+            packet_ids = [cluster_packet_id]
+            first_seen = received_utc
+            last_seen = received_utc
+            cluster_provider = provider
+        db.execute("""INSERT INTO event_clusters
+          (event_id,provider,first_seen_utc,last_seen_utc,packet_count,
+           packet_ids_json,localization_json,classifications_json,project_id)
+          VALUES (?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(event_id) DO UPDATE SET
+            provider=excluded.provider,first_seen_utc=excluded.first_seen_utc,
+            last_seen_utc=excluded.last_seen_utc,packet_count=excluded.packet_count,
+            packet_ids_json=excluded.packet_ids_json,
+            localization_json=excluded.localization_json,
+            classifications_json=excluded.classifications_json""", (
+            event_id, cluster_provider, first_seen, last_seen, len(packet_ids),
+            json.dumps(packet_ids, sort_keys=True),
+            json.dumps(packet.get("localization", {}), sort_keys=True),
+            json.dumps(packet.get("classifications", []), sort_keys=True),
+            packet.get("project_id")))
+        db.execute("""INSERT INTO audit_events
+          (event_utc,action,subject,details_json) VALUES (?,?,?,?)""",
+                   (_now(), "event.packet", packet_key,
+                    json.dumps({"event_id": event_id, "provider": provider,
+                                "packet_id": packet_id}, sort_keys=True)))
+        db.commit()
+    return packet
+
+
+def _event_packet_row(row: sqlite3.Row) -> dict:
+    return {
+        "packet_key": row["packet_key"], "event_id": row["event_id"],
+        "packet_id": row["packet_id"], "provider": row["provider"],
+        "release": row["release"], "packet_version": row["packet_version"],
+        "event_time": row["event_time"], "received_utc": row["received_utc"],
+        "localization": json.loads(row["localization_json"]),
+        "classifications": json.loads(row["classifications_json"]),
+        "related_ids": json.loads(row["related_ids_json"]),
+        "raw_sha256": row["raw_sha256"], "raw_path": row["raw_path"],
+        "status": row["status"], "project_id": row["project_id"],
+    }
+
+
+def list_event_packets(root: Path, *, provider: str | None = None,
+                       event_id: str | None = None, limit: int = 500) -> list[dict]:
+    clauses: list[str] = []
+    params: list[object] = []
+    if provider:
+        clauses.append("provider=?")
+        params.append(provider)
+    if event_id:
+        clauses.append("event_id=?")
+        params.append(event_id)
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    with connect(root) as db:
+        rows = db.execute(
+            "SELECT * FROM event_packets" + where
+            + " ORDER BY received_utc DESC LIMIT ?", [*params, max(1, min(limit, 5000))]
+        ).fetchall()
+    return [_event_packet_row(row) for row in rows]
+
+
+def get_event_packet(root: Path, packet_key: str) -> dict | None:
+    with connect(root) as db:
+        row = db.execute("SELECT * FROM event_packets WHERE packet_key=?",
+                         (packet_key,)).fetchone()
+    return _event_packet_row(row) if row else None
+
+
+def list_event_clusters(root: Path, *, provider: str | None = None,
+                        limit: int = 500) -> list[dict]:
+    clause = " WHERE provider=?" if provider else ""
+    params: list[object] = [provider] if provider else []
+    with connect(root) as db:
+        rows = db.execute(
+            "SELECT * FROM event_clusters" + clause
+            + " ORDER BY last_seen_utc DESC LIMIT ?",
+            [*params, max(1, min(limit, 5000))]).fetchall()
+    return [{
+        "event_id": row["event_id"], "provider": row["provider"],
+        "first_seen_utc": row["first_seen_utc"], "last_seen_utc": row["last_seen_utc"],
+        "packet_count": int(row["packet_count"]),
+        "packet_ids": json.loads(row["packet_ids_json"]),
+        "localization": json.loads(row["localization_json"]),
+        "classifications": json.loads(row["classifications_json"]),
+        "project_id": row["project_id"],
+    } for row in rows]
 
 
 def catalog_cache_summary(root: Path) -> dict:

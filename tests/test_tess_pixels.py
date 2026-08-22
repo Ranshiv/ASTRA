@@ -155,6 +155,10 @@ def test_photometry_filters_quality_reports_blend_and_uses_finite_fallback(tmp_p
     assert result["points"] == 11
     assert np.all(np.isfinite(result["flux_err"]))
     assert result["blend"]["risk"] == "high"
+    assert result["blend"]["source_attribution"]
+    assert result["blend"]["attribution_method"] == "catalog_relative_flux_prior"
+    assert result["blend"]["attribution_diagnostics"]["quality"] == "informative"
+    assert result["blend"]["attribution_diagnostics"]["target_fraction_sensitivity"] >= 0
     assert result["sector"] is None
     payload = tess_pixels.json_payload(result, max_points=3)
     json.dumps(payload, allow_nan=False)

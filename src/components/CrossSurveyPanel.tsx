@@ -9,9 +9,10 @@
  * is not the same number as 0.70 from all of it.
  */
 import { Link2, Radar } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { engine, type CrossSurveyProfile } from "@/lib/engine";
-import { Badge, Button, Empty, KeyValue, Note, Panel, Table, num, useAsync } from "@/components/ui";
+import { Badge, Button, Empty, KeyValue, Note, Panel, Select, Table, num, useAsync } from "@/components/ui";
 
 export function SurveyViews({ profile }: { profile: CrossSurveyProfile }) {
   return (
@@ -95,8 +96,22 @@ export function SurveyViews({ profile }: { profile: CrossSurveyProfile }) {
 }
 
 export function CrossSurveyPanel({ projectId }: { projectId?: string }) {
-  const groups = useAsync(() => engine.crossmatch(undefined, projectId));
-  const profiles = useAsync(() => engine.profiles(undefined, undefined, projectId));
+  const [anchorSurvey, setAnchorSurvey] = useState("");
+  const groups = useAsync(
+    () => engine.crossmatch(undefined, projectId, anchorSurvey || undefined),
+    [projectId, anchorSurvey],
+  );
+  const profiles = useAsync(
+    () => engine.profiles(undefined, undefined, projectId, anchorSurvey || undefined),
+    [projectId, anchorSurvey],
+  );
+  const anchorOptions = useMemo(() => {
+    const counts = groups.data?.summary.grouping_bias?.survey_counts ?? {};
+    return [
+      { value: "", label: "Automatic · largest catalogue" },
+      ...Object.keys(counts).sort().map((survey) => ({ value: survey, label: `Explicit · ${survey}` })),
+    ];
+  }, [groups.data]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -104,8 +119,21 @@ export function CrossSurveyPanel({ projectId }: { projectId?: string }) {
         icon={Link2}
         title="Cross-survey matching"
         description="Positional grouping of every stored source, proper-motion aware."
-        actions={<Button onClick={() => void groups.reload()}>Refresh</Button>}
+        actions={<Button onClick={() => { void groups.reload(); void profiles.reload(); }}>Refresh</Button>}
       >
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <Select
+            label="Grouping anchor"
+            value={anchorSurvey}
+            options={anchorOptions}
+            onChange={setAnchorSurvey}
+          />
+          <Note>
+            {anchorSurvey
+              ? `Reproducible population anchored on ${anchorSurvey}.`
+              : "Default uses the largest catalogue; ties are resolved lexically."}
+          </Note>
+        </div>
         {groups.error && <Note tone="bad">{groups.error}</Note>}
         {groups.data && (
           <>

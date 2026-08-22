@@ -5,7 +5,7 @@
  * is too small the engine reports the shortfall instead of a number, and this
  * view shows the shortfall rather than hiding an empty table.
  */
-import { Download, FileText, ListChecks, Package } from "lucide-react";
+import { Copy, Download, FileText, ListChecks, Package } from "lucide-react";
 import { useState } from "react";
 
 import { engine, type ReviewEvaluation } from "@/lib/engine";
@@ -20,6 +20,15 @@ export function ReportsView({ projectId }: { projectId?: string }) {
   const [exported, setExported] = useState<Array<{ format: string; path: string; count: number }>>([]);
   const [review, setReview] = useState<ReviewEvaluation | null>(null);
   const action = useAction();
+
+  async function copyText(value: string, label: string) {
+    try {
+      await navigator.clipboard?.writeText(value);
+      action.setStatus(`${label} copied.`);
+    } catch {
+      action.setStatus(`Could not copy ${label.toLowerCase()}.`);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -55,13 +64,16 @@ export function ReportsView({ projectId }: { projectId?: string }) {
         {exported.length === 0 ? (
           <Empty>Exports are written into the project's reports directory.</Empty>
         ) : (
-          <Table head={["Format", "Candidates", "Path"]}>
+          <Table caption="Candidate exports" head={["Format", "Candidates", "Path"]}>
             {exported.map((item) => (
               <tr key={item.format} className="border-b border-[var(--color-edge)]/50">
                 <td className="px-2 py-1.5 uppercase">{item.format}</td>
                 <td className="px-2 py-1.5">{item.count}</td>
                 <td className="px-2 py-1.5 break-all font-mono text-[var(--color-accent)]">
-                  {item.path}
+                  <div className="flex items-center gap-2">
+                    <span>{item.path}</span>
+                    <button type="button" onClick={() => void copyText(item.path, "Export path")} aria-label={`Copy ${item.format.toUpperCase()} export path`} className="shrink-0 rounded p-1 text-[var(--color-muted)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-text)]"><Copy size={12} /></button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -72,7 +84,7 @@ export function ReportsView({ projectId }: { projectId?: string }) {
       <Panel
         icon={ListChecks}
         title="Human review"
-        description="Plan section 22's labels, and what they support."
+        description="Check whether the saved labels are sufficient for trustworthy evaluation metrics."
         actions={
           <Button
             onClick={() =>
@@ -134,7 +146,7 @@ export function ReportsView({ projectId }: { projectId?: string }) {
         {(manifests.data?.length ?? 0) === 0 ? (
           <Empty>No acquisitions recorded yet.</Empty>
         ) : (
-          <Table head={["Dataset", "Acquired", "Surveys", "Objects", "Content hash"]}>
+          <Table caption="Acquired dataset manifests" head={["Dataset", "Acquired", "Surveys", "Objects", "Content hash"]}>
             {manifests.data!.map((item) => (
               <tr key={item.dataset_id} className="border-b border-[var(--color-edge)]/50">
                 <td className="px-2 py-1.5 font-mono">{item.dataset_id}</td>
@@ -142,7 +154,10 @@ export function ReportsView({ projectId }: { projectId?: string }) {
                 <td className="px-2 py-1.5">{item.surveys.join(", ")}</td>
                 <td className="px-2 py-1.5">{item.objects.toLocaleString()}</td>
                 <td className="px-2 py-1.5 font-mono text-[var(--color-muted)]">
-                  {item.content_hash?.slice(0, 16)}
+                  <div className="flex items-center gap-2">
+                    <span title={item.content_hash}>{item.content_hash?.slice(0, 16)}…</span>
+                    {item.content_hash && <button type="button" onClick={() => void copyText(item.content_hash!, "Content hash")} aria-label={`Copy full hash for ${item.dataset_id}`} className="shrink-0 rounded p-1 text-[var(--color-muted)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-text)]"><Copy size={12} /></button>}
+                  </div>
                 </td>
               </tr>
             ))}

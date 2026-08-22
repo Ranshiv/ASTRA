@@ -1,8 +1,13 @@
-"""Versioned optional image/spectral feature sidecar tables.
+"""Versioned optional image/spectral/multiband feature sidecar tables.
 
-The baseline light-curve matrix intentionally remains stable and dense. Image
-and spectral extraction is sparse and product-dependent, so these features are
-stored as keyed Parquet sidecars and joined explicitly by research jobs.
+The baseline light-curve matrix intentionally remains stable and dense. Image,
+spectral, and multiband-period extraction are all sparse and product- or
+group-dependent, so these features are stored as keyed Parquet sidecars and
+joined explicitly by research jobs. A multiband sidecar row spans a *group*
+of bands for one object rather than one curve, so it is written under the
+sentinel band key "__multiband__" (see multiband.py) rather than needing a
+change to KEY_COLUMNS, which image/spectral sidecars already in production
+share.
 """
 
 from __future__ import annotations
@@ -45,8 +50,8 @@ class SidecarTable:
 
 def _safe_kind(kind: str) -> str:
     value = str(kind).strip().lower()
-    if value not in {"image", "spectral"}:
-        raise ValueError("sidecar kind must be image or spectral")
+    if value not in {"image", "spectral", "multiband"}:
+        raise ValueError("sidecar kind must be image, spectral, or multiband")
     return value
 
 

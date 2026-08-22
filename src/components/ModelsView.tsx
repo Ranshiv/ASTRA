@@ -72,6 +72,7 @@ export function ModelsView({ projectId }: { projectId?: string }) {
             <Button
               icon={Layers}
               disabled={features.busy}
+              tone="accent"
               onClick={() =>
                 void features.run("Extracting features across the store…", async () => {
                   const result = await engine.featuresBuild(matrixName, survey || undefined);
@@ -177,6 +178,7 @@ export function ModelsView({ projectId }: { projectId?: string }) {
             <Button
               icon={Sparkles}
               disabled={supervised.busy}
+              tone="accent"
               onClick={() =>
                 void supervised.run("Checking the label gate and fitting…", async () => {
                   const result = await engine.rankerTrain();
@@ -217,6 +219,7 @@ export function ModelsView({ projectId }: { projectId?: string }) {
             )}
           </div>
         )}
+        {rankers.error && <Note tone="bad">{rankers.error}</Note>}
         {(rankers.data?.length ?? 0) === 0 ? (
           <Empty>No ranker models saved.</Empty>
         ) : (
@@ -258,6 +261,7 @@ export function ModelsView({ projectId }: { projectId?: string }) {
             <Button
               icon={Brain}
               disabled={deep.busy}
+              tone="accent"
               onClick={() =>
                 void runDeep("Training; minutes, not seconds…", async () => {
                   const report = await engine.deepTrain(

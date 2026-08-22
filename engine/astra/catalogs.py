@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -131,6 +132,7 @@ def _is_simbad_variable(otype: str | None) -> bool:
 def _fetch_simbad(query: CatalogQuery) -> list[dict]:
     from astropy import units as u
     from astropy.coordinates import SkyCoord
+    from astroquery.exceptions import NoResultsWarning
     from astroquery.simbad import Simbad
 
     client = Simbad()
@@ -140,10 +142,15 @@ def _fetch_simbad(query: CatalogQuery) -> list[dict]:
     except Exception:
         # Older/newer astroquery versions can already include this field.
         pass
-    table = client.query_region(
-        SkyCoord(query.ra_deg, query.dec_deg, unit="deg", frame="icrs"),
-        radius=query.radius_arcsec * u.arcsec,
-    )
+    # SIMBAD uses a warning for an ordinary empty cone.  That is scientific
+    # evidence (`no_match`), not an operational fault; keep the expected empty
+    # result quiet while allowing all other warnings and exceptions through.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=NoResultsWarning)
+        table = client.query_region(
+            SkyCoord(query.ra_deg, query.dec_deg, unit="deg", frame="icrs"),
+            radius=query.radius_arcsec * u.arcsec,
+        )
     if table is None:
         return []
     return [{

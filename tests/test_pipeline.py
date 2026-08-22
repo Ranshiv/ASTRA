@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from astra import evidence, pipeline, store
+from astra import evidence, metadata, pipeline, store
 from astra.surveys.base import LightCurve, SourceRef
 
 
@@ -112,6 +112,15 @@ class TestPipelineResultsAreUnchanged:
             assert np.isfinite(candidate.dec_deg)
             assert 179.0 < candidate.ra_deg < 181.0
 
+    def test_candidates_carry_non_ranking_significance_context(self, populated_store):
+        built, _ = pipeline.run(survey_names=["ztf"])
+
+        assert built
+        for candidate in built:
+            assert candidate.significance["method"] == "empirical_cdf"
+            assert candidate.significance["ready"] is False or 0.0 <= candidate.significance["tail_probability"] <= 1.0
+            assert candidate.evidence_completeness["resolved_surveys"] >= 1
+
     def test_consolidation_preserves_the_ranking(self, populated_store):
         """The 9x speedup was validated by an identical top candidate; the
         same check guards the consolidation that followed it."""
@@ -130,3 +139,15 @@ class TestPipelineResultsAreUnchanged:
         assert report.rows_by_survey["ZTF"] == 8
         assert report.candidates_built > 0
         assert report.output_path
+
+    def test_report_records_explicit_crossmatch_anchor(self, populated_store, isolated_root):
+        metadata.upsert_sources(isolated_root.projects, [{
+            "source_key": "Gaia/dr3/anchor", "survey": "Gaia", "release": "dr3",
+            "object_id": "anchor", "ra_deg": 180.0, "dec_deg": 22.0,
+            "extra": {},
+        }])
+        _, report = pipeline.run(survey_names=["ztf"], anchor_survey="Gaia")
+
+        assert report.anchor_survey == "Gaia"
+        assert report.anchor_policy == "explicit"
+        assert report.cross_survey_groups == 1

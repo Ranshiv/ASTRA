@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import os
-from datetime import date
 
 from . import hardware, surveys
+from .surveys.gaia import DR4_EXPECTED_RELEASE
 
-GAIA_DR4_EXPECTED = date(2026, 12, 2)
 MULTIMODAL_MIN_FREE_VRAM_MB = 8192
 
 
@@ -22,8 +21,15 @@ def status() -> dict:
     return {
         "gaia_epoch": {
             "status": "awaiting_dr4_contract",
-            "expected_release": GAIA_DR4_EXPECTED.isoformat(),
+            "expected_release": DR4_EXPECTED_RELEASE,
             "enabled": False,
+            # code_ready is distinct from enabled: it means the chunked,
+            # checkpointed ingestion pipeline (surveys/gaia_epoch.py) exists
+            # in code and is tested against offline fixtures. `enabled`
+            # stays False regardless -- that is the external DR4-access gate
+            # (schema, credentials, quota all unverified) and does not move
+            # just because the code is ready to use it.
+            "code_ready": True,
             "reason": "DR3 is static context; live epoch ingestion stays disabled until the DR4 schema, access terms, and quota are verified.",
         },
         "multimodal": {

@@ -243,6 +243,71 @@ def benchmark_array_ops(size: int = 2_000_000, repeats: int = 3) -> dict:
     return results
 
 
+def benchmark_periodogram(n: int = 350, baseline_days: float = 2740.0,
+                          repeats: int = 1) -> dict:
+    """Compare the CPU (approximate) and GPU (exact) periodogram backends.
+
+    Sized to the real ZTF-scale case measured elsewhere: ~350 points over a
+    2740-day baseline searches roughly 270,000 frequencies, and Lomb-Scargle
+    is 98.3% of feature-extraction time on it. Unlike `benchmark_array_ops`,
+    which correctly found bandwidth-bound array work loses to the PCIe round
+    trip, a periodogram expands a few hundred points into hundreds of
+    thousands of frequency evaluations -- compute-bound, not transfer-bound --
+    which is why this one is expected to win.
+    """
+    from astropy.timeseries import LombScargle
+
+    from . import features as features_mod
+    from . import gpu_periodogram
+
+    rng = np.random.default_rng(0)
+    curve_time = np.sort(rng.uniform(0, baseline_days, n))
+    curve_value = 18.0 + 0.4 * np.sin(2 * np.pi * curve_time / 2.5)         + rng.normal(0, 0.05, n)
+    curve_err = np.full(n, 0.05)
+
+    model = LombScargle(curve_time, curve_value, np.clip(curve_err, 1e-12, None))
+    max_period = baseline_days * features_mod.MAX_PERIOD_FRACTION
+    frequency = model.autofrequency(
+        minimum_frequency=1.0 / max_period,
+        maximum_frequency=1.0 / features_mod.MIN_PERIOD_DAYS,
+        samples_per_peak=features_mod.SAMPLES_PER_PEAK,
+    )
+
+    def time_it(fn) -> float:
+        fn()  # warm up (also pays one-time NVRTC compilation for the GPU path)
+        started = time.perf_counter()
+        for _ in range(repeats):
+            fn()
+        return (time.perf_counter() - started) / repeats
+
+    results: dict = {"n": n, "baseline_days": baseline_days,
+                     "frequencies": int(frequency.size), "cpu": {}, "gpu": {}}
+    results["cpu"]["fast_seconds"] = time_it(
+        lambda: model.power(frequency, method="fast"))
+
+    ok, reason = gpu_periodogram.available()
+    if not ok:
+        results["gpu"]["error"] = reason
+        return results
+
+    try:
+        results["gpu"]["exact_seconds"] = time_it(
+            lambda: gpu_periodogram.power(curve_time, curve_value, curve_err,
+                                          frequency))
+    except Exception as exc:  # noqa: BLE001 - a benchmark must not crash a probe
+        results["gpu"]["error"] = str(exc)
+        return results
+
+    cpu_seconds = results["cpu"]["fast_seconds"]
+    gpu_seconds = results["gpu"]["exact_seconds"]
+    results["speedup"] = round(cpu_seconds / gpu_seconds, 2) if gpu_seconds > 0 else None
+    results["verdict"] = (
+        f"CPU (approximate) {cpu_seconds * 1000:.1f} ms vs "
+        f"GPU (exact) {gpu_seconds * 1000:.1f} ms"
+    )
+    return results
+
+
 def gpu_memory_report() -> dict:
     """What the GPU is actually holding, if there is one."""
     try:
@@ -272,5 +337,6 @@ def run_all(limit: int = 100) -> dict:
         "feature_extraction": profile_feature_extraction(limit).to_dict(),
         "pipeline_stages": profile_pipeline_stages().to_dict(),
         "array_ops": benchmark_array_ops(),
+        "periodogram": benchmark_periodogram(),
         "gpu": gpu_memory_report(),
     }

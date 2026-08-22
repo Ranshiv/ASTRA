@@ -32,6 +32,35 @@ class TestSeparation:
         assert high == pytest.approx(equator * 0.5, rel=0.01)
 
 
+class TestCurrentEpoch:
+    def test_returns_a_fractional_julian_year_near_now(self):
+        import datetime as dt
+
+        epoch = crossmatch.current_epoch()
+        now_year = dt.datetime.now(dt.timezone.utc).year
+        assert now_year <= epoch < now_year + 1
+
+    def test_epoch_corrected_defaults_to_current_epoch_not_a_fixed_year(self, monkeypatch):
+        monkeypatch.setattr(crossmatch, "current_epoch", lambda: 2030.0)
+        source = src("Gaia", "g1", 10.0, 20.0, pmra=0.0, pmdec=1000.0)
+
+        _, dec, moved = crossmatch.epoch_corrected(source)
+
+        assert moved is True
+        years = 2030.0 - crossmatch.GAIA_EPOCH
+        assert (dec - 20.0) * 3600 == pytest.approx(1000.0 * years / 1000.0, rel=1e-6)
+
+    def test_match_catalogs_defaults_epoch_to_current_epoch(self, monkeypatch):
+        monkeypatch.setattr(crossmatch, "current_epoch", lambda: crossmatch.GAIA_EPOCH)
+        a = [src("ZTF", "z1", 10.0, 20.0)]
+        b = [src("Gaia", "g1", 10.0, 20.0, pmra=0.0, pmdec=0.0)]
+
+        matches = crossmatch.match_catalogs(a, b, radius_arcsec=2.0)
+
+        assert len(matches) == 1
+        assert matches[0].proper_motion_applied is False
+
+
 class TestProperMotion:
     def test_no_motion_leaves_the_position_alone(self):
         ra, dec = crossmatch.propagate_position(10.0, 20.0, None, None,
@@ -150,6 +179,29 @@ class TestGrouping:
         assert report["anchor_survey"] == "ZTF"
         assert report["survey_counts"] == {"ZTF": 2, "Gaia": 1}
         assert "selection function" in report["warning"]
+
+    def test_explicit_anchor_changes_population_and_is_reported(self):
+        sources = {
+            "ZTF": [src("ZTF", "z1", 10.0, 20.0), src("ZTF", "z2", 11.0, 21.0)],
+            "Gaia": [src("Gaia", "g1", 10.0, 20.0)],
+        }
+        groups = crossmatch.group_sources(sources, anchor_survey="gaia")
+        assert len(groups) == 1
+        assert groups[0].members["Gaia"].object_id == "g1"
+        report = crossmatch.grouping_bias_report(sources, groups,
+                                                 anchor_survey="gaia")
+        assert report["anchor_survey"] == "Gaia"
+        assert report["anchor_policy"] == "explicit"
+        assert report["requested_anchor_survey"] == "gaia"
+
+    def test_anchor_ties_are_deterministic_and_unknown_anchor_is_rejected(self):
+        first = {"ZTF": [src("ZTF", "z", 1.0, 1.0)],
+                 "Gaia": [src("Gaia", "g", 2.0, 2.0)]}
+        second = {"Gaia": first["Gaia"], "ZTF": first["ZTF"]}
+        assert crossmatch.grouping_bias_report(first)["anchor_survey"] == "Gaia"
+        assert crossmatch.grouping_bias_report(second)["anchor_survey"] == "Gaia"
+        with pytest.raises(ValueError, match="not available"):
+            crossmatch.group_sources(first, anchor_survey="TESS")
 
 
 class TestBlending:
@@ -420,6 +472,33 @@ class TestAmplitudeAgreement:
 
         assert profile.weight_used == pytest.approx(1.0)
         assert "amplitude_agreement" in profile.components
+
+    def test_serialised_profile_carries_each_component_s_contribution(self):
+        """A raw component score cannot be ranked without its weight.
+
+        0.9 at weight 0.09 moves the consistency less than 0.5 at weight 0.27,
+        so a reader given only `components` would order them backwards.
+        """
+        profile = evidence.score_profile(evidence.CrossSurveyProfile(
+            views=[self._view("ZTF", "g", 0.4), self._view("PTF", "g", 0.4)],
+            separations_arcsec={"ZTF": 0.0, "PTF": 0.3}))
+        payload = profile.to_dict()
+
+        assert set(payload["weighted"]) == set(payload["components"])
+        for name, value in payload["components"].items():
+            assert payload["weights"][name] == evidence.WEIGHTS[name]
+            assert payload["weighted"][name] == pytest.approx(
+                evidence.WEIGHTS[name] * value, abs=1e-4)
+
+    def test_serialised_weights_omit_components_that_carry_none(self):
+        """Only weighted components belong in the contribution table."""
+        profile = evidence.CrossSurveyProfile(
+            components={"independent_detection": 0.5, "not_a_weighted_thing": 1.0})
+        payload = profile.to_dict()
+
+        assert "not_a_weighted_thing" in payload["components"]
+        assert "not_a_weighted_thing" not in payload["weights"]
+        assert "not_a_weighted_thing" not in payload["weighted"]
 
     def test_disagreeing_amplitudes_lower_the_consistency(self):
         agree = evidence.score_profile(evidence.CrossSurveyProfile(

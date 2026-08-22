@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ai-research-explore": {
+      "source": "lllllllama/rigorpilot-skills",
+      "sourceType": "github",
+      "skillPath": "skills/ai-research-explore/SKILL.md",
+      "computedHash": "240bafb8b526f01bea1f03aeb817a4985df9e70a4271e11297e5fbebf19db2d5"
+    }
+  }
+}

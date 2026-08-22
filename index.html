@@ -5,16 +5,49 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASTRA — Astronomical Survey &amp; Transient Research Analyzer</title>
+    <style>
+      @keyframes astra-blink {
+        50% { opacity: 0; }
+      }
+      @keyframes astra-fade-in {
+        from { opacity: 0; }
+        to { opacity: 0.65; }
+      }
+      .astra-boot {
+        font-family: ui-monospace, "Cascadia Code", "Consolas", "SFMono-Regular", Menlo, monospace;
+        font-size: 0.9rem;
+        line-height: 1.7;
+      }
+      .astra-boot .astra-prompt {
+        color: #6ea8ff;
+      }
+      .astra-cursor {
+        display: inline-block;
+        color: #6ea8ff;
+        animation: astra-blink 1s steps(1) infinite;
+      }
+      .astra-hint {
+        opacity: 0;
+        margin: 1.25rem 0 0;
+        color: #6b7590;
+        font-size: 0.8rem;
+        animation: astra-fade-in 0.6s ease 3.2s forwards;
+      }
+    </style>
   </head>
 
   <body style="margin: 0; background: #06070d;">
     <div id="root" role="status" aria-live="polite">
-      <main style="max-width: 48rem; margin: 4rem auto; padding: 0 2rem; font-family: system-ui, sans-serif; color: #d8dce8;">
-        <h1>Starting ASTRA…</h1>
-        <p>The scientific workspace is loading.</p>
-        <p>If this message remains, restart the app and report the startup error.</p>
+      <main style="display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 2rem; box-sizing: border-box;">
+        <div class="astra-boot" style="width: 100%; max-width: 34rem; padding: 1.25rem 1.5rem; border: 1px solid #1c2030; border-radius: 0.5rem; background: #0e1018; color: #d8dce8;">
+          <p style="margin: 0;"><span class="astra-prompt">&gt;</span> Starting ASTRA…</p>
+          <p style="margin: 0;"><span class="astra-prompt">&gt;</span> Loading the scientific workspace…</p>
+          <p style="margin: 0;"><span class="astra-cursor">_</span></p>
+          <p class="astra-hint">If this message remains, restart the app and report the startup error.</p>
+        </div>
       </main>
     </div>
+    <script type="module" src="/src/reveal-window.ts"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

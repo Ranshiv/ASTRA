@@ -122,6 +122,71 @@ class TestRepeatedAblation:
         assert result["feature_groups"]["rows"][0]["roc_auc"]["mean"] == pytest.approx(0.605)
         assert (isolated_root.projects / "experiments" / f"{result['experiment_id']}.json").exists()
 
+    def test_completed_seeds_are_not_recomputed_on_resume(self, isolated_root, monkeypatch):
+        """A twenty-seed run that dies on seed nineteen must keep the nineteen."""
+        calls: list[int] = []
+
+        def counting_study(kind):
+            def build(_fraction, seed, survey=None):
+                calls.append(seed)
+                return AblationStudy(kind, [
+                    AblationRow("baseline", 0.60 + seed / 1000, 0.50),
+                ], baseline="baseline")
+            return build
+
+        for name in ("survey_ablation", "feature_ablation", "detector_ablation"):
+            monkeypatch.setattr(ablation, name, counting_study(name))
+
+        first = ablation.run_repeated(fraction=0.2, seeds=(3, 7))
+        assert first["resumed"] is False
+        after_first = len(calls)
+
+        second = ablation.run_repeated(fraction=0.2, seeds=(3, 7))
+
+        assert second["resumed"] is True
+        assert len(calls) == after_first  # nothing recomputed
+        assert second["survey_groups"] == first["survey_groups"]
+
+    def test_a_different_configuration_does_not_resume_the_old_one(
+            self, isolated_root, monkeypatch):
+        """Resuming across a changed fraction would blend two populations."""
+        def fake_study(kind):
+            def build(_fraction, seed, survey=None):
+                return AblationStudy(kind, [
+                    AblationRow("baseline", 0.60 + seed / 1000, 0.50),
+                ], baseline="baseline")
+            return build
+
+        for name in ("survey_ablation", "feature_ablation", "detector_ablation"):
+            monkeypatch.setattr(ablation, name, fake_study(name))
+
+        ablation.run_repeated(fraction=0.2, seeds=(3, 7))
+        changed = ablation.run_repeated(fraction=0.4, seeds=(3, 7))
+
+        assert changed["resumed"] is False
+
+
+class TestAblationRoundTrip:
+    def test_study_survives_serialisation(self):
+        """Checkpoint resume rebuilds studies, so the round trip must hold."""
+        study = AblationStudy("feature", [
+            AblationRow("baseline", 0.70, 0.60, rows_scored=40),
+            AblationRow("no_periodic", 0.65, 0.55, rows_scored=40),
+            AblationRow("refused", None, None, comparable=False, note="no usable rows"),
+        ], baseline="baseline")
+
+        restored = AblationStudy.from_dict(study.to_dict())
+
+        assert restored.to_dict() == study.to_dict()
+
+    def test_unscored_rows_keep_their_refusal(self):
+        row = AblationRow("refused", None, None, comparable=False, note="too few rows")
+        restored = AblationRow.from_dict(row.to_dict())
+
+        assert restored.roc_auc is None
+        assert restored.comparable is False
+        assert restored.note == "too few rows"
+
 
 class TestSurveyAblationGuards:
     def test_missing_survey_data_is_reported_not_scored(self, isolated_root):

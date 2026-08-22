@@ -111,6 +111,9 @@ timestamp URL are supplied.
   and blocked item, tagged `[DONE]` / `[PARTIAL]` / `[KNOWN]` / `[GAP]` /
   `[SCOPED]` / `[BLOCKED]`, with the measurements behind each. Read this before
   trusting any number the application produces.
+- `docs/RESEARCH-INTEGRATION.md` — event packets, calibration, selection
+  diagnostics, source-attribution priors, literature/event association,
+  follow-up constraints, TAP/alert polling, and their RPC/UI boundaries.
 
 ---
 
@@ -129,6 +132,10 @@ These are not disclaimers; they change how output should be read.
   it, which is why `weight_used` is reported alongside every score.
 - **Run detection within a survey.** Pooling ZTF and TESS makes the detectors
   separate by instrument rather than by behaviour.
+- **Record the cross-match anchor.** Grouping defaults to the largest
+  catalogue, but cross-match and pipeline calls can choose an explicit anchor
+  survey. Changing it changes the population denominator and therefore the
+  selection function being measured.
 - **Injection recovery measures the anomalies that were injected.** It does not
   demonstrate sensitivity to phenomena nobody thought to inject, which is the
   actual discovery case.

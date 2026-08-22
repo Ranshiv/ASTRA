@@ -35,15 +35,45 @@ export function AladinSky({
 
   useEffect(() => {
     let disposed = false;
+    // A webview without a 2D canvas (including jsdom and some remote/offline
+    // shells) cannot initialize Aladin. Fail fast so the coordinate fallback
+    // is useful instead of waiting on a large third-party module to hang.
+    if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) {
+      setStatus("Sky map unavailable offline; coordinates are shown below.");
+      return () => { disposed = true; };
+    }
+    try {
+      const canvas = document.createElement("canvas");
+      if (!canvas.getContext("2d")) {
+        setStatus("Sky map unavailable offline; coordinates are shown below.");
+        return () => { disposed = true; };
+      }
+    } catch {
+      setStatus("Sky map unavailable offline; coordinates are shown below.");
+      return () => { disposed = true; };
+    }
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      if (!disposed) setStatus("Sky map unavailable offline; coordinates are shown below.");
+    }, 1500);
     void import("aladin-lite")
       .then(async ({ default: A }) => {
         await A.init;
-        if (disposed) return;
+        if (disposed || timedOut) return;
         api.current = A;
         aladin.current = A.aladin(`#${id}`, {
           target: `${ra} ${dec}`,
           fov,
-          projection: "AIT",
+          // TAN (tangential/gnomonic) is the pointed, narrow-field
+          // projection -- the one an actual telescope image uses -- so it
+          // crops to roughly `fov` degrees around the target. AIT (Aitoff)
+          // and SIN ("Spheric" in this library -- an orthographic 3D globe,
+          // not a zoomed rectangle) are both whole-sky-family projections:
+          // they always render most or all of the celestial sphere and just
+          // reposition the target within it, so `fov` has no real cropping
+          // effect with either one.
+          projection: "TAN",
           cooFrame: "equatorial",
           survey: "P/DSS2/color",
           // Aladin's default chrome is built for a full-page viewer, not a
@@ -72,13 +102,16 @@ export function AladinSky({
           gridOpacity: 0.35,
           reticleColor: "#6ea8ff",
         });
+        window.clearTimeout(timeout);
         setStatus("");
       })
-      .catch(() =>
-        setStatus("Sky map unavailable offline; coordinates are shown below."),
-      );
+      .catch(() => {
+        window.clearTimeout(timeout);
+        if (!disposed && !timedOut) setStatus("Sky map unavailable offline; coordinates are shown below.");
+      });
     return () => {
       disposed = true;
+      window.clearTimeout(timeout);
     };
     // Created once: target and markers are applied by the effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps

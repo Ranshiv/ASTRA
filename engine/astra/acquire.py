@@ -153,6 +153,23 @@ class AcquisitionResult:
         }
 
 
+@dataclass
+class ProjectAcquisitionResult:
+    project_id: str
+    regions: list[AcquisitionResult] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "project_id": self.project_id,
+            "regions": [r.to_dict() for r in self.regions],
+            "totals": {
+                "curves": sum(r.to_dict()["totals"]["curves"] for r in self.regions),
+                "points": sum(r.to_dict()["totals"]["points"] for r in self.regions),
+                "mb": round(sum(r.to_dict()["totals"]["mb"] for r in self.regions), 3),
+            },
+        }
+
+
 def default_dataset_id(query: ConeQuery) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"cone_{query.key()}_{stamp}"
@@ -216,6 +233,47 @@ def acquire(
     # Extraction is done, so the raw downloads are now disposable.
     cache.enforce_cap()
     return result
+
+
+def acquire_project(
+    project_id: str,
+    survey_names: list[str] | None = None,
+    limit: int = 25,
+    skip_existing: bool = True,
+    progress=None,
+    survey_options: dict[str, dict] | None = None,
+    root=None,
+) -> ProjectAcquisitionResult:
+    """Run one acquisition per region in a project's `query_regions`.
+
+    Each region gets its own dataset/manifest via `acquire()`, unchanged.
+    Overlapping regions cannot double-store: the canonical store dedupes by
+    storage key and `metadata.upsert_sources` upserts by source key, so a
+    source found by two overlapping cones is fetched once and its metadata
+    simply refreshed the second time.
+    """
+    proj = project.require_active(project_id, root)
+    regions = proj.query_regions
+    if not regions:
+        raise ValueError(f"project '{project_id}' has no query_regions to acquire")
+
+    results: list[AcquisitionResult] = []
+    for index, region in enumerate(regions, start=1):
+        if progress is not None:
+            progress.raise_if_cancelled()
+            progress.update(
+                phase="region",
+                message=f"Region {index}/{len(regions)}: "
+                        f"{region['ra_deg']:.4f}, {region['dec_deg']:.4f}",
+                fraction=(index - 1) / len(regions),
+                items_done=index - 1, items_total=len(regions),
+            )
+        query = ConeQuery(ra_deg=region["ra_deg"], dec_deg=region["dec_deg"],
+                          radius_arcsec=region["radius_arcsec"])
+        results.append(acquire(query, survey_names=survey_names, limit=limit,
+                               project_id=project_id, skip_existing=skip_existing,
+                               progress=progress, survey_options=survey_options))
+    return ProjectAcquisitionResult(project_id=project_id, regions=results)
 
 
 def _acquire_one(name: str, query: ConeQuery, limit: int,

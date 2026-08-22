@@ -17,10 +17,21 @@ dependencies = [
     "scikit-learn==1.9.0",
     "plotly==6.9.0",
     "matplotlib==3.11.1",
+    # gw.py: astropy-healpix (not healpy -- no native Windows wheel) builds a
+    # sky-localization map from public GW posterior samples; gwosc is the
+    # GWOSC event catalog client; h5py reads the posterior-samples file.
+    "astropy-healpix==2.0.1",
+    "gwosc==0.8.3",
+    "h5py==3.16.0",
 ]
 
 [project.optional-dependencies]
-gpu = ["torch==2.13.0", "cupy-cuda12x==14.1.1"]
+# nvidia-cuda-runtime-cu12 ships the CUDA headers cupy.RawKernel needs to
+# JIT-compile a kernel (gpu_periodogram.py). Without it, kernel compilation
+# depends on a system CUDA toolkit being installed and CUDA_PATH finding it --
+# config.ensure_cuda_path() covers that case, but a pip wheel install should
+# not require one. Pinned to CuPy 14.1.1's reported CUDA build (12.9).
+gpu = ["torch==2.13.0", "cupy-cuda12x==14.1.1", "nvidia-cuda-runtime-cu12==12.9.*"]
 dev = ["pytest==9.1.1", "pyinstaller==6.22.1"]
 
 [build-system]

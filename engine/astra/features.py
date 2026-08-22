@@ -173,10 +173,27 @@ def temporal_features(time: np.ndarray, value: np.ndarray) -> dict[str, float]:
     }
 
 
+# The two ways a periodogram gets computed. "cpu" is astropy's approximate
+# fast method and is the default everywhere; "gpu" is the exact direct-sum
+# kernel in `gpu_periodogram`. They are deliberately not required to agree
+# bit-for-bit -- see that module's docstring -- so a feature row must never
+# be allowed to mix the two. `backend_token()` is folded into the feature
+# cache key for exactly that reason.
+PERIODOGRAM_BACKENDS = ("cpu", "gpu")
+
+
+def backend_token(backend: str) -> str:
+    if backend not in PERIODOGRAM_BACKENDS:
+        raise ValueError(f"unknown periodogram backend {backend!r}; "
+                         f"expected one of {PERIODOGRAM_BACKENDS}")
+    return backend
+
+
 def periodic_features(time: np.ndarray, value: np.ndarray,
                       value_err: np.ndarray,
                       min_period_days: float = MIN_PERIOD_DAYS,
-                      samples_per_peak: int = SAMPLES_PER_PEAK
+                      samples_per_peak: int = SAMPLES_PER_PEAK,
+                      backend: str = "cpu",
                       ) -> dict[str, float]:
     """Lomb-Scargle period search, which handles uneven sampling correctly.
 
@@ -185,7 +202,16 @@ def periodic_features(time: np.ndarray, value: np.ndarray,
     `min_period_days` to 0.1 halves that and, on the curve measured, returns
     the same period — but it would miss short-period Delta Scuti pulsators, so
     the default stays at the more sensitive setting.
+
+    `backend="gpu"` computes the exact periodogram on a CUDA device instead of
+    astropy's approximate fast method, and falls back to `"cpu"` with a
+    logged warning when no usable GPU is available -- a missing card must
+    never fail a pipeline run. It requires a GPU-aware caller: nothing here
+    selects it automatically, because the two backends are not required to
+    agree bit-for-bit and mixing them within one feature matrix would be a
+    silent correctness bug. See `gpu_periodogram`'s module docstring.
     """
+    backend_token(backend)
     if len(time) < MIN_POINTS_FOR_PERIOD:
         return {"best_period_days": float("nan"), "best_power": float("nan"),
                 "period_snr": float("nan")}
@@ -203,12 +229,28 @@ def periodic_features(time: np.ndarray, value: np.ndarray,
             raise ValueError("baseline too short for the period grid")
 
         model = LombScargle(time, value, np.clip(value_err, 1e-12, None))
-        frequency, power = model.autopower(
+        frequency = model.autofrequency(
             minimum_frequency=1.0 / max_period,
             maximum_frequency=1.0 / min_period_days,
             samples_per_peak=samples_per_peak,
-            method="fast",
         )
+
+        if backend == "gpu":
+            from . import gpu_periodogram
+            import logging
+
+            ok, reason = gpu_periodogram.available()
+            if not ok:
+                logging.getLogger(__name__).warning(
+                    "GPU periodogram requested but unavailable (%s); "
+                    "falling back to the CPU backend.", reason)
+                power = model.power(frequency, method="fast")
+            else:
+                power = gpu_periodogram.power(
+                    time, value, np.clip(value_err, 1e-12, None), frequency)
+        else:
+            power = model.power(frequency, method="fast")
+
         if power.size == 0:
             raise ValueError("empty periodogram")
 
@@ -229,17 +271,34 @@ def periodic_features(time: np.ndarray, value: np.ndarray,
 
 def multiband_periodic_features(curves: list[LightCurve],
                                 min_period_days: float = MIN_PERIOD_DAYS,
-                                samples_per_peak: int = SAMPLES_PER_PEAK) -> dict[str, float]:
-    """Fit one shared period while allowing each band its own baseline.
+                                samples_per_peak: int = SAMPLES_PER_PEAK,
+                                backend: str = "cpu") -> dict[str, float]:
+    """Joint period across bands via astropy's LombScargleMultiband.
 
-    This is a bounded multi-band approximation to a full joint light-curve
-    model.  Every band contributes its finite points after subtracting its
-    weighted mean; a shared sinusoid is then evaluated on the union.  The
-    returned period is therefore not the average of independent per-band
-    periods and cannot be dominated by the band with the most observations.
-    ``bands`` reports how many distinct passbands contributed.
+    Measured before choosing this, not assumed: at real ZTF production scale
+    (2 bands, 350 points/band, 2740-day baseline, ~273k frequencies),
+    astropy's own "flexible" method -- the genuine joint base+per-band
+    regularised fit -- takes ~39s per object, 33x the single-band cost this
+    pipeline already treats as the dominant expense (featurematrix.py's own
+    profiling put Lomb-Scargle at ~98% of feature-extraction time). That is
+    not a cost this pipeline can absorb. "fast" -- independent per-band fits
+    combined by weight -- measured at ~2.4s, proportional to band count.
+    This function uses "fast" ONLY, pinned explicitly for the same reason
+    features.py already pins the single-band method rather than letting
+    astropy's own default choose: a silent switch to "flexible" here is a
+    33x regression, not a subtle one. A GPU backend is not offered for this
+    path: "fast" dispatches to single-band LombScargle per band internally
+    via its own sb_method, which is not a clean hook for the CUDA kernel in
+    gpu_periodogram.py without patching astropy internals -- out of scope,
+    not silently ignored.
     """
-    prepared: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+    if backend != "cpu":
+        raise ValueError(
+            f"multiband_periodic_features has no {backend!r} backend; "
+            'only "cpu" is supported (see the function docstring).'
+        )
+
+    prepared: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     names: set[str] = set()
     for curve in curves:
         tidy = curve.dropna().sorted_by_time()
@@ -247,9 +306,8 @@ def multiband_periodic_features(curves: list[LightCurve],
             continue
         err = np.clip(np.asarray(tidy.value_err, dtype=float), 1e-12, None)
         values = np.asarray(tidy.value, dtype=float)
-        weights = 1.0 / err ** 2
-        values = values - np.sum(weights * values) / np.sum(weights)
-        prepared.append((np.asarray(tidy.time, dtype=float), values, err))
+        band_labels = np.full(len(tidy), str(curve.band))
+        prepared.append((np.asarray(tidy.time, dtype=float), values, err, band_labels))
         names.add(str(curve.band))
     if not prepared or len(names) < 2:
         return {"best_period_days": float("nan"), "best_power": float("nan"),
@@ -259,6 +317,7 @@ def multiband_periodic_features(curves: list[LightCurve],
     time = np.concatenate([item[0] for item in prepared])
     value = np.concatenate([item[1] for item in prepared])
     err = np.concatenate([item[2] for item in prepared])
+    bands = np.concatenate([item[3] for item in prepared])
     span = float(np.max(time) - np.min(time))
     max_period = span * MAX_PERIOD_FRACTION
     if span <= 0 or max_period <= min_period_days:
@@ -266,12 +325,14 @@ def multiband_periodic_features(curves: list[LightCurve],
                 "period_snr": float("nan"), "bands": float(len(names)),
                 "points": float(len(time))}
     try:
-        from astropy.timeseries import LombScargle
-        frequency, power = LombScargle(time, value, err).autopower(
+        from astropy.timeseries import LombScargleMultiband
+
+        model = LombScargleMultiband(time, value, bands, err)
+        frequency, power = model.autopower(
+            method="fast",
             minimum_frequency=1.0 / max_period,
             maximum_frequency=1.0 / min_period_days,
             samples_per_peak=samples_per_peak,
-            method="fast",
         )
         best = int(np.argmax(power))
         background = float(np.median(power))
@@ -348,8 +409,24 @@ def bocpd(time: np.ndarray, value: np.ndarray, hazard: float = 1 / 200.0,
         "change_time": float(times[index]),
     }
 
-def extract(curve: LightCurve, path: str = "") -> FeatureSet:
-    """Full feature vector for one light curve."""
+def extract(curve: LightCurve, path: str = "",
+           periodogram_backend: str = "cpu",
+           periodic_override: dict[str, float] | None = None) -> FeatureSet:
+    """Full feature vector for one light curve.
+
+    `periodogram_backend` selects "cpu" (astropy's approximate fast method,
+    the default) or "gpu" (the exact CUDA kernel in `gpu_periodogram`). A
+    caller that mixes the two across one feature matrix would be silently
+    combining approximate and exact periods; `featurematrix`/`featurecache`
+    tag rows by backend precisely so that cannot happen unnoticed.
+
+    `periodic_override` lets a caller supply an already-computed
+    `best_period_days`/`best_power`/`period_snr` dict instead of running the
+    period search here. `featurematrix` uses this for the GPU backend: the
+    period search runs once in the parent process across a batch, and worker
+    processes -- each of which would otherwise open its own CUDA context on
+    one shared card -- compute only the remaining, CPU-only statistics.
+    """
     tidy = curve.dropna().sorted_by_time()
 
     if len(tidy) < MIN_POINTS:
@@ -360,7 +437,9 @@ def extract(curve: LightCurve, path: str = "") -> FeatureSet:
         values.update(photometric_features(tidy.value, tidy.value_err))
         values.update(variability_indices(tidy.value, tidy.value_err))
         values.update(temporal_features(tidy.time, tidy.value))
-        values.update(periodic_features(tidy.time, tidy.value, tidy.value_err))
+        values.update(periodic_override if periodic_override is not None else
+                     periodic_features(tidy.time, tidy.value, tidy.value_err,
+                                       backend=periodogram_backend))
         values.update({f"bocpd_{name}": value for name, value in
                        bocpd(tidy.time, tidy.value).items()})
 
