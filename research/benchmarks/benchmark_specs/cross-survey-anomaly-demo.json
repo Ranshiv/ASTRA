@@ -1,0 +1,24 @@
+{
+  "benchmark_id": "cross-survey-anomaly-demo",
+  "task_family": "cross_survey_anomaly",
+  "modalities": [
+    "ztf"
+  ],
+  "positive_definition": "real ZTF feature vector, synthetic injected perturbation",
+  "split_ids": [
+    "core-demo-2026_object_split"
+  ],
+  "primary_metric": "average_precision",
+  "secondary_metrics": [
+    "roc_auc"
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "created_utc": "2026-08-27T16:00:20+00:00",
+  "notes": ""
+}

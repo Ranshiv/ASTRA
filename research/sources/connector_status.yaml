@@ -1,0 +1,44 @@
+# Per-connector evidence status (docs/LIMITATIONS.md, acceptance gate 7).
+#
+# `status` values:
+#   live-verified     - exercised against the real service this session,
+#                        with a cassette recorded from that run.
+#   cassette-verified  - a cassette exists from a prior real run; replay
+#                        confirmed the recorded shape parses correctly.
+#   mock-only          - connector tests exist but only via hand-written
+#                        request/response mocks, never a real response.
+#   metadata-only       - connector returns identity/position rows but its
+#                        fetch_light_curves is a documented no-op.
+#   dormant            - present but not exercised (e.g. credential-gated).
+#
+# Populated from a source-code read (engine/astra/surveys/*.py) plus
+# `research/fixtures/cassettes/` presence, not from running every
+# connector this session -- entries below reflect that read, and should be
+# refreshed by `research/acquire.py`'s users as cassettes accumulate.
+
+schema_version: 1
+
+connectors:
+  ztf: {transport: netclient, status: live-verified, note: "core-demo-2026 acquisition (2026-08-27), cassette-recorded"}
+  gaia: {transport: astroquery, status: live-verified, note: "core-demo-2026 acquisition (2026-08-27)"}
+  gaia_epoch: {transport: local_fixture, status: mock-only, note: "offline DR4 fixture-based adapter"}
+  tess: {transport: lightkurve, status: mock-only}
+  kepler: {transport: lightkurve, status: mock-only}
+  hubble: {transport: mast, status: metadata-only}
+  jwst: {transport: mast, status: metadata-only}
+  alerce: {transport: netclient, status: mock-only}
+  chandra: {transport: netclient, status: metadata-only}
+  des: {transport: netclient, status: mock-only}
+  desi: {transport: tap, status: mock-only}
+  erosita: {transport: netclient, status: metadata-only}
+  galex: {transport: netclient, status: metadata-only}
+  herschel: {transport: netclient, status: metadata-only}
+  ogle: {transport: netclient, status: mock-only}
+  panstarrs: {transport: netclient, status: metadata-only}
+  rubin_tap: {transport: tap, status: dormant, note: "credential-gated Rubin/LSST TAP"}
+  sdss: {transport: netclient, status: metadata-only}
+  swift: {transport: netclient, status: metadata-only}
+  twomass: {transport: netclient, status: metadata-only}
+  vlass: {transport: tap, status: mock-only}
+  wise: {transport: netclient, status: metadata-only}
+  xmm: {transport: netclient, status: metadata-only}

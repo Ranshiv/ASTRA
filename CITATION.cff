@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use ASTRA, please cite it as below."
+title: "ASTRA: a cross-survey anomaly detection platform"
+version: 0.1.0
+date-released: "2026-08-27"
+type: software
+authors:
+  - name: "ASTRA contributors"
+repository-code: "https://github.com/"
+license: NOASSERTION
+keywords:
+  - astronomy
+  - anomaly-detection
+  - cross-survey
+  - time-domain
+  - ztf
+  - gaia
+  - tess

@@ -18,6 +18,14 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "live: hits a real external service; skipped by default, run explicitly with -m live")
 
+    # astra.research.cassettes defaults to "off" everywhere, tests included:
+    # existing tests exercise netclient.get's real code path by
+    # monkeypatching `session`/`throttle` rather than `get` itself (see
+    # test_netclient.py), and a global "replay" default would intercept
+    # those calls before they ever reach the monkeypatched session. Tests
+    # that specifically exercise cassette replay/record set
+    # ASTRA_CASSETTE_MODE themselves (see test_research_cassettes.py).
+
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
     """Skip `live`-marked tests unless the caller explicitly selected them.

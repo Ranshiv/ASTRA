@@ -133,6 +133,11 @@ def test_verify_rerun_tolerance_rejects_mismatched_shapes():
         rb.verify_rerun_tolerance(np.array([1.0, 2.0]), np.array([1.0]))
 
 
-def test_reproducibility_bundle_is_not_wired_into_rpc():
+def test_reproducibility_bundle_is_wired_into_rpc():
+    """As of the research-evidence-package work, `reproducibility_bundle.py`
+    IS wired into rpc.py (`research.bundle.build/verify/rerun`) -- this test
+    previously asserted the opposite, when the module was still standalone."""
     rpc_source = (Path(__file__).parent.parent / "engine" / "astra" / "rpc.py").read_text()
-    assert "reproducibility_bundle" not in rpc_source
+    assert "reproducibility_bundle" in rpc_source
+    assert "research.bundle.build" in rpc_source
+    assert "research.bundle.verify" in rpc_source

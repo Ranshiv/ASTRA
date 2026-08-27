@@ -892,6 +892,48 @@ export interface ExperimentVerification {
   note: string;
 }
 
+/** research.bundle.build/verify — a signed, content-hashed evidence bundle
+ * over a sealed dataset manifest plus the experiments run against it. */
+export interface ReproducibilityBundle {
+  dataset_id: string;
+  manifest_content_hash: string;
+  environment: Record<string, unknown>;
+  experiment_record_refs: string[];
+  bundle_hash: string;
+  signature_hex: string | null;
+  public_key_hex: string | null;
+  path?: string;
+}
+
+export interface ReproducibilityBundleVerification {
+  dataset_id: string;
+  valid: boolean;
+  note?: string;
+}
+
+/** research.benchmark.run — one ResultRecord per (method, seed) scored. */
+export interface ResearchResultRecord {
+  experiment_id: string;
+  benchmark_id: string;
+  split_id: string;
+  dataset_manifest_hash: string;
+  metric: string;
+  value: number;
+  sample_count: number;
+  confidence_interval: [number, number];
+  seed: number;
+  synthetic: boolean;
+  artifact_refs: string[];
+  notes: string;
+}
+
+export interface ResearchBenchmarkRunResult {
+  benchmark_id: string;
+  split_id: string;
+  experiment_id: string;
+  results: ResearchResultRecord[];
+}
+
 export interface ExperimentComparisonRow {
   experiment_id: string;
   kind: string;
@@ -1535,6 +1577,21 @@ export const engine = {
     invoke<ExperimentVerification>("engine_experiment_verify", { experimentId, projectId }),
   experimentCompare: (experimentIds: string[], metric = "roc_auc", projectId?: string) =>
     invoke<ExperimentComparison>("engine_experiment_compare", { experimentIds, metric, projectId }),
+  researchBundleBuild: (datasetId: string, experimentIds?: string[], projectId?: string) =>
+    invoke<ReproducibilityBundle>("engine_research_bundle_build", {
+      datasetId, experimentIds, projectId,
+    }),
+  researchBundleVerify: (datasetId: string, projectId?: string) =>
+    invoke<ReproducibilityBundleVerification>("engine_research_bundle_verify", {
+      datasetId, projectId,
+    }),
+  researchBenchmarkRun: (
+    matrixName: string, benchmarkId: string, splitId: string, datasetId: string,
+    injectionFraction = 0.1, projectId?: string,
+  ) =>
+    invoke<ResearchBenchmarkRunResult>("engine_research_benchmark_run", {
+      matrixName, benchmarkId, splitId, datasetId, injectionFraction, projectId,
+    }),
 
   // --- Features, detection, deep models ------------------------------------
   featuresList: (projectId?: string) => invoke<FeatureMatrixInfo[]>("engine_features_list", { projectId }),

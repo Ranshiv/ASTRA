@@ -26,6 +26,11 @@ dependencies = [
     # tess_psf.py: forward PSF scene-model fitting (IntegratedGaussianPRF +
     # PSFPhotometry) for candidate-scale deblending of TESS TPFs.
     "photutils==3.0.0",
+    # research/store.py: source_registry.yaml and benchmark_specs are
+    # authored as YAML for human readability; already a transitive
+    # dependency (dask) but declared explicitly since research/ imports it
+    # directly.
+    "pyyaml==6.0.3",
 ]
 
 [project.optional-dependencies]

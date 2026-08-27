@@ -31,7 +31,7 @@ from pathlib import Path
 
 from . import config, features as features_mod, hardware
 
-EXPERIMENT_SCHEMA_VERSION = 1
+EXPERIMENT_SCHEMA_VERSION = 2
 
 # Version of the preprocessing chain.  The contract is deliberately data,
 # rather than a comment that must be remembered when code changes.  Any change
@@ -95,7 +95,15 @@ def preprocessing_contract(mode: str = "time") -> dict:
 
 @dataclass
 class Provenance:
-    """Everything needed to know what produced a result."""
+    """Everything needed to know what produced a result.
+
+    v2 adds the fields a research claim needs beyond code/data
+    reproducibility: which benchmark and split a result belongs to, and
+    which sealed dataset manifest and label set it was scored against.
+    These are optional so exploratory (non-benchmark) experiments keep
+    working unchanged; `complete()` below is what distinguishes an
+    exploratory run from one that may appear in a leaderboard.
+    """
 
     experiment_id: str
     created_utc: str
@@ -111,6 +119,12 @@ class Provenance:
     seed: int = 42
     hardware: dict = field(default_factory=dict)
     environment: dict = field(default_factory=dict)
+    # v2 research-evidence fields (research/records.py).
+    benchmark_id: str | None = None
+    split_id: str | None = None
+    manifest_content_hash: str | None = None
+    label_set_hash: str | None = None
+    result_artifact_paths: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -129,7 +143,7 @@ class Experiment:
     schema_version: int = EXPERIMENT_SCHEMA_VERSION
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "kind": self.kind,
             "provenance": self.provenance.to_dict(),
@@ -138,6 +152,51 @@ class Experiment:
             "runtime_seconds": round(self.runtime_seconds, 3),
             "notes": self.notes,
         }
+        payload["record_hash"] = record_hash(payload)
+        return payload
+
+    def complete(self) -> bool:
+        """True only when every field a leaderboard entry requires is
+        present: dataset manifest, split, benchmark, model + preprocessing
+        hashes, environment, and at least one result artefact path. An
+        experiment missing any of these is still a valid, saved record --
+        just not one `research.benchmark` or a report may cite as evidence.
+        """
+        p = self.provenance
+        return bool(
+            p.benchmark_id and p.split_id and p.manifest_content_hash
+            and p.model_version and p.preprocessing_schema_hash
+            and p.environment and p.result_artifact_paths
+        )
+
+
+def record_hash(payload: dict) -> str:
+    """SHA-256 of an experiment record's own JSON, excluding any existing
+    `record_hash` key. Detects tampering of the *record itself* -- distinct
+    from `Provenance`'s hashes, which detect drift in the *code/environment*
+    that produced it. Unsigned (unlike `reproducibility_bundle.py`'s Ed25519
+    bundles): this is a lightweight self-check, not a provenance claim about
+    who wrote the record.
+    """
+    body = {k: v for k, v in payload.items() if k != "record_hash"}
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class IncompleteExperimentError(ValueError):
+    """An experiment record is missing a field a leaderboard entry requires."""
+
+
+def require_complete(record: "Experiment") -> None:
+    """Raise unless `record.complete()`; see `Experiment.complete` for the
+    exact requirement. Callers that build a leaderboard or a signed
+    reproducibility bundle should call this before including a record."""
+    if not record.complete():
+        raise IncompleteExperimentError(
+            f"experiment {record.provenance.experiment_id!r} is missing "
+            "benchmark_id, split_id, manifest_content_hash, model_version, "
+            "preprocessing_schema_hash, environment, or result_artifact_paths; "
+            "it may be saved but must not appear in a leaderboard or report")
 
 
 def code_version(engine_root: Path | None = None) -> str:
@@ -242,6 +301,10 @@ def next_experiment_id(root: Path | None = None) -> str:
 def create(kind: str, configuration: dict, seed: int = 42,
            dataset_hash: str | None = None, dataset_id: str | None = None,
            checkpoint_path: str | Path | None = None,
+           benchmark_id: str | None = None, split_id: str | None = None,
+           manifest_content_hash: str | None = None,
+           label_set_hash: str | None = None,
+           result_artifact_paths: list[str] | None = None,
            root: Path | None = None) -> Experiment:
     """Open a new experiment record with provenance captured up front.
 
@@ -266,6 +329,11 @@ def create(kind: str, configuration: dict, seed: int = 42,
         seed=seed,
         hardware=hardware.select_device().to_dict(),
         environment=capture_environment(),
+        benchmark_id=benchmark_id,
+        split_id=split_id,
+        manifest_content_hash=manifest_content_hash,
+        label_set_hash=label_set_hash,
+        result_artifact_paths=result_artifact_paths or [],
     )
     return Experiment(provenance=provenance, kind=kind,
                       configuration=configuration)
@@ -311,6 +379,9 @@ def save(record: Experiment, root: Path | None = None) -> Path:
 def load(experiment_id: str, root: Path | None = None) -> Experiment:
     payload = json.loads(
         experiment_path(experiment_id, root).read_text(encoding="utf-8"))
+    # v1 records (schema_version 1) predate benchmark/split/manifest
+    # provenance fields; Provenance's defaults (None / []) fill them in
+    # rather than refusing to load an old, still-valid record.
     return Experiment(
         provenance=Provenance(**payload["provenance"]),
         kind=payload.get("kind", "generic"),
@@ -320,6 +391,19 @@ def load(experiment_id: str, root: Path | None = None) -> Experiment:
         notes=payload.get("notes", ""),
         schema_version=payload.get("schema_version", 1),
     )
+
+
+def verify_record_hash(experiment_id: str, root: Path | None = None) -> dict:
+    """Independent of `verify()` (which checks code/environment drift):
+    this checks whether the *stored JSON file itself* still matches the
+    hash it was saved with, i.e. whether the file has been hand-edited or
+    corrupted since `save()` wrote it."""
+    path = experiment_path(experiment_id, root)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    stored = payload.get("record_hash")
+    recomputed = record_hash(payload)
+    return {"experiment_id": experiment_id, "matches": stored == recomputed,
+            "stored": stored, "recomputed": recomputed}
 
 
 def list_experiments(root: Path | None = None) -> list[dict]:

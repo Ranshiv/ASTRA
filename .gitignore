@@ -50,6 +50,10 @@ release/
 *.pt
 *.ckpt
 *.safetensors
+# research/ artefacts are small, text-diffable evidence records -- see
+# research/README.md for the size policy. Bulk data stays under $ASTRA_ROOT.
+!research/labels/*.parquet
+!research/results/**/*.parquet
 
 # Screenshots / dogfood output produced by running the app locally
 *.png

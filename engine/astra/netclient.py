@@ -184,12 +184,53 @@ def throttle(provider: str) -> None:
 
 def get(url: str, params: dict, timeout: float,
         provider: str = "irsa", headers: dict[str, str] | None = None) -> requests.Response:
-    """Throttled, retrying GET. Raises only once the retries are exhausted."""
+    """Throttled, retrying GET. Raises only once the retries are exhausted.
+
+    A cassette record/replay layer (`astra.research.cassettes`) wraps this
+    at request granularity when `ASTRA_CASSETTE_MODE` is set to `"record"`
+    or `"replay"` -- see that module's docstring. Default is `"off"`
+    everywhere, tests included, i.e. unchanged live-request behaviour; a
+    caller that wants replay (e.g. a connector fixture test) sets
+    `ASTRA_CASSETTE_MODE=replay` itself.
+    """
+    from .research import cassettes
+    request_mode = cassettes.mode()
+    if request_mode == "off":
+        return _get_live(url, params, timeout, provider, headers)
+
+    key = cassettes.identity(provider, "GET", url, params)
+    if request_mode == "replay":
+        recorded = cassettes.load(key)
+        return _response_from_cassette(recorded)
+
+    # record mode: make the real request, then persist it.
+    response = _get_live(url, params, timeout, provider, headers)
+    cassettes.save(key, cassettes.RecordedResponse(
+        status_code=response.status_code, headers=dict(response.headers),
+        content=response.content, url=response.url))
+    return response
+
+
+def _get_live(url: str, params: dict, timeout: float, provider: str,
+              headers: dict[str, str] | None) -> requests.Response:
     throttle(provider)
     kwargs = {"params": params, "timeout": timeout}
     if headers:
         kwargs["headers"] = headers
     response = session().get(url, **kwargs)
+    response.raise_for_status()
+    return response
+
+
+def _response_from_cassette(recorded) -> requests.Response:
+    """Build a real `requests.Response` from a recorded cassette so callers
+    downstream (`.json()`, `.text`, `.content`, `.status_code`) see no
+    difference from a live call."""
+    response = requests.Response()
+    response.status_code = recorded.status_code
+    response.headers.update(recorded.headers)
+    response._content = recorded.content
+    response.url = recorded.url
     response.raise_for_status()
     return response
 

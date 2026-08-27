@@ -785,6 +785,58 @@ async fn engine_experiment_verify(
 }
 
 #[tauri::command]
+async fn engine_research_bundle_build(
+    state: tauri::State<'_, Arc<Engine>>,
+    dataset_id: String,
+    experiment_ids: Option<Vec<String>>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state),
+        "research.bundle.build",
+        json!({
+            "dataset_id": dataset_id,
+            "experiment_ids": experiment_ids.unwrap_or_default(),
+            "project_id": project_id,
+        }),
+    ).await
+}
+
+#[tauri::command]
+async fn engine_research_bundle_verify(
+    state: tauri::State<'_, Arc<Engine>>,
+    dataset_id: String,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state),
+        "research.bundle.verify",
+        json!({ "dataset_id": dataset_id, "project_id": project_id }),
+    ).await
+}
+
+#[tauri::command]
+async fn engine_research_benchmark_run(
+    state: tauri::State<'_, Arc<Engine>>,
+    matrix_name: String,
+    benchmark_id: String,
+    split_id: String,
+    dataset_id: String,
+    injection_fraction: Option<f64>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state),
+        "research.benchmark.run",
+        json!({
+            "matrix_name": matrix_name,
+            "benchmark_id": benchmark_id,
+            "split_id": split_id,
+            "dataset_id": dataset_id,
+            "injection_fraction": injection_fraction.unwrap_or(0.1),
+            "project_id": project_id,
+        }),
+    ).await
+}
+
+#[tauri::command]
 async fn engine_experiment_compare(
     state: tauri::State<'_, Arc<Engine>>,
     experiment_ids: Vec<String>,
@@ -1692,6 +1744,9 @@ pub fn run() {
             engine_experiment,
             engine_experiment_verify,
             engine_experiment_compare,
+            engine_research_bundle_build,
+            engine_research_bundle_verify,
+            engine_research_benchmark_run,
             engine_ablation,
             engine_ablation_repeated,
             engine_stageb_compare,

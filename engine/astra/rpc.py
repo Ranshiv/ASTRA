@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable
@@ -27,7 +28,8 @@ from . import (ablation, acquire, alerts, anomaly, artifact, association, cache,
                image_features, modalitymatrix, readiness, spectral_features,
                jobs, manifest as manifest_mod, metadata, pipeline, products,
                project as project_mod, review, ranker, security, sed, store, surveys,
-               stageb, tensors, tess_pixels, timeframe, viz)
+               stageb, tensors, tess_pixels, timeframe, viz,
+               reproducibility_bundle as bundle_mod)
 from .surveys import gaia_epoch
 from .surveys.base import ConeQuery
 
@@ -721,6 +723,112 @@ def _handle_experiment_compare(params: dict[str, Any]) -> dict[str, Any]:
     return experiment.compare(params["experiment_ids"],
                               params.get("metric", "roc_auc"),
                               _workspace_root(params.get("project_id")))
+
+
+def _bundle_dir(root: Path | None) -> Path:
+    directory = (root or config.PATHS.projects) / "signed_bundles"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _bundle_keypair(root: Path | None) -> "bundle_mod.KeyPair":
+    """One persistent Ed25519 keypair per project root, generated on first
+    use. This is a lab's own reproducibility-signing key (proves *which
+    installation* produced a bundle, so a tampered copy is detectable) --
+    not a security credential, so storing the raw private key alongside the
+    other project files is an acceptable tradeoff for what this key
+    protects against."""
+    key_path = _bundle_dir(root) / "signing_key.hex"
+    if key_path.exists():
+        seed = bytes.fromhex(key_path.read_text(encoding="utf-8").strip())
+        return bundle_mod.generate_keypair(seed=seed)
+    keypair = bundle_mod.generate_keypair()
+    from cryptography.hazmat.primitives import serialization
+    raw = keypair.private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption())
+    key_path.write_text(raw.hex(), encoding="utf-8")
+    return keypair
+
+
+def _handle_research_bundle_build(params: dict[str, Any]) -> dict[str, Any]:
+    root = _workspace_root(params.get("project_id"))
+    dataset_id = params["dataset_id"]
+    m = manifest_mod.load(dataset_id, root)
+    if m.content_hash is None:
+        raise ValueError(f"manifest {dataset_id!r} is not sealed; call manifest.seal first")
+    bundle = bundle_mod.build_bundle(m, experiment_record_refs=params.get("experiment_ids", []))
+    signed = bundle_mod.sign_bundle(bundle, _bundle_keypair(root))
+    path = _bundle_dir(root) / f"{dataset_id}.json"
+    path.write_text(json.dumps(signed.to_dict(), indent=2), encoding="utf-8")
+    return {**signed.to_dict(), "path": str(path)}
+
+
+def _handle_research_bundle_verify(params: dict[str, Any]) -> dict[str, Any]:
+    root = _workspace_root(params.get("project_id"))
+    dataset_id = params["dataset_id"]
+    path = _bundle_dir(root) / f"{dataset_id}.json"
+    if not path.exists():
+        return {"dataset_id": dataset_id, "valid": False, "note": "no bundle recorded"}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["experiment_record_refs"] = tuple(payload.get("experiment_record_refs", []))
+    bundle = bundle_mod.ReproducibilityBundle(**payload)
+    return {"dataset_id": dataset_id, "valid": bundle_mod.verify_bundle(bundle)}
+
+
+def _handle_research_bundle_rerun(params: dict[str, Any]) -> dict[str, Any]:
+    """Query-provenance half of rerun verification: a freshly-built manifest
+    (same queries, re-run) should re-derive the bundle's recorded content
+    hash. The caller supplies the fresh manifest's queries, mirroring
+    `manifest.SurveyQuery`; this endpoint does not itself re-query archives.
+    """
+    root = _workspace_root(params.get("project_id"))
+    dataset_id = params["dataset_id"]
+    path = _bundle_dir(root) / f"{dataset_id}.json"
+    if not path.exists():
+        return {"dataset_id": dataset_id, "matches": False, "note": "no bundle recorded"}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["experiment_record_refs"] = tuple(payload.get("experiment_record_refs", []))
+    bundle = bundle_mod.ReproducibilityBundle(**payload)
+
+    fresh = manifest_mod.Manifest(dataset_id=dataset_id)
+    for query in params.get("fresh_queries", []):
+        fresh.add(manifest_mod.SurveyQuery(**query))
+    return bundle_mod.verify_manifest_rerun(bundle, fresh)
+
+
+def _handle_research_benchmark_run(params: dict[str, Any]) -> dict[str, Any]:
+    """Run the cross-survey anomaly benchmark against a saved feature
+    matrix, writing bound ResultRecords and an experiment record. Slow:
+    scores five baselines at every declared seed."""
+    from .research import benchmark as benchmark_mod, splits as splits_mod, store as research_store
+
+    matrix = featurematrix.load(params["matrix_name"],
+                                _workspace_root(params.get("project_id")))
+    spec = research_store.load_benchmark_spec(params["benchmark_id"])
+    split = splits_mod.load(params["split_id"], research_store.research_root())
+    manifest = research_store.load_dataset_manifest(params["dataset_id"])
+
+    record = experiment.create(
+        "research_benchmark", {"matrix_name": params["matrix_name"]},
+        benchmark_id=spec.benchmark_id, split_id=split.split_id,
+        manifest_content_hash=manifest.content_hash,
+        result_artifact_paths=["research/results/metrics_synthetic.jsonl"],
+        root=_workspace_root(params.get("project_id")))
+    record.provenance.model_version = "ensemble+baselines"
+
+    started = time.time()
+    run_result = benchmark_mod.run_cross_survey_anomaly(
+        matrix, spec, split, experiment_id=record.provenance.experiment_id,
+        dataset_manifest_hash=manifest.content_hash or "",
+        injection_fraction=float(params.get("injection_fraction", 0.1)))
+    record.runtime_seconds = time.time() - started
+    record.results = {"n_results": len(run_result.results)}
+    experiment.save(record, _workspace_root(params.get("project_id")))
+
+    research_store.save_result_records(run_result.results, synthetic=True)
+    return {**run_result.to_dict(), "experiment_id": record.provenance.experiment_id}
 
 
 def _handle_ablation(params: dict[str, Any]) -> dict[str, Any]:
@@ -1436,6 +1544,10 @@ HANDLERS: dict[str, Handler] = {
     "experiment.get": _handle_experiment_get,
     "experiment.verify": _handle_experiment_verify,
     "experiment.compare": _handle_experiment_compare,
+    "research.bundle.build": _handle_research_bundle_build,
+    "research.bundle.verify": _handle_research_bundle_verify,
+    "research.bundle.rerun": _handle_research_bundle_rerun,
+    "research.benchmark.run": _handle_research_benchmark_run,
     "ablation.run": _handle_ablation,
     "ablation.repeated": _handle_ablation_repeated,
     "stageb.compare": _handle_stageb_compare,

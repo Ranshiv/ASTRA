@@ -1,0 +1,186 @@
+schema_version: 1
+anchor_revision: 052e85ce75d202e570f36b247fe660e8b7c03b74
+sources:
+  time_domain:
+  - id: ztf_public_releases
+    name: ZTF Public Data Releases
+    url: https://www.ztf.caltech.edu/ztf-public-releases.html
+    access: public
+    status: acquired
+  - id: irsa_ztf_archive
+    name: IRSA ZTF Archive
+    url: https://irsa.ipac.caltech.edu/Missions/ztf.html
+    access: public
+    status: acquired
+  - id: mast_tess
+    name: MAST TESS
+    url: https://archive.stsci.edu/missions-and-data/tess
+    access: public
+    status: registered
+  - id: gaia_archive
+    name: Gaia Archive
+    url: https://gea.esac.esa.int/archive/
+    access: public
+    status: acquired
+  labels:
+  - id: simbad
+    name: SIMBAD
+    url: https://simbad.cds.unistra.fr/simbad/
+    access: public
+    status: acquired
+  - id: vizier
+    name: VizieR
+    url: https://vizier.cds.unistra.fr/
+    access: public
+    status: registered
+  - id: aavso_vsx
+    name: AAVSO VSX
+    url: https://www.aavso.org/vsx/
+    access: public
+    status: registered
+  - id: tns
+    name: Transient Name Server
+    url: https://www.wis-tns.org/
+    access: registration_required
+    status: registered
+  - id: exoplanet_archive
+    name: NASA Exoplanet Archive
+    url: https://exoplanetarchive.ipac.caltech.edu/
+    access: public
+    status: registered
+  - id: ztf_bts
+    name: ZTF Bright Transient Survey
+    url: https://sites.astro.caltech.edu/ztf/bts/
+    access: public
+    status: registered
+  alerts_and_events:
+  - id: alerce
+    name: ALeRCE
+    url: https://alerce.science/
+    access: public
+    status: registered
+  - id: fink
+    name: Fink Broker
+    url: https://fink-broker.org/
+    access: public
+    status: registered
+  - id: gcn
+    name: NASA GCN
+    url: https://gcn.nasa.gov/
+    access: public
+    status: registered
+  - id: voevent
+    name: IVOA VOEvent
+    url: https://ivoa.net/documents/VOEvent/
+    access: standard
+    status: registered
+  spectroscopy_and_context:
+  - id: sdss_dr18
+    name: SDSS DR18
+    url: https://www.sdss.org/dr18/
+    access: public
+    status: registered
+  - id: desi_releases
+    name: DESI Data Releases
+    url: https://data.desi.lbl.gov/doc/releases/
+    access: public
+    status: registered
+  - id: galex
+    name: GALEX
+    url: https://archive.stsci.edu/missions-and-data/galex
+    access: public
+    status: registered
+  - id: panstarrs
+    name: Pan-STARRS
+    url: https://outerspace.stsci.edu/display/PANSTARRS/
+    access: public
+    status: registered
+  - id: twomass
+    name: 2MASS
+    url: https://irsa.ipac.caltech.edu/Missions/2mass.html
+    access: public
+    status: registered
+  - id: wise
+    name: WISE
+    url: https://irsa.ipac.caltech.edu/Missions/wise.html
+    access: public
+    status: registered
+  - id: herschel
+    name: Herschel
+    url: https://www.cosmos.esa.int/web/herschel
+    access: public
+    status: registered
+  xray_and_radio:
+  - id: chandra_cda
+    name: Chandra Data Archive
+    url: https://cxc.harvard.edu/cda/
+    access: public
+    status: registered
+  - id: xmm_newton_xsa
+    name: XMM-Newton Archive
+    url: https://www.cosmos.esa.int/web/xmm-newton/xsa
+    access: public
+    status: registered
+  - id: swift_archive
+    name: Swift Archive
+    url: https://www.swift.ac.uk/archive/
+    access: public
+    status: registered
+  - id: erosita
+    name: eROSITA
+    url: https://erosita.mpe.mpg.de/
+    access: public
+    status: registered
+  - id: vlass
+    name: VLASS
+    url: https://science.nrao.edu/science/surveys/vlass
+    access: public
+    status: registered
+  microlensing_variables_moving:
+  - id: ogle
+    name: OGLE
+    url: https://ogle.astrouw.edu.pl/
+    access: public
+    status: registered
+  gravitational_wave:
+  - id: gwosc
+    name: GWOSC
+    url: https://gwosc.org/
+    access: public
+    status: registered
+  - id: healpix
+    name: HEALPix
+    url: https://healpix.sourceforge.io/
+    access: standard
+    status: registered
+  interoperability_and_preservation:
+  - id: ivoa_tap
+    name: IVOA TAP
+    url: https://ivoa.net/documents/TAP/
+    access: standard
+    status: registered
+  - id: adql
+    name: ADQL
+    url: https://ivoa.net/documents/ADQL/
+    access: standard
+    status: registered
+  - id: votable
+    name: VOTable
+    url: https://ivoa.net/documents/VOTable/
+    access: standard
+    status: registered
+  - id: zenodo
+    name: Zenodo
+    url: https://zenodo.org/
+    access: public
+    status: registered
+  - id: ascl
+    name: Astrophysics Source Code Library
+    url: https://ascl.net/
+    access: public
+    status: registered
+  - id: fair_principles
+    name: FAIR Principles
+    url: https://doi.org/10.1038/sdata.2016.18
+    access: public
+    status: registered

@@ -30,5 +30,9 @@ def test_evaluate_rerun_bitwise_and_tolerance_synthetic():
 
 
 def test_reproducibility_bundle_eval_is_not_wired_into_rpc():
+    """`reproducibility_bundle.py` itself IS wired in now
+    (`research.bundle.*`, see test_reproducibility_bundle.py); this
+    evaluator module specifically (the *_eval.py study harness) is not, and
+    has no reason to be -- it is a validation study, not a runtime path."""
     rpc_source = (Path(__file__).parent.parent / "engine" / "astra" / "rpc.py").read_text()
-    assert "reproducibility_bundle" not in rpc_source
+    assert "reproducibility_bundle_eval" not in rpc_source

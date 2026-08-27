@@ -23,7 +23,7 @@ from pathlib import Path
 from . import config
 from .surveys.base import ConeQuery, SourceRef
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 
 def _utc_now() -> str:
@@ -61,7 +61,17 @@ class SurveyQuery:
 
 @dataclass
 class Manifest:
-    """Everything needed to reproduce one dataset, minus the dataset."""
+    """Everything needed to reproduce one dataset, minus the dataset.
+
+    v2 adds the fields a research evidence package needs to trace a result
+    back to a licensed, citable release rather than only a reproducible
+    query: `license`, `citation`, `calibration_version`, `selection_rule`,
+    and the materialized artefact's `row_count`/`byte_count`/`checksum`.
+    A v1 record on disk is missing these; `load()` fills them with the
+    empty defaults below rather than refusing to load, since old manifests
+    remain valid evidence for the query they describe -- they simply
+    predate the archive-provenance fields.
+    """
 
     dataset_id: str
     created_utc: str = field(default_factory=_utc_now)
@@ -70,10 +80,22 @@ class Manifest:
     pipeline_version: str = "0.1.0"
     environment: dict = field(default_factory=dict)
     content_hash: str | None = None
+    # v2 archive-provenance fields (source registry: docs/DATA_SOURCES.md).
+    license: str = ""
+    citation: str = ""
+    calibration_version: str = ""
+    selection_rule: str = ""
+    row_count: int = 0
+    byte_count: int = 0
+    checksum: str | None = None
 
     @classmethod
-    def create(cls, dataset_id: str) -> "Manifest":
-        return cls(dataset_id=dataset_id, environment=capture_environment())
+    def create(cls, dataset_id: str, *, license: str = "", citation: str = "",
+              calibration_version: str = "", selection_rule: str = "") -> "Manifest":
+        return cls(dataset_id=dataset_id, environment=capture_environment(),
+                   license=license, citation=citation,
+                   calibration_version=calibration_version,
+                   selection_rule=selection_rule)
 
     def add(self, query: SurveyQuery) -> "Manifest":
         self.queries.append(query)
@@ -101,6 +123,21 @@ class Manifest:
     def seal(self) -> "Manifest":
         """Freeze the content hash once the queries are complete."""
         self.content_hash = self.compute_content_hash()
+        return self
+
+    def record_artifact(self, *, row_count: int, byte_count: int,
+                        checksum: str) -> "Manifest":
+        """Record the materialized dataset's stats after acquisition.
+
+        `checksum` is the SHA-256 of the artefact bytes -- distinct from
+        `content_hash`, which is a hash of the *query* and stays stable
+        even if the artefact is later re-materialized to a different file
+        layout. Both are needed: `content_hash` proves the query was
+        reproduced; `checksum` proves the resulting file is unmodified.
+        """
+        self.row_count = row_count
+        self.byte_count = byte_count
+        self.checksum = checksum
         return self
 
     def verify(self) -> bool:
