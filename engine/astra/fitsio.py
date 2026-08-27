@@ -146,6 +146,31 @@ def image_payload(path: str | Path, hdu: int | None = None,
     }
 
 
+def raw_pixel_array(path: str | Path, hdu: int | None = None,
+                    max_dimension: int = MAX_DIMENSION) -> np.ndarray:
+    """Bounded float64 2-D array, decimated but NOT zscaled/quantized.
+
+    Shares `image_payload()`'s HDU-selection and `decimate()` call so the
+    two functions can never disagree about which pixels a caller sees;
+    diverges only where `image_payload` moves on to display statistics and
+    8-bit quantization. That stretch is lossy and built for a canvas --
+    a training pipeline (backlog item 11's image encoder) must consume the
+    real, unstretched flux values instead.
+    """
+    from astropy.io import fits
+
+    with fits.open(path, memmap=True) as hdul_obj:
+        index = hdu if hdu is not None else _first_image_hdu(hdul_obj)
+        if index is None:
+            raise ValueError(f"no 2-D image HDU found in {path}")
+        data = np.asarray(hdul_obj[index].data, dtype=np.float64)
+
+    if data.ndim != 2:
+        raise ValueError(f"HDU {index} is not 2-D (shape {data.shape})")
+
+    return decimate(data, max_dimension)
+
+
 def _first_image_hdu(hdul) -> int | None:
     for index, hdu in enumerate(hdul):
         shape = getattr(hdu, "shape", None)

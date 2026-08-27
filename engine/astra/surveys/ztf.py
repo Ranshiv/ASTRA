@@ -10,6 +10,8 @@ from __future__ import annotations
 import csv
 import io
 
+import numpy as np
+
 from .. import netclient
 from .base import (ConeQuery, LightCurve, SourceRef, SurveyConnector,
                    normalise_band, to_arrays)
@@ -88,6 +90,57 @@ class ZTFConnector(SurveyConnector):
             dec_deg=float(rows[0].get("dec", query.dec_deg)),
         )
         return self._rows_to_curves(rows, source)
+
+    def fetch_light_curves_with_quality(self, source: SourceRef
+                                        ) -> list[tuple[LightCurve, np.ndarray]]:
+        """Same real IRSA endpoint as `fetch_light_curves`, without the
+        server-side catflags filter, so real flagged epochs
+        `fetch_light_curves` never sees are recovered here instead.
+
+        Additive only: `fetch_light_curves`'s own request/return contract
+        (still filtered by `DEFAULT_CATFLAGS_MASK`) is completely
+        unchanged, so nothing that already depends on it is affected.
+        `BAD_CATFLAGS_MASK: 0` disables IRSA's server-side filter, so this
+        returns every epoch, including ones the default request strips.
+        `catflags` is a column IRSA already sends in every response -- the
+        service's OWN per-epoch quality word this codebase already filters
+        BY (see `DEFAULT_CATFLAGS_MASK`'s comment), just never previously
+        read back.
+
+        Returns one `(LightCurve, catflags)` pair per band -- `catflags` is
+        a real per-point `uint32` array aligned with that curve's own
+        time/value/value_err, kept OUTSIDE the `LightCurve`/`store.SCHEMA`
+        contract, the same way `tess_pixels.read_tpf_cube` keeps TESS's
+        `QUALITY` array outside the persisted `LightCurve` (see
+        `artifact_patches.py`'s docstring for why: changing `store.SCHEMA`
+        for one research module is not worth touching this codebase's most
+        load-bearing files).
+        """
+        rows = self._request({"ID": source.object_id, "FORMAT": "CSV",
+                              "BAD_CATFLAGS_MASK": 0})
+        return self._rows_to_curves_with_quality(rows, source)
+
+    def _rows_to_curves_with_quality(self, rows: list[dict], source: SourceRef
+                                     ) -> list[tuple[LightCurve, np.ndarray]]:
+        by_band: dict[str, list[tuple[float, float, float, int]]] = {}
+        for row in rows:
+            try:
+                point = (float(row["hjd"]), float(row["mag"]), float(row["magerr"]),
+                        int(float(row.get("catflags", 0))))
+            except (KeyError, TypeError, ValueError):
+                continue  # a malformed epoch must not discard the whole curve
+            band = normalise_band(self.name, row.get("filtercode", ""))
+            by_band.setdefault(band, []).append(point)
+
+        results: list[tuple[LightCurve, np.ndarray]] = []
+        for band, points in sorted(by_band.items()):
+            time, value, value_err = to_arrays([(t, v, e) for t, v, e, _ in points])
+            catflags = np.array([c for *_, c in points], dtype=np.uint32)
+            results.append((LightCurve(
+                source=source, release=self.release, band=band, value_kind="mag",
+                time=time, value=value, value_err=value_err, time_system="HJD_UTC",
+            ), catflags))
+        return results
 
     def _request(self, params: dict) -> list[dict]:
         """Throttled and retrying, so IRSA throttling does not drop objects."""

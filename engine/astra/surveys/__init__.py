@@ -13,14 +13,24 @@ from .base import (ConeQuery, LightCurve, SourceRef, SurveyConnector,
 from .alerce import ALeRCEConnector
 from .chandra import ChandraConnector
 from .des import DESConnector
+from .desi import DESIConnector
+from .erosita import EROSITAConnector
 from .gaia import GaiaConnector
+from .galex import GALEXConnector
+from .herschel import HerschelConnector
 from .hubble import HubbleConnector
 from .jwst import JWSTConnector
+from .kepler import KeplerConnector
 from .panstarrs import PanSTARRSConnector
+from .rubin_tap import RubinTAPConnector
 from .sdss import SDSSConnector
 from .swift import SwiftConnector
 from .tess import TESSConnector
+from .twomass import TwoMASSConnector
+from .wise import WISEConnector
 from .xmm import XMMConnector
+from .ogle import OGLEConnector
+from .vlass import VLASSConnector
 from .ztf import ZTFConnector
 
 _REGISTRY: dict[str, type[SurveyConnector]] = {
@@ -33,9 +43,21 @@ _REGISTRY: dict[str, type[SurveyConnector]] = {
     "swift": SwiftConnector,
     "xmm": XMMConnector,
     "des": DESConnector,
+    "desi": DESIConnector,
+    "erosita": EROSITAConnector,
     "hubble": HubbleConnector,
     "jwst": JWSTConnector,
     "alerce": ALeRCEConnector,
+    "rubin_tap": RubinTAPConnector,
+    "ogle": OGLEConnector,
+    "vlass": VLASSConnector,
+    "galex": GALEXConnector,
+    "twomass": TwoMASSConnector,
+    "wise": WISEConnector,
+    "herschel": HerschelConnector,
+    # K2 shares this same connector; pass mission="K2" via
+    # surveys.get("kepler", mission="K2") rather than a near-duplicate entry.
+    "kepler": KeplerConnector,
 }
 
 
@@ -51,11 +73,14 @@ def register(name: str, connector: type[SurveyConnector]) -> None:
     """Add a survey.
 
     ALeRCE (`alerce.py`) already brokers real, credential-free LSST alerts
-    and is registered above. A direct Rubin/LSST TAP connector (credential-
-    required, `data.lsst.cloud/api/tap`) would land here too, once ASTRA has
-    an actual data-rights token to validate it against -- see the ALeRCE
-    entry in docs/DEFERRED.txt for why that is deliberately deferred rather
-    than built speculatively.
+    and is registered above. `RubinTAPConnector` (`rubin_tap.py`, credential-
+    required, `data.lsst.cloud/api/tap`) is also registered, but stays
+    DORMANT until a real Rubin data-rights token exists: it is written and
+    tested only against mocked TAP responses, and `enabled_by_default` is
+    False -- see the ALeRCE entry in docs/DEFERRED.txt for the full history
+    of why the direct-TAP path was deliberately deferred rather than built
+    speculatively, and rubin_tap.py's own module docstring for what remains
+    unvalidated.
     """
     if not issubclass(connector, SurveyConnector):
         raise TypeError(f"{connector!r} does not implement SurveyConnector")
@@ -80,7 +105,9 @@ __all__ = [
     "GaiaConnector", "TESSConnector", "ZTFConnector",
     "SDSSConnector", "PanSTARRSConnector", "ChandraConnector",
     "SwiftConnector", "XMMConnector",
-    "DESConnector", "HubbleConnector", "JWSTConnector",
-    "ALeRCEConnector",
+    "DESConnector", "DESIConnector", "HubbleConnector", "JWSTConnector",
+    "ALeRCEConnector", "RubinTAPConnector", "VLASSConnector", "EROSITAConnector",
+    "GALEXConnector", "TwoMASSConnector", "WISEConnector", "HerschelConnector",
+    "KeplerConnector",
     "available", "register", "get", "describe_all",
 ]

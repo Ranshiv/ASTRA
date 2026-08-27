@@ -60,6 +60,35 @@ REQUEST_INTERVAL_SECONDS: dict[str, float] = {
     # ASTRA-dedicated allocation like MAST/IRSA — keep it out of the generic
     # 0.2s default and give it its own bucket, matching gwosc/cadc.
     "alerce": 0.5,
+    # Rubin/LSST direct TAP (data.lsst.cloud/api/tap) is a sync database job
+    # like datalab, and a credential-gated one at that -- same 1.0s bucket.
+    "rubin": 1.0,
+    # moving_objects.py: MPC's public search_orbits web service (confirmed
+    # reachable with documented shared credentials, not a per-user API key).
+    "mpc": 1.0,
+    # SDSS SkyServer SQL search and the SAS spec-lite FITS download -- both
+    # per-object product/lookup transfers, same bucket as irsa/mast/gaia.
+    "sdss": 0.2,
+    # OGLE EWS is a university web server with no published rate limit and
+    # no API key -- deliberately the slowest bucket here, since a season
+    # index plus per-event photometry is a lot of requests to a host that
+    # never asked to be a data API.
+    "ogle": 1.0,
+    # exoplanet_archive.py: NASA Exoplanet Archive TAP sync query -- a
+    # database job like datalab, same 1.0s bucket rationale.
+    "exoplanetarchive": 1.0,
+    # vlass.py: VizieR (CDS)'s Simple Cone Search service -- a shared,
+    # widely-used community catalogue host (like ALeRCE/gwosc), not an
+    # ASTRA-dedicated allocation; kept out of the generic 0.2s default.
+    "vizier": 0.5,
+    # dust_3d.py: cdsarc.cds.unistra.fr plain-file downloads (the same CDS
+    # organisation as vizier, a different service) -- one large product
+    # transfer per cube, same bucket rationale as vizier.
+    "cdsarc": 0.5,
+    # strong_lens_imaging.py: ps1images.stsci.edu image-cutout service --
+    # a different host from mast.stsci.edu (the existing "mast" bucket),
+    # so it gets its own bucket rather than sharing MAST's allocation.
+    "ps1images": 0.5,
 }
 DEFAULT_INTERVAL_SECONDS = 0.2
 
@@ -161,6 +190,28 @@ def get(url: str, params: dict, timeout: float,
     if headers:
         kwargs["headers"] = headers
     response = session().get(url, **kwargs)
+    response.raise_for_status()
+    return response
+
+
+def post(url: str, data: dict, timeout: float,
+         provider: str = "irsa", headers: dict[str, str] | None = None) -> requests.Response:
+    """Throttled POST, for the few contracts (e.g. TAP async job submission
+    in `tap.py`) that require one. Unlike `get`, this is NOT auto-retried
+    by the shared session's `Retry` policy (`allowed_methods` there is
+    deliberately `{"GET", "HEAD"}` only) -- retrying a POST that creates a
+    resource, like a TAP async job, risks silently double-submitting it,
+    so that judgment call is left to the caller rather than attempted here.
+    `requests` follows a redirect response (e.g. a TAP job's `303 See
+    Other` to its own status URL) by default; the caller reads the
+    resulting `response.url`/`response.text` rather than a raw `Location`
+    header.
+    """
+    throttle(provider)
+    kwargs = {"data": data, "timeout": timeout}
+    if headers:
+        kwargs["headers"] = headers
+    response = session().post(url, **kwargs)
     response.raise_for_status()
     return response
 

@@ -199,7 +199,7 @@ export function AcquirePanel({
         />
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         {surveys.map((survey) => {
           const key = survey.name.toLowerCase();
           const on = selected.includes(key);
@@ -209,7 +209,7 @@ export function AcquirePanel({
               type="button"
               onClick={() => toggle(key)}
               aria-pressed={on}
-              className={`rounded-full border px-3 py-1 text-xs transition ${
+              className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs transition ${
                 on
                   ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
                   : "border-[var(--color-edge)] text-[var(--color-muted)] hover:border-[var(--color-muted)]"

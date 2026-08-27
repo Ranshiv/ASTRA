@@ -31,6 +31,11 @@ from . import config, netclient, store
 from .surveys.base import LightCurve, SourceRef
 
 TESScUT_URL = "https://mast.stsci.edu/tesscut/api/v0.1/astrocut"
+# Verified live this session: a plain GET with ra/dec returns a real JSON
+# "results" array of {sectorName, sector, camera, ccd} for every sector
+# that covers the position -- the lookup `download_tpf`'s caller needs
+# before it can supply a `TPFRequest.sector` at all.
+SECTOR_URL = "https://mast.stsci.edu/tesscut/api/v0.1/sector"
 DEFAULT_SIZE_PIXELS = 20
 MIN_SIZE_PIXELS = 2
 MAX_SIZE_PIXELS = 50
@@ -419,6 +424,39 @@ def _tpf_summary(path: Path, *, expected_sector: int | None = None) -> dict[str,
         }
 
 
+def find_sectors(ra_deg: float, dec_deg: float) -> list[int]:
+    """Real TESS sectors covering a position, via the live MAST TESScut
+    sector-lookup endpoint (`SECTOR_URL`) -- confirmed live this session.
+
+    A `TPFRequest` needs a specific sector; this is how a caller who only
+    has a real target position finds one to ask for, without guessing.
+    """
+    ra = _finite_float(ra_deg, "ra_deg")
+    dec = _finite_float(dec_deg, "dec_deg")
+    if not 0.0 <= ra < 360.0:
+        raise TESSProductError("ra_deg must be finite and in [0, 360)")
+    if not -90.0 <= dec <= 90.0:
+        raise TESSProductError("dec_deg must be finite and in [-90, 90]")
+    response = netclient.get(SECTOR_URL, {"ra": ra, "dec": dec}, timeout=60, provider="mast")
+    try:
+        payload = response.json()
+    except ValueError:
+        return []
+    results = payload.get("results") if isinstance(payload, dict) else None
+    if not isinstance(results, list):
+        return []
+
+    sectors: list[int] = []
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        try:
+            sectors.append(int(row["sector"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(set(sectors))
+
+
 def download_tpf(request: TPFRequest, *, root: Path | None = None,
                  project_id: str | None = None,
                  max_bytes: int = DEFAULT_MAX_BYTES,
@@ -576,6 +614,16 @@ def _read_tpf(path: Path) -> dict[str, Any]:
             "wcs": wcs,
             "summary": _summary,
         }
+
+
+def read_tpf_cube(path: str | Path) -> dict[str, Any]:
+    """Public wrapper around `_read_tpf` for callers needing the raw
+    per-cadence pixel cube (backlog item 11's image branch), not just the
+    summed 1-D light curve `extract_photometry()` returns. Changes nothing
+    about `extract_photometry`, which keeps calling `_read_tpf` directly --
+    this only exposes what was already computed internally.
+    """
+    return _read_tpf(Path(path))
 
 
 def _neighbor_field(neighbor: object, *names: str) -> Any:
@@ -968,6 +1016,7 @@ def json_payload(payload: dict[str, Any], max_points: int = 5000) -> dict[str, A
 
 __all__ = [
     "TPFRequest", "TESSProductError", "download_tpf", "extract_photometry",
-    "persist_photometry", "json_payload", "TESScUT_URL",
+    "persist_photometry", "json_payload", "TESScUT_URL", "SECTOR_URL",
+    "read_tpf_cube", "find_sectors",
     "TESS_PIXEL_SCALE_ARCSEC", "DEFAULT_SIZE_PIXELS", "DEFAULT_MAX_BYTES",
 ]

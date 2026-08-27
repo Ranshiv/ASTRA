@@ -98,6 +98,67 @@ class TestResample:
         np.testing.assert_allclose(mags[0], flux[0], atol=0.05)
 
 
+class TestResampleIrregular:
+    def test_output_shape_is_three_channels(self):
+        out = tensors.resample_irregular(make_curve(200), length=64)
+        assert out.shape == (3, 64)
+
+    def test_short_curve_is_rejected(self):
+        assert tensors.resample_irregular(make_curve(5)) is None
+
+    def test_values_are_real_observations_not_interpolated(self):
+        """Every kept value must be one of the curve's own MAD-normalised
+        observations, not an invented in-between point."""
+        curve = make_curve(300)
+        out = tensors.resample_irregular(curve, length=64)
+        kept_values = out[0][out[1] > 0]
+        normalised = tensors.normalise(curve.value)
+        # Every kept value equals SOME real normalised observation (subsampled
+        # by index, so which ones are kept is deterministic but not
+        # interpolated in between).
+        assert all(np.any(np.isclose(value, normalised)) for value in kept_values)
+
+    def test_fewer_real_points_than_length_are_padded_with_zero_mask(self):
+        curve = make_curve(20)
+        out = tensors.resample_irregular(curve, length=64)
+        assert out[1].sum() == 20
+        assert np.all(out[0][20:] == 0.0)
+        assert np.all(out[1][20:] == 0.0)
+        assert np.all(out[2][20:] == 0.0)
+
+    def test_first_kept_point_has_zero_time_delta(self):
+        out = tensors.resample_irregular(make_curve(50), length=64)
+        assert out[2][0] == 0.0
+
+    def test_a_real_gap_produces_a_nonzero_delta(self):
+        time = np.concatenate([
+            2458000.0 + np.arange(30) * 0.5,
+            2458300.0 + np.arange(30) * 0.5,
+        ])
+        curve = make_curve(value=np.full(60, 18.0), time=time)
+        out = tensors.resample_irregular(curve, length=64)
+        # The point right after the gap must show a large scaled delta.
+        assert out[2][30] > 10.0
+
+    def test_gap_is_capped_not_unbounded(self):
+        time = np.concatenate([
+            2458000.0 + np.arange(30) * 0.5,
+            2470000.0 + np.arange(30) * 0.5,   # an enormous gap
+        ])
+        curve = make_curve(value=np.full(60, 18.0), time=time)
+        out = tensors.resample_irregular(curve, length=64)
+        assert out[2].max() <= tensors.IRREGULAR_MAX_GAP_FACTOR
+
+    def test_zero_span_is_rejected(self):
+        curve = make_curve(value=np.full(50, 18.0), time=np.full(50, 2458000.0))
+        assert tensors.resample_irregular(curve) is None
+
+    def test_more_real_points_than_length_are_subsampled_not_interpolated(self):
+        out = tensors.resample_irregular(make_curve(500), length=32)
+        assert out.shape == (3, 32)
+        assert out[1].sum() == 32
+
+
 class TestBuild:
     def test_build_over_the_store(self, curve, tmp_path):
         store.write_curve(curve, tmp_path)
@@ -150,6 +211,16 @@ class TestSplit:
             identities=[], length=64)
         train, test, _, _ = tensors.train_test_split(batch)
         assert len(train) == 0 and len(test) == 0
+
+    def test_empty_three_channel_batch_splits_with_three_channels(self):
+        """An empty irregular-mode batch must not silently collapse to 2
+        channels, which would desync the split's shape from the real batch."""
+        batch = tensors.SequenceBatch(
+            values=np.empty((0, 3, 64), dtype=np.float32),
+            identities=[], length=64)
+        train, test, _, _ = tensors.train_test_split(batch)
+        assert train.shape == (0, 3, 64)
+        assert test.shape == (0, 3, 64)
 
 
 def seasonal_curve(seasons=3, per_season=120, gap_days=445.0, period=0.6,
@@ -270,6 +341,24 @@ class TestResampleModes:
         assert seasonal.to_dict()["mode"] == "season"
         assert seasonal.to_dict()["mean_coverage"] > \
             default.to_dict()["mean_coverage"]
+
+    def test_irregular_mode_does_not_fall_back_to_the_time_grid(self):
+        """Falling back would silently mix a 2-channel row into a batch every
+        other row is 3-channel."""
+        curve = seasonal_curve()
+        out = tensors.resample_curve(curve, mode="irregular")
+        assert out.shape[0] == 3
+        assert not np.array_equal(out[:2], tensors.resample(curve))
+
+    def test_build_with_irregular_mode_produces_three_channel_rows(self, isolated_root):
+        store.write_curve(seasonal_curve())
+        batch = tensors.build(survey="ztf", mode="irregular")
+        assert batch.shape[1] == 3
+        assert batch.to_dict()["mode"] == "irregular"
+
+    def test_empty_irregular_batch_has_three_channels(self, tmp_path):
+        batch = tensors.build(root=tmp_path / "none", mode="irregular", length=64)
+        assert batch.shape == (0, 3, 64)
 
 
 class TestPreprocessingContract:

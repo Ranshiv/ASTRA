@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Circle, FolderKanban } from "lucide-react";
 
 import { AcquirePanel } from "@/components/AcquirePanel";
@@ -6,6 +6,7 @@ import { Empty } from "@/components/ui";
 import { CurveExplorer } from "@/components/CurveExplorer";
 import { CrossSurveyPanel } from "@/components/CrossSurveyPanel";
 import { Dashboard } from "@/components/Dashboard";
+import { DigitalTwinPanel } from "@/components/DigitalTwinPanel";
 import { ExperimentsView } from "@/components/ExperimentsView";
 import { ExplainPanel } from "@/components/ExplainPanel";
 import { EventsView } from "@/components/EventsView";
@@ -40,6 +41,7 @@ const PAGE_TITLES: Record<SectionId, string> = {
   explain: "Why a candidate scored",
   experiments: "Experiments",
   models: "Models",
+  digitaltwin: "Survey digital twin",
   reports: "Research reports",
   settings: "Settings",
 };
@@ -118,6 +120,14 @@ export default function App() {
   const { section, navigate } = useHashNavigation<SectionId>(SECTION_IDS, "dashboard");
   const [activeProject, setActiveProject] = useState<ResearchProject | null>(null);
   const [environmentRefresh, setEnvironmentRefresh] = useState(0);
+  const projectSelectionInitialized = useRef(false);
+
+  function selectProject(project: ResearchProject | null) {
+    // A null selection is an intentional new-project draft, not a signal to
+    // repopulate the first active project when the initial load resolves.
+    projectSelectionInitialized.current = true;
+    setActiveProject(project);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -136,19 +146,29 @@ export default function App() {
         setCache(cacheStatus);
         setPaths(enginePaths);
         setSurveys(surveyList);
-        setActiveProject(projectList.find((project) => project.status === "active") ?? projectList[0] ?? null);
+        setActiveProject((current) => {
+          if (projectSelectionInitialized.current) return current;
+          projectSelectionInitialized.current = true;
+          return projectList.find((project) => project.status === "active") ?? projectList[0] ?? null;
+        });
       } catch (err) {
         if (!cancelled) setError(String(err));
       }
     })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [environmentRefresh]);
+
+  useEffect(() => {
+    let cancelled = false;
     engine.curvesList(undefined, 500, activeProject?.project_id).then((curves) => {
       if (!cancelled) setCurvesCount(curves.length);
     }).catch(() => {});
     engine.candidates().then((result) => {
       if (!cancelled) setCandidatesCount(result.count);
     }).catch(() => {});
-
     return () => {
       cancelled = true;
     };
@@ -187,7 +207,7 @@ export default function App() {
 
             {section === "dashboard" && <Dashboard onNavigate={navigate} projectId={activeProject?.project_id} />}
 
-            {section === "projects" && <ProjectWorkspace activeProject={activeProject} surveys={surveys} onSelect={setActiveProject} />}
+            {section === "projects" && <ProjectWorkspace activeProject={activeProject} surveys={surveys} onSelect={selectProject} />}
 
             {section === "acquire" && (
               surveys.length > 0 ? (
@@ -217,6 +237,7 @@ export default function App() {
             {section === "explain" && <ExplainPanel projectId={activeProject?.project_id} />}
             {section === "experiments" && <ExperimentsView projectId={activeProject?.project_id} />}
             {section === "models" && <ModelsView projectId={activeProject?.project_id} />}
+            {section === "digitaltwin" && <DigitalTwinPanel projectId={activeProject?.project_id} />}
             {section === "reports" && <ReportsView projectId={activeProject?.project_id} />}
             {section === "settings" && <SettingsView />}
           </main>

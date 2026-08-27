@@ -34,6 +34,8 @@ class ModelConfig:
     transformer_dim: int = 64
     transformer_heads: int = 4
     transformer_layers: int = 2
+    ode_hidden_dim: int = 32
+    ode_steps: int = 4
 
     def to_dict(self) -> dict:
         return {
@@ -46,6 +48,8 @@ class ModelConfig:
             "transformer_dim": self.transformer_dim,
             "transformer_heads": self.transformer_heads,
             "transformer_layers": self.transformer_layers,
+            "ode_hidden_dim": self.ode_hidden_dim,
+            "ode_steps": self.ode_steps,
         }
 
 
@@ -226,6 +230,91 @@ def make_transformer(config: ModelConfig | None = None):
     return PatchTransformerAutoencoder()
 
 
+def make_neural_ode(config: ModelConfig | None = None):
+    """ODE-RNN (Rubanova et al. 2019) over `tensors.py`'s `"irregular"` mode.
+
+    Consumes 3 channels -- value, validity mask, scaled time-delta -- NOT the
+    2-channel (value, mask) contract the other three factories share; it is
+    the only model built to read `tensors.resample_irregular`'s output. A
+    hidden state is evolved CONTINUOUSLY between observations via a small
+    MLP vector field integrated with a fixed-step 4th-order Runge-Kutta
+    solver (`ode_steps` substeps per real gap, using the gap's own actual
+    duration, not the fixed unit step every other model implicitly assumes),
+    then updated DISCONTINUOUSLY at each real observation via a GRU cell --
+    a padding step (mask == 0) evolves the ODE but skips the GRU jump, so
+    padding contributes no spurious update. `torchdiffeq`/`torchcde` were
+    deliberately NOT added as a dependency: a fixed-step RK4 integrator using
+    the real, already-capped gap duration (`tensors.IRREGULAR_MAX_GAP_FACTOR`)
+    needs no adaptive step-size control, and avoids a second gated research
+    dependency alongside celerite2 for a model that does not need one.
+
+    A shared linear decoder reconstructs a scalar value at every step from
+    that step's hidden state -- a recurrent, not a bottleneck, autoencoder --
+    so `masked_reconstruction_loss` (which only ever reads channels 0 and 1)
+    applies completely unchanged, and `train.py`'s `_loss_for`/`train()` need
+    no kind-specific branch to support this model.
+    """
+    import torch
+    from torch import nn
+
+    config = config or ModelConfig()
+    hidden_dim = max(4, int(config.ode_hidden_dim))
+    steps = max(1, int(config.ode_steps))
+
+    class ODEFunc(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.net = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim), nn.Tanh(),
+                nn.Linear(hidden_dim, hidden_dim),
+            )
+
+        def forward(self, h):
+            return self.net(h)
+
+    class NeuralODEAutoencoder(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.config = config
+            self.ode_func = ODEFunc()
+            self.input_proj = nn.Linear(1, hidden_dim)
+            self.cell = nn.GRUCell(hidden_dim, hidden_dim)
+            self.decoder = nn.Linear(hidden_dim, 1)
+
+        def _rk4_step(self, h, dt):
+            # dt is (batch, 1); broadcasts against the (batch, hidden_dim)
+            # state, so every unit in the hidden state shares one gap
+            # duration per row, as a single continuous-time trajectory must.
+            k1 = self.ode_func(h)
+            k2 = self.ode_func(h + dt / 2.0 * k1)
+            k3 = self.ode_func(h + dt / 2.0 * k2)
+            k4 = self.ode_func(h + dt * k3)
+            return h + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+
+        def forward(self, x):
+            value, mask, dt = x[:, 0, :], x[:, 1, :], x[:, 2, :]
+            batch_size, length = value.shape
+            h = value.new_zeros(batch_size, hidden_dim)
+            outputs = []
+            for step in range(length):
+                substep_dt = (dt[:, step] / steps).unsqueeze(-1)
+                for _ in range(steps):
+                    h = self._rk4_step(h, substep_dt)
+                observed = self.input_proj(value[:, step].unsqueeze(-1))
+                jumped = self.cell(observed, h)
+                gate = mask[:, step].unsqueeze(-1)
+                h = gate * jumped + (1.0 - gate) * h
+                outputs.append(self.decoder(h))
+            # Each `outputs[i]` is (batch, 1); stacking on a new LAST axis
+            # gives (batch, 1, length) directly -- the same (batch, 1, L)
+            # shape `masked_reconstruction_loss`'s `prediction.squeeze(1)`
+            # already expects from the other three models' decoders.
+            prediction = torch.stack(outputs, dim=-1)
+            return prediction, None, None
+
+    return NeuralODEAutoencoder()
+
+
 def masked_reconstruction_loss(prediction, target, mask, reduction: str = "mean"):
     """Mean squared error over observed points only.
 
@@ -260,6 +349,7 @@ MODEL_FACTORIES = {
     "autoencoder": make_autoencoder,
     "vae": make_vae,
     "transformer": make_transformer,
+    "neural_ode": make_neural_ode,
 }
 
 

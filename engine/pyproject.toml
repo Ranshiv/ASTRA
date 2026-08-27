@@ -23,6 +23,9 @@ dependencies = [
     "astropy-healpix==2.0.1",
     "gwosc==0.8.3",
     "h5py==3.16.0",
+    # tess_psf.py: forward PSF scene-model fitting (IntegratedGaussianPRF +
+    # PSFPhotometry) for candidate-scale deblending of TESS TPFs.
+    "photutils==3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +36,23 @@ dependencies = [
 # not require one. Pinned to CuPy 14.1.1's reported CUDA build (12.9).
 gpu = ["torch==2.13.0", "cupy-cuda12x==14.1.1", "nvidia-cuda-runtime-cu12==12.9.*"]
 dev = ["pytest==9.1.1", "pyinstaller==6.22.1"]
+# multiband_hier.py's latent-period GP model. CPU-only (no CUDA needed) but
+# still gated as opt-in/dev-only like torch above: it is a research
+# diagnostic never wired into scoring/RPC, and build-engine.ps1 strips it
+# from the packaged CPU release the same way it strips torch.
+#
+# emcee: microlensing_fit.py's posterior sampler (pure-Python MIT wheel, no
+# build risk). VBMicrolensing: microlensing.py's binary-lens magnification
+# (a C++ extension -- confirmed to ship a real cp312 win_amd64 wheel, unlike
+# healpy/nifty-ls whose missing Windows wheels blocked earlier work here).
+# Point-lens fitting needs NEITHER: its forward model is pure numpy and its
+# optimiser is scipy.optimize, already a core dependency.
+#
+# cryptography: reproducibility_bundle.py's Ed25519 signing/verification
+# (roadmap item 40). No pure-stdlib asymmetric-signature primitive exists in
+# CPython; this is the standard, audited choice (PyCA, ships a real cp312
+# win_amd64 wheel via a vendored OpenSSL, no local build toolchain needed).
+research = ["celerite2==0.3.3", "emcee==3.1.6", "VBMicrolensing==5.5", "cryptography==50.0.1"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -45,3 +65,6 @@ include = ["astra*"]
 [tool.pytest.ini_options]
 testpaths = ["../tests"]
 pythonpath = ["."]
+markers = [
+    "live: hits a real external service; skipped by default (see tests/conftest.py), run explicitly with -m live",
+]

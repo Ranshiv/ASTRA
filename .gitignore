@@ -50,3 +50,11 @@ release/
 *.pt
 *.ckpt
 *.safetensors
+
+# Screenshots / dogfood output produced by running the app locally
+*.png
+!public/**/*.png
+!src/**/*.png
+!src-tauri/icons/**/*.png
+dogfood-output/
+qa-project-id.txt

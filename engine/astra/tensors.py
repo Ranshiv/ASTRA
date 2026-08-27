@@ -52,10 +52,26 @@ MIN_SEASON_POINTS = 8
 MIN_PHASE_PERIOD_SNR = 5.0
 
 # How a curve is laid onto the fixed grid.
-#   time   uniform over the full baseline (the original, and still the default)
-#   season segmented on observing gaps, each season given its share of the grid
-#   phase  folded on a credible period, resampled in phase rather than time
-RESAMPLE_MODES = ("time", "season", "phase")
+#   time      uniform over the full baseline (the original, and still the default)
+#   season    segmented on observing gaps, each season given its share of the grid
+#   phase     folded on a credible period, resampled in phase rather than time
+#   irregular real observations only (no interpolation at all) plus their
+#             actual time gaps, for a model that reasons about irregular
+#             sampling directly instead of treating a gap as missing data
+#             (see resample_irregular; produces 3 channels, not 2)
+RESAMPLE_MODES = ("time", "season", "phase", "irregular")
+
+# Same gap/native-cadence threshold `season_bounds` uses, reused here to CAP
+# (not classify) a single reported inter-observation gap: an RK4 integrator
+# stepping a neural ODE's hidden state across a raw, unbounded gap (a
+# multi-hundred-day seasonal gap is common) would need the vector field to
+# stay stable over an arbitrarily large interval. Capping the reported gap at
+# this many native-cadence spacings keeps the model's LEARNED cadence-shift
+# behaviour bounded, at the cost of not distinguishing a 30x gap from a 300x
+# one -- both already reflect "a whole observing season was missed," which is
+# the information plan section 4 / docs/DEFERRED.txt's "gaps are masked, not
+# modelled" KNOWN limitation asks this mode to expose in the first place.
+IRREGULAR_MAX_GAP_FACTOR = SEASON_GAP_FACTOR
 
 
 @dataclass
@@ -268,6 +284,65 @@ def resample_by_phase(curve: LightCurve, period_days: float,
     return np.stack([resampled * mask, mask], axis=0)
 
 
+def resample_irregular(curve: LightCurve, length: int = DEFAULT_LENGTH,
+                       max_gap_factor: float = IRREGULAR_MAX_GAP_FACTOR
+                       ) -> np.ndarray | None:
+    """Real observations and their real time gaps -- no interpolation at all.
+
+    Every other mode in this module invents a value at every grid point,
+    zeroing the ones judged too far from a real observation to trust. This
+    mode instead keeps only genuine observations (subsampled by index, not
+    interpolated, when a curve has more than `length` of them) and reports
+    each kept point's real gap since the previous kept one, scaled by the
+    curve's own median native spacing and capped at `max_gap_factor` -- the
+    representation `multiband_hier`'s docstring and docs/DEFERRED.txt's
+    "gaps are masked, not modelled" entry both point at: a model consuming
+    this can learn from the SIZE of a gap instead of only being told a grid
+    point was fabricated.
+
+    Returns a (3, length) array -- value, validity mask, scaled time-delta --
+    one channel more than every other mode's (2, length); `make_neural_ode`
+    is the only model built to consume it. A curve with fewer than `length`
+    real points is padded at the end with value=mask=dt=0, the same
+    "padding reads as nothing happened" convention the mask channel already
+    establishes elsewhere.
+    """
+    tidy = curve.dropna().sorted_by_time()
+    if len(tidy) < MIN_POINTS:
+        return None
+
+    spacing = np.diff(tidy.time)
+    native_spacing = float(np.median(spacing)) if spacing.size else 0.0
+    if not np.isfinite(native_spacing) or native_spacing <= 0:
+        return None
+
+    if len(tidy) > length:
+        keep = np.unique(np.linspace(0, len(tidy) - 1, length).astype(int))
+        # Rounding to unique integers can leave the array a point short;
+        # top up from whatever indices were not already selected.
+        if len(keep) < length:
+            remaining = np.setdiff1d(np.arange(len(tidy)), keep)
+            keep = np.sort(np.concatenate([keep, remaining[:length - len(keep)]]))
+        times, values = tidy.time[keep], tidy.value[keep]
+    else:
+        times, values = tidy.time, tidy.value
+
+    normalised = normalise(values)
+    n_real = len(times)
+    gaps = np.diff(times, prepend=times[0]) / native_spacing
+    gaps[0] = 0.0
+    gaps = np.clip(gaps, 0.0, max_gap_factor)
+
+    value_channel = np.zeros(length, dtype=np.float32)
+    mask_channel = np.zeros(length, dtype=np.float32)
+    dt_channel = np.zeros(length, dtype=np.float32)
+    value_channel[:n_real] = normalised
+    mask_channel[:n_real] = 1.0
+    dt_channel[:n_real] = gaps.astype(np.float32)
+
+    return np.stack([value_channel, mask_channel, dt_channel], axis=0)
+
+
 def _period_for(path: Path) -> float | None:
     """A credible period for phase folding, from the feature cache only.
 
@@ -308,6 +383,14 @@ def resample_curve(curve: LightCurve, length: int = DEFAULT_LENGTH,
     if mode not in RESAMPLE_MODES:
         raise ValueError(f"unknown resample mode: {mode!r}")
 
+    if mode == "irregular":
+        # Deliberately no fallback to the time grid here: that grid is
+        # 2-channel and this mode's batch is 3-channel, so "falling back"
+        # would silently mix shapes within one SequenceBatch. A curve this
+        # mode cannot represent (native spacing not computable) is simply
+        # dropped by its caller returning None, same as any other mode's
+        # genuine failure case.
+        return resample_irregular(curve, length)
     if mode == "season":
         seasonal = resample_by_season(curve, length)
         if seasonal is not None:
@@ -336,12 +419,13 @@ def build(survey: str | None = None, length: int = DEFAULT_LENGTH,
 
     root = root or config.PATHS.datasets
     search_root = root / survey.upper() if survey else root
+    channels = 3 if mode == "irregular" else 2
 
     rows: list[np.ndarray] = []
     identities: list[dict] = []
 
     if not search_root.exists():
-        return SequenceBatch(values=np.empty((0, 2, length), dtype=np.float32),
+        return SequenceBatch(values=np.empty((0, channels, length), dtype=np.float32),
                              identities=[], length=length, mode=mode)
 
     # Phase mode needs periods; read the feature cache once for the whole
@@ -384,7 +468,7 @@ def build(survey: str | None = None, length: int = DEFAULT_LENGTH,
         })
 
     values = (np.stack(rows) if rows
-              else np.empty((0, 2, length), dtype=np.float32))
+              else np.empty((0, channels, length), dtype=np.float32))
     return SequenceBatch(values=values.astype(np.float32),
                          identities=identities, length=length, mode=mode)
 
@@ -400,7 +484,8 @@ def train_test_split(batch: SequenceBatch, test_fraction: float = 0.2,
     """
     n = len(batch)
     if n == 0:
-        empty = np.empty((0, 2, batch.length), dtype=np.float32)
+        channels = batch.values.shape[1] if batch.values.ndim == 3 else 2
+        empty = np.empty((0, channels, batch.length), dtype=np.float32)
         return empty, empty, np.empty(0, dtype=int), np.empty(0, dtype=int)
 
     rng = np.random.default_rng(seed)

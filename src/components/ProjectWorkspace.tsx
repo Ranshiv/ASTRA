@@ -96,6 +96,21 @@ export function ProjectWorkspace({
     setRegions((current) => current.filter((_, i) => i !== index));
   }
 
+  function startDraft() {
+    onSelect(null);
+    setName("");
+    setDescription("");
+    setTags("");
+    setSelectedSurveys([]);
+    setRegions([]);
+    setRegionRa("");
+    setRegionDec("");
+    setRegionRadius("60");
+    setRegionError(null);
+    setValidation(null);
+    setStatus("New project draft");
+  }
+
   async function create() {
     if (!name.trim()) return;
     setBusy(true);
@@ -146,7 +161,7 @@ export function ProjectWorkspace({
       const project = await engine.projectArchive(activeProject.project_id, activeProject.status !== "archived");
       setProjects((current) => current.map((item) => item.project_id === project.project_id ? project : item));
       onSelect(project);
-      setStatus(project.status === "archived" ? "Project archived; it is now read-only." : "Project restored.");
+      setStatus(project.status === "archived" ? "Project archived; it is now read-only" : "Project restored");
     } catch (err) {
       setStatus(String(err));
     } finally {
@@ -193,7 +208,7 @@ export function ProjectWorkspace({
             <span className="mt-0.5 block truncate font-mono text-xs text-[var(--color-muted)]">{project.project_id} · {project.status}</span>
             </button>
           ))}
-          <button type="button" onClick={() => { onSelect(null); setName(""); setDescription(""); setTags(""); setSelectedSurveys([]); setRegions([]); }} className="mt-2 flex w-full items-center justify-center gap-1 rounded border border-dashed border-[var(--color-edge)] px-2 py-1.5 text-xs text-[var(--color-muted)]">
+          <button type="button" onClick={startDraft} className="mt-2 flex w-full items-center justify-center gap-1 rounded border border-dashed border-[var(--color-edge)] px-2 py-1.5 text-xs text-[var(--color-muted)]">
             <Plus size={12} /> New project
           </button>
         </div>

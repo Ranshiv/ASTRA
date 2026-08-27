@@ -27,6 +27,21 @@ def fake_sequences(n=64, length=64, seed=0) -> np.ndarray:
     return np.stack([values, mask], axis=1)
 
 
+def fake_irregular_sequences(n=64, length=64, seed=0) -> np.ndarray:
+    """3-channel (value, mask, scaled time-delta) batch, tensors.py's
+    "irregular" mode shape -- what make_neural_ode expects."""
+    rng = np.random.default_rng(seed)
+    time = np.linspace(0, 4 * np.pi, length)
+    values = np.stack([
+        np.sin(time * rng.uniform(0.5, 2.0) + rng.uniform(0, np.pi))
+        + rng.normal(0, 0.05, length)
+        for _ in range(n)
+    ]).astype(np.float32)
+    mask = np.ones((n, length), dtype=np.float32)
+    dt = np.tile(np.diff(time, prepend=time[0]).astype(np.float32), (n, 1))
+    return np.stack([values, mask, dt], axis=1)
+
+
 class TestModels:
     @pytest.mark.parametrize("kind", ["autoencoder", "vae"])
     def test_forward_preserves_sequence_length(self, kind):
@@ -50,6 +65,23 @@ class TestModels:
         model = models.make("transformer", models.ModelConfig(length=64, patch_size=8))
         out, _, _ = model(torch.from_numpy(fake_sequences(4, 64)))
         assert out.shape[-1] == 64
+
+    def test_neural_ode_preserves_sequence_length(self):
+        config = models.ModelConfig(length=32, ode_hidden_dim=16, ode_steps=2)
+        model = models.make("neural_ode", config)
+        out, mu, logvar = model(torch.from_numpy(fake_irregular_sequences(4, 32)))
+        assert out.shape == (4, 1, 32)
+        assert mu is None and logvar is None
+
+    def test_neural_ode_gradients_reach_every_parameter(self):
+        config = models.ModelConfig(length=16, ode_hidden_dim=8, ode_steps=1)
+        model = models.make("neural_ode", config)
+        batch = torch.from_numpy(fake_irregular_sequences(2, 16))
+        out, _, _ = model(batch)
+        loss = models.masked_reconstruction_loss(out, batch[:, 0, :], batch[:, 1, :])
+        loss.backward()
+        assert all(p.grad is not None and torch.any(p.grad != 0)
+                  for p in model.parameters())
 
     def test_unknown_model_is_rejected(self):
         with pytest.raises(KeyError, match="available"):
@@ -121,6 +153,19 @@ class TestTraining:
                                 model=models.ModelConfig(length=64))
 
         report = train.train(data[:80], data[80:], cfg, tmp_path, "t")
+
+        assert report.train_losses[-1] < report.train_losses[0]
+        assert report.best_epoch >= 0
+
+    def test_neural_ode_trains_via_the_shared_loop(self, tmp_path):
+        """train.py needs no kind-specific branch for this model: it returns
+        (prediction, None, None) exactly like the autoencoder does."""
+        data = fake_irregular_sequences(48, 16, seed=1)
+        cfg = train.TrainConfig(
+            kind="neural_ode", epochs=8, batch_size=16,
+            model=models.ModelConfig(length=16, ode_hidden_dim=12, ode_steps=1))
+
+        report = train.train(data[:40], data[40:], cfg, tmp_path, "ode")
 
         assert report.train_losses[-1] < report.train_losses[0]
         assert report.best_epoch >= 0
@@ -231,6 +276,21 @@ class TestInjection:
 
         for index in np.where(result.labels == 0)[0]:
             np.testing.assert_array_equal(result.values[index], data[index])
+
+
+class TestDeepMethodsDispatch:
+    def test_two_channel_input_runs_the_three_original_kinds(self):
+        values = fake_sequences(24, 16)
+        labels = np.zeros(24, dtype=int)
+        results = evaluate._deep_methods(values, labels, epochs=1, seed=0)
+        assert {r.name for r in results} == {
+            "deep_autoencoder", "deep_vae", "deep_transformer"}
+
+    def test_three_channel_input_runs_only_neural_ode(self):
+        values = fake_irregular_sequences(24, 16)
+        labels = np.zeros(24, dtype=int)
+        results = evaluate._deep_methods(values, labels, epochs=1, seed=0)
+        assert {r.name for r in results} == {"deep_neural_ode"}
 
 
 class TestScoring:
@@ -386,3 +446,40 @@ class TestCudaOomGuard:
 
         assert calls == ["emptied"]
         monkeypatch.setattr(model, "forward", real_forward)
+
+    def test_cuda_initialization_oom_falls_back_to_cpu(self, tmp_path, monkeypatch):
+        """A headroom check is only advisory: allocation can still OOM before
+        the epoch guard is entered.  That failure must recover as CPU training.
+        """
+        class FakeDeviceReport:
+            device = "cuda"
+            reason = "CUDA device available"
+            torch_available = True
+            cuda_available = True
+            gpu = None
+
+        class TinyModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = torch.nn.Parameter(torch.ones(1))
+
+            def to(self, device):
+                if str(device) == "cuda":
+                    raise RuntimeError("CUDA out of memory during initialization")
+                return super().to(device)
+
+            def forward(self, batch):
+                return batch[:, :1, :] * self.weight, None, None
+
+        monkeypatch.setattr(train.hardware, "select_device",
+                            lambda: FakeDeviceReport())
+        monkeypatch.setattr(train.models, "make", lambda *args, **kwargs: TinyModel())
+
+        data = fake_sequences(8, 16)
+        cfg = train.TrainConfig(epochs=1, batch_size=4,
+                                model=models.ModelConfig(length=16))
+        report = train.train(data[:6], data[6:], cfg, tmp_path, "fallback")
+
+        assert report.device == "cpu"
+        assert "initialization ran out of memory" in report.device_reason
+        assert report.amp_enabled is False

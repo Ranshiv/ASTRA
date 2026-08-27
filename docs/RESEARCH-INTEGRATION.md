@@ -98,6 +98,30 @@ quantify how dependent the catalog-relative attribution is on neighbor flux
 assumptions; they are not PSF posteriors and do not restore resolved-survey
 credit.
 
+## Cross-messenger event graph and PSF deblending
+
+`events.graph.correlate` and `events.graph.calibrate` expose
+`association.event_to_event_correlation`/`calibrate_event_graph`: a
+pairwise cross-messenger Bayes-factor statistic (Rayleigh spatial ratio ×
+uniform-window temporal ratio) between distinct-provider events, calibrated
+against a scrambled-time-slide null population for an estimated
+false-coincidence rate. This is separate from `events.associate` (event-to-
+candidate); neither changes candidate scores.
+
+`surveys/rubin_tap.py` (`RubinTAPConnector`) is a dormant, credential-gated
+direct Rubin/LSST TAP connector, registered but not enabled by default and
+tested only against mocked responses (no real data-rights token exists yet).
+`credentials.rubin.configure/status/clear` manage the stored token via the
+same Windows-DPAPI backend TNS uses. ALeRCE (`surveys/alerce.py`) remains the
+credential-free route to real LSST alerts/photometry today.
+
+`tess_psf.py` fits a forward PSF scene model (fixed source positions, joint
+per-cadence flux) for TESS target-pixel cutouts, producing a fitted flux
+*posterior* per source alongside `flux_rmse`/`blend_attribution_accuracy`/
+`injected_source_recovery` validation. This is new evidence alongside (not a
+replacement for) `extract_photometry`'s aperture curve and catalog-relative
+flux prior, and is not folded into ranking.
+
 ## Bridge and UI
 
 The JSON-lines engine, Rust/Tauri commands, and typed TypeScript client expose

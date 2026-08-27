@@ -55,6 +55,17 @@ TRANSFORMER_GRID: dict[str, tuple] = {
     "learning_rate": (3e-4, 1e-3),
 }
 
+# The neural ODE has its own dimensions too: `ode_hidden_dim` describes its
+# capacity the way `latent_dim`/`channels` describe the conv models, and
+# `ode_steps` (RK4 substeps per real gap) trades integration accuracy for
+# runtime -- neither applies to any other kind, so it gets its own grid
+# rather than silently reusing DEFAULT_GRID's unrelated dimensions.
+NEURAL_ODE_GRID: dict[str, tuple] = {
+    "ode_hidden_dim": (16, 32, 64),
+    "ode_steps": (2, 4),
+    "learning_rate": (3e-4, 1e-3, 3e-3),
+}
+
 DEFAULT_SEEDS: tuple[int, ...] = (17, 29, 43)
 
 
@@ -164,7 +175,12 @@ def grid(kind: str = "autoencoder",
     `latent_dim` over a patch transformer would vary nothing while tripling the
     runtime, and reporting it as a searched dimension would be misleading.
     """
-    base = TRANSFORMER_GRID if kind == "transformer" else DEFAULT_GRID
+    if kind == "transformer":
+        base = TRANSFORMER_GRID
+    elif kind == "neural_ode":
+        base = NEURAL_ODE_GRID
+    else:
+        base = DEFAULT_GRID
     space = {**base, **(overrides or {})}
     if kind == "vae" and "kl_weight" not in space:
         space["kl_weight"] = KL_WEIGHT_GRID
@@ -202,6 +218,9 @@ def _score_trial(parameters: dict, kind: str, batch, seeds: tuple[int, ...],
                                                defaults.transformer_dim)),
             transformer_layers=int(parameters.get("transformer_layers",
                                                   defaults.transformer_layers)),
+            ode_hidden_dim=int(parameters.get("ode_hidden_dim",
+                                              defaults.ode_hidden_dim)),
+            ode_steps=int(parameters.get("ode_steps", defaults.ode_steps)),
         )
         config = train.TrainConfig(
             kind=kind, epochs=epochs, seed=seed,
@@ -253,6 +272,12 @@ def run(kind: str = "autoencoder",
 
     if len(seeds) < 2:
         raise ValueError("a sweep needs at least two seeds to report an interval")
+    if kind == "neural_ode" and mode != "irregular":
+        # make_neural_ode reads a 3rd (time-delta) channel that only
+        # tensors.py's "irregular" mode produces; every other mode's
+        # 2-channel batch would fail with an opaque tensor-shape error deep
+        # inside the model rather than this clear one.
+        raise ValueError("kind='neural_ode' requires mode='irregular'")
 
     batch = tensors.build(survey=survey, limit=limit, mode=mode)
     if len(batch) < 20:

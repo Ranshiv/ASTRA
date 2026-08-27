@@ -162,23 +162,56 @@ def train(train_values: np.ndarray, val_values: np.ndarray,
     _set_seed(cfg.seed)
 
     device_report = hardware.select_device()
+
+    def is_cuda_oom(exc: BaseException) -> bool:
+        out_of_memory_type = getattr(torch.cuda, "OutOfMemoryError", None)
+        return ((out_of_memory_type is not None and isinstance(exc, out_of_memory_type))
+                or "out of memory" in str(exc).lower())
+
+    # CUDA can pass the nvidia-smi headroom check and still fail while moving
+    # the model, optimiser state, or validation tensor onto the device.  Keep
+    # that initialization inside the same recovery policy as the epoch loop:
+    # clear the allocator and continue on CPU so a default run remains usable.
     device = torch.device(device_report.device)
-
     batch_size = choose_batch_size(cfg.model.length, cfg.batch_size)
+    try:
+        model = models.make(cfg.kind, cfg.model).to(device)
+        optimiser = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
+        # AMP only helps on CUDA; on CPU it is a slowdown with no memory benefit.
+        use_amp = bool(cfg.amp and device.type == "cuda")
+        scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+        val_tensor = torch.from_numpy(val_values).to(device)
+    except (RuntimeError, MemoryError) as exc:
+        if device.type != "cuda" or not is_cuda_oom(exc):
+            raise
+        # The references are replaced below; emptying the allocator releases
+        # blocks held by any partially-created CUDA objects in this long-lived
+        # RPC process.
+        torch.cuda.empty_cache()
+        device = torch.device("cpu")
+        batch_size = 64
+        device_report = hardware.DeviceReport(
+            device="cpu",
+            reason=(
+                f"CUDA initialization ran out of memory ({exc}); "
+                "falling back to CPU."
+            ),
+            torch_available=True,
+            cuda_available=True,
+            gpu=device_report.gpu,
+        )
+        model = models.make(cfg.kind, cfg.model).to(device)
+        optimiser = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
+        use_amp = False
+        scaler = torch.amp.GradScaler("cuda", enabled=False)
+        val_tensor = torch.from_numpy(val_values).to(device)
+
     accumulation = max(1, cfg.effective_batch_size // max(batch_size, 1))
-
-    model = models.make(cfg.kind, cfg.model).to(device)
-    optimiser = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
-
-    # AMP only helps on CUDA; on CPU it is a slowdown with no memory benefit.
-    use_amp = bool(cfg.amp and device.type == "cuda")
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     train_loader = DataLoader(
         TensorDataset(torch.from_numpy(train_values)),
         batch_size=batch_size, shuffle=True, drop_last=False,
     )
-    val_tensor = torch.from_numpy(val_values).to(device)
 
     report = TrainReport(
         kind=cfg.kind, device=device_report.device,

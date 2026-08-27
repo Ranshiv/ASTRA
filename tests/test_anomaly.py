@@ -224,6 +224,61 @@ class TestGaiaJoin:
         assert featurematrix.list_matrices(tmp_path) == []
 
 
+class TestStellarManifoldJoin:
+    """stellar_manifold's join is layered on top of join_gaia_columns: it
+    only ever derives physics from columns that join already produced, so
+    it requires that join to have run first."""
+
+    def _ztf_curve(self, object_id: str, ra_deg: float, dec_deg: float) -> LightCurve:
+        source = SourceRef(survey="ZTF", object_id=object_id,
+                           ra_deg=ra_deg, dec_deg=dec_deg)
+        return LightCurve(source=source, release="dr24", band="g",
+                          value_kind="mag",
+                          time=2458000.0 + np.arange(30, dtype=np.float64) * 0.5,
+                          value=np.full(30, 18.0), value_err=np.full(30, 0.02))
+
+    def test_requires_gaia_join_to_run_first(self):
+        matrix = FeatureMatrix(values=np.empty((0, len(FEATURE_NAMES))), identities=[])
+        with pytest.raises(ValueError, match="join_gaia_columns"):
+            featurematrix.join_stellar_manifold_columns(matrix)
+
+    def test_matched_row_gets_manifold_columns(self, isolated_root):
+        from astra import metadata
+
+        curve = self._ztf_curve("obj1", ra_deg=180.0, dec_deg=22.0)
+        store.write_curve(curve)
+        metadata.upsert_sources(isolated_root.projects, [{
+            "source_key": "Gaia/dr3/1", "survey": "Gaia", "release": "dr3",
+            "object_id": "1", "ra_deg": 180.0, "dec_deg": 22.0,
+            # phot_bp_mean_mag - phot_rp_mean_mag = 0.85, a real G5V anchor.
+            "extra": {"parallax": 5.0, "parallax_error": 0.1,
+                     "phot_g_mean_mag": 4.801 + 5.0 * (np.log10(200.0) - 1.0),
+                     "phot_bp_mean_mag": 15.85, "phot_rp_mean_mag": 15.0},
+        }])
+
+        matrix = featurematrix.build(survey="ZTF")
+        gaia_joined, _ = featurematrix.join_gaia_columns(matrix)
+        joined, diagnostics = featurematrix.join_stellar_manifold_columns(gaia_joined)
+
+        assert len(joined) == len(matrix)  # column join: row count unchanged
+        assert diagnostics == {"matched": 1, "total": 1, "match_rate": 1.0}
+        assert joined.column("manifold_matched")[0] == 1.0
+        assert joined.column("manifold_residual_mag")[0] == pytest.approx(0.0, abs=1e-3)
+        assert joined.column("manifold_teff_k")[0] == pytest.approx(5660.0, abs=1.0)
+
+    def test_unmatched_gaia_row_gets_nan_manifold_columns(self, isolated_root):
+        curve = self._ztf_curve("obj1", ra_deg=180.0, dec_deg=22.0)
+        store.write_curve(curve)
+
+        matrix = featurematrix.build(survey="ZTF")
+        gaia_joined, _ = featurematrix.join_gaia_columns(matrix)
+        joined, diagnostics = featurematrix.join_stellar_manifold_columns(gaia_joined)
+
+        assert diagnostics == {"matched": 0, "total": 1, "match_rate": 0.0}
+        assert joined.column("manifold_matched")[0] == 0.0
+        assert np.isnan(joined.column("manifold_residual_mag")[0])
+
+
 class TestPrepare:
     def test_rows_with_nan_features_are_excluded(self):
         matrix = synthetic_matrix(n_normal=20, n_outliers=0)

@@ -1208,6 +1208,66 @@ async fn engine_physical_enrich(
 }
 
 #[tauri::command]
+async fn engine_digital_twin_fit_profile(
+    state: tauri::State<'_, Arc<Engine>>,
+    survey: String,
+    limit: Option<u32>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "digital_twin.fit_profile", json!({
+        "survey": survey,
+        "limit": limit.unwrap_or(500),
+    })).await
+}
+
+#[tauri::command]
+async fn engine_digital_twin_sample(
+    state: tauri::State<'_, Arc<Engine>>,
+    survey: String,
+    limit: Option<u32>,
+    n: Option<u32>,
+    seed: Option<u32>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "digital_twin.sample", json!({
+        "survey": survey,
+        "limit": limit.unwrap_or(500),
+        "n": n.unwrap_or(50),
+        "seed": seed.unwrap_or(42),
+    })).await
+}
+
+#[tauri::command]
+async fn engine_digital_twin_evaluate_distance(
+    state: tauri::State<'_, Arc<Engine>>,
+    survey: String,
+    limit: Option<u32>,
+    seed: Option<u32>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "digital_twin.evaluate_distance", json!({
+        "survey": survey,
+        "limit": limit.unwrap_or(500),
+        "seed": seed.unwrap_or(42),
+    })).await
+}
+
+#[tauri::command]
+async fn engine_digital_twin_evaluate_transfer(
+    state: tauri::State<'_, Arc<Engine>>,
+    survey: String,
+    limit: Option<u32>,
+    seeds: Option<Vec<u32>>,
+    epochs: Option<u32>,
+    fraction: Option<f64>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "digital_twin.evaluate_transfer", json!({
+        "survey": survey,
+        "limit": limit.unwrap_or(500),
+        "seeds": seeds.unwrap_or_else(|| vec![17, 29, 43]),
+        "epochs": epochs.unwrap_or(15),
+        "fraction": fraction.unwrap_or(0.1),
+    })).await
+}
+
+#[tauri::command]
 async fn engine_gw_events(
     state: tauri::State<'_, Arc<Engine>>,
     catalog: Option<String>,
@@ -1608,6 +1668,10 @@ pub fn run() {
             engine_literature_enrich,
             engine_physical_characterize,
             engine_physical_enrich,
+            engine_digital_twin_fit_profile,
+            engine_digital_twin_sample,
+            engine_digital_twin_evaluate_distance,
+            engine_digital_twin_evaluate_transfer,
             engine_gw_events,
             engine_gw_enrich,
             engine_frb_events,

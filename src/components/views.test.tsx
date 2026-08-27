@@ -6,15 +6,18 @@
  * an empty table that looks like a failure.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { invoke } from "@/test/setup";
 import { CrossSurveyPanel } from "@/components/CrossSurveyPanel";
+import { DigitalTwinPanel } from "@/components/DigitalTwinPanel";
 import { ExplainPanel, FrbCoincidence, GwCoincidence } from "@/components/ExplainPanel";
 import { ExperimentsView } from "@/components/ExperimentsView";
 import { SkyExplorer } from "@/components/SkyExplorer";
 import { ModelsView } from "@/components/ModelsView";
+import { ProjectWorkspace } from "@/components/ProjectWorkspace";
 import { ReportsView } from "@/components/ReportsView";
+import { SettingsView } from "@/components/SettingsView";
 
 const DEEP_UNAVAILABLE =
   "PyTorch is not available in this build, so deep models cannot run. " +
@@ -97,6 +100,99 @@ describe("ModelsView", () => {
   });
 });
 
+describe("DigitalTwinPanel", () => {
+  it("shows empty states before any fit/sample/distance/transfer run", async () => {
+    respond();
+    render(<DigitalTwinPanel />);
+
+    expect(await screen.findByText(/No profile fitted yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/No distance measurement run yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/No transfer study run yet/i)).toBeInTheDocument();
+  });
+
+  it("renders a fitted profile and sampled batch on demand", async () => {
+    respond({
+      engine_digital_twin_sample: {
+        profile: {
+          survey: "ZTF", n_curves_used: 298, mean_coverage: 0.4616,
+          n_gap_runs_sampled: 3960, noise_std: 0.6595, length: 256, note: "",
+        },
+        batch: { rows: 50, length: 256, channels: 2, mode: "synthetic", mean_coverage: 0.4049 },
+      },
+    });
+    render(<DigitalTwinPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Fit & sample/i }));
+
+    expect(await screen.findByText("298")).toBeInTheDocument();
+    expect(screen.getByText(/0\.4616/)).toBeInTheDocument();
+  });
+
+  it("reports the degradation note instead of fabricated stats", async () => {
+    respond({
+      engine_digital_twin_sample: {
+        profile: {
+          survey: "ZTF", n_curves_used: 2, mean_coverage: null,
+          n_gap_runs_sampled: 0, noise_std: null, length: 256,
+          note: "fewer than 5 real ZTF curves locally stored; profile not fit",
+        },
+        batch: { rows: 0, length: 256, channels: 2, mode: "synthetic", mean_coverage: 0 },
+      },
+    });
+    render(<DigitalTwinPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Fit & sample/i }));
+
+    expect(await screen.findByText(/fewer than 5 real ZTF curves/i)).toBeInTheDocument();
+  });
+
+  it("renders per-feature distance and never declares a scoring change", async () => {
+    respond({
+      engine_digital_twin_evaluate_distance: {
+        profile: { survey: "TESS", n_curves_used: 131, mean_coverage: 0.9679,
+                  n_gap_runs_sampled: 131, noise_std: 0.6546, length: 256, note: "" },
+        per_feature: { std: 0.31, amplitude: 0.41 },
+        mean_ks_statistic: 0.36,
+        real_rows: 131, synthetic_rows: 131,
+      },
+    });
+    render(<DigitalTwinPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Measure distance/i }));
+
+    expect(await screen.findByText(/mean KS 0\.36/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not rank or score anything/i)).toBeInTheDocument();
+  });
+
+  it("renders both transfer arms without declaring a winner", async () => {
+    respond({
+      engine_digital_twin_evaluate_transfer: {
+        profile: { survey: "ZTF", n_curves_used: 298, mean_coverage: 0.4616,
+                  n_gap_runs_sampled: 3960, noise_std: 0.6595, length: 256, note: "" },
+        trained_on_real: { mean: 0.8235, std: 0.0882, ci95: [0.6978, 0.9083], n: 5 },
+        trained_on_synthetic: { mean: 0.8179, std: 0.09, ci95: [0.679, 0.8796], n: 5 },
+        held_out_test_injection: { rows: 60, injected: 6 },
+      },
+    });
+    render(<DigitalTwinPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Run transfer study/i }));
+
+    expect(await screen.findByText("trained on real")).toBeInTheDocument();
+    expect(screen.getByText("trained on synthetic")).toBeInTheDocument();
+    expect(screen.getByText(/not reliably distinguishable/i)).toBeInTheDocument();
+  });
+
+  it("surfaces an engine error rather than a blank panel", async () => {
+    respond({ engine_digital_twin_sample: new Error("engine not running") });
+    render(<DigitalTwinPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Fit & sample/i }));
+
+    expect(await screen.findByText(/engine not running/i)).toBeInTheDocument();
+  });
+});
+
 describe("ReportsView", () => {
   it("says where exports go before any have been written", async () => {
     respond();
@@ -120,6 +216,38 @@ describe("ReportsView", () => {
     expect(
       await screen.findByText(/look like a result without being one/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ProjectWorkspace", () => {
+  it("starts a clean draft without reselecting the existing project", async () => {
+    const project = {
+      project_id: "project-1", name: "Existing", description: "Existing description",
+      tags: ["old"], selected_surveys: ["ztf"], query_regions: [],
+      status: "active", data_root: "C:/ASTRA/projects/project-1",
+    };
+    respond({ engine_projects: [project] });
+    const onSelect = vi.fn();
+    render(<ProjectWorkspace activeProject={project as never} surveys={[]} onSelect={onSelect} />);
+
+    expect(await screen.findByRole("textbox", { name: "Name" })).toHaveValue("Existing");
+    fireEvent.click(screen.getByRole("button", { name: /New project/i }));
+
+    expect(onSelect).toHaveBeenCalledWith(null);
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("");
+  });
+});
+
+describe("SettingsView", () => {
+  it("keeps subsection links on Settings instead of invoking the app router", async () => {
+    respond();
+    window.history.replaceState(null, "", "#/settings");
+    render(<SettingsView />);
+
+    fireEvent.click(screen.getByRole("link", { name: "Storage" }));
+
+    expect(window.location.hash).toBe("#/settings");
+    expect(screen.getByRole("heading", { name: "Storage", level: 2 })).toBeInTheDocument();
   });
 });
 

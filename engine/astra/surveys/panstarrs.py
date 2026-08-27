@@ -1,4 +1,21 @@
-"""Pan-STARRS DR2 mean-photometry metadata connector via MAST."""
+"""Pan-STARRS DR2 mean-photometry metadata connector via MAST.
+
+A galaxy angular-size proxy (`rKronRad`) was attempted for roadmap item 31
+(`host_association.py`), which needs one. Confirmed live this session,
+via the real `mean` endpoint's own column-metadata response (the
+`info` list `cone_search` gets back alongside `data`): the `mean` object
+view this connector queries has NO Kron-radius or any other size/shape
+column at all -- only per-band `MeanKronMag` (a Kron *magnitude*, not a
+radius). A real size column (`{band}KronRad`) exists only on the separate
+`stack` endpoint (confirmed live the same session), which this connector
+does not query. This is therefore a real, confirmed data-source gap, not
+an unverified assumption: `host_association.py` gets no size proxy from
+Pan-STARRS and falls back to its own `DEFAULT_R_E_ARCSEC` for any
+Pan-STARRS-only candidate. Switching this connector to `stack` (a
+differently shaped, per-detection rather than per-object table) would be
+a real scope change to its existing `mean_photometry` contract, not
+attempted here.
+"""
 
 from __future__ import annotations
 
@@ -51,7 +68,16 @@ class PanSTARRSConnector(SurveyConnector):
                        "r_mean": row.get("rMeanPSFMag"),
                        "i_mean": row.get("iMeanPSFMag"),
                        "z_mean": row.get("zMeanPSFMag"),
-                       "y_mean": row.get("yMeanPSFMag")},
+                       "y_mean": row.get("yMeanPSFMag"),
+                       # Pan-STARRS DR2's mean table publishes these
+                       # alongside the magnitudes above; not previously
+                       # requested here. photometric_calibration.py needs
+                       # them to weight matched pairs by uncertainty.
+                       "g_mean_error": row.get("gMeanPSFMagErr"),
+                       "r_mean_error": row.get("rMeanPSFMagErr"),
+                       "i_mean_error": row.get("iMeanPSFMagErr"),
+                       "z_mean_error": row.get("zMeanPSFMagErr"),
+                       "y_mean_error": row.get("yMeanPSFMagErr")},
             ))
         return sources
 

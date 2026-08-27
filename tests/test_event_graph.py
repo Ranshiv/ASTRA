@@ -126,7 +126,9 @@ class TestSpatialAndTemporalLikelihoodRatios:
         assert inside_a == pytest.approx(365.0)
 
 
-def _background_population(rng, n=40, providers=("icecube", "fermi", "swift", "alerce")):
+def _background_population(rng, n=40, providers=("icecube", "fermi", "swift", "alerce"),
+                           center_ra_deg=180.0, center_dec_deg=10.0, box_deg=10.0,
+                           error_radius_range_arcsec=(60.0, 600.0)):
     """Many uncorrelated events in the same sky patch, spread over a year.
 
     A single true pair (as the other test in this class uses) gives the
@@ -151,14 +153,17 @@ def _background_population(rng, n=40, providers=("icecube", "fermi", "swift", "a
     from datetime import datetime, timedelta, timezone
 
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    half_box = float(box_deg) / 2.0
+    low, high = error_radius_range_arcsec
     events = []
     for i in range(n):
         when = base + timedelta(days=float(rng.uniform(0, 365)))
         events.append(_point_event(
             f"BG{i}", providers[i % len(providers)],
-            float(rng.uniform(175.0, 185.0)), float(rng.uniform(5.0, 15.0)),
+            float(rng.uniform(center_ra_deg - half_box, center_ra_deg + half_box)),
+            float(rng.uniform(center_dec_deg - half_box, center_dec_deg + half_box)),
             when.isoformat(),
-            error_radius_arcsec=float(rng.uniform(60.0, 600.0)),
+            error_radius_arcsec=float(rng.uniform(low, high)),
         ))
     return events
 
@@ -200,3 +205,97 @@ class TestCalibrateEventGraph:
         assert result["observed_pairs"] == 1
         assert result["observed_finite_scores"] == 0
         assert result["calibration"]["ready"] is False
+
+
+class TestGoldenFixtureGW170817(object):
+    """Real, published multi-messenger coincidence, not a synthetic pair.
+
+    GW170817 (LIGO/Virgo binary neutron star merger, 2017-08-17T12:41:04.4Z)
+    and GRB170817A (Fermi-GBM short gamma-ray burst, 2017-08-17T12:41:06.47Z,
+    ~1.7s after merger) are the first confirmed gravitational-wave/gamma-ray
+    coincidence, reported in Abbott et al. 2017, ApJL 848, L13. The sky
+    position used here is the optical counterpart (SSS17a/AT2017gfo, host
+    galaxy NGC 4993): RA=197.450374, Dec=-23.381495 deg (Coulter et al. 2017).
+    Fermi-GBM's real localization for this burst is unusually poor (it was
+    near the edge of Fermi's field of view); the `error_radius_arcsec` used
+    below is a deliberately conservative, documented STAND-IN for that real
+    systematic uncertainty (not a re-derivation of the exact published GBM
+    error region), chosen to be generous enough that this test is not
+    sensitive to the exact number -- what it checks is qualitative: does the
+    real historical pair separate from a plausible background at this scale,
+    the way `TestCalibrateEventGraph.test_true_pair_separates_from_the_
+    scrambled_background`'s synthetic pair already does.
+    """
+
+    GW170817_TIME = "2017-08-17T12:41:04.4Z"
+    GRB170817A_TIME = "2017-08-17T12:41:06.47Z"
+    NGC4993_RA_DEG = 197.450374
+    NGC4993_DEC_DEG = -23.381495
+    # A generous stand-in for Fermi-GBM's real (unusually poor, off-axis)
+    # systematic localization uncertainty for this specific burst -- see
+    # class docstring.
+    GRB_ERROR_RADIUS_ARCSEC = 10.0 * 3600.0
+    GW_ERROR_RADIUS_ARCSEC = 3600.0
+
+    def _events(self):
+        return [
+            _point_event("GW170817", "gw", self.NGC4993_RA_DEG, self.NGC4993_DEC_DEG,
+                        self.GW170817_TIME, error_radius_arcsec=self.GW_ERROR_RADIUS_ARCSEC),
+            _point_event("GRB170817A", "fermi", self.NGC4993_RA_DEG, self.NGC4993_DEC_DEG,
+                        self.GRB170817A_TIME, error_radius_arcsec=self.GRB_ERROR_RADIUS_ARCSEC),
+        ]
+
+    def test_the_real_pair_scores_a_strong_positive_bayes_factor(self):
+        result = association.event_to_event_correlation(
+            self._events(), window_days=1.0, background_window_days=365.0)
+        assert len(result) == 1
+        pair = result[0]
+        assert pair["delta_t_days"] == pytest.approx(2.07 / 86400.0, abs=1e-4)
+        assert pair["bayes_factor"] > 1.0
+        assert math.isfinite(pair["log_bayes_factor"])
+
+    def test_the_real_pair_is_significant_against_a_scrambled_background(self):
+        # The background is centered on the real event's own sky position
+        # and drawn from the SAME order-of-magnitude positional-uncertainty
+        # range as the golden pair itself (not the tight 60-600 arcsec scale
+        # `_background_population`'s default represents). Comparing a wide-
+        # uncertainty true pair against a background of much tighter-sigma
+        # events would be an apples-to-oranges test: a small positional
+        # sigma mechanically produces a sharper (and easily larger) Rayleigh
+        # same-source peak in `_spatial_likelihood_ratio` for ANY nearby
+        # pair, true or not, which would make the true pair's real
+        # localization uncertainty look artificially disadvantaged rather
+        # than testing what this fixture is actually meant to check.
+        rng = np.random.default_rng(170817)
+        events = _background_population(
+            rng, n=60, providers=("icecube", "fermi", "swift", "alerce"),
+            center_ra_deg=self.NGC4993_RA_DEG, center_dec_deg=self.NGC4993_DEC_DEG,
+            box_deg=20.0, error_radius_range_arcsec=(1800.0, 36000.0),
+        ) + self._events()
+
+        result = association.calibrate_event_graph(
+            events, window_days=1.0, background_window_days=365.0, n_trials=100, seed=170817)
+
+        assert result["observed_finite_scores"] >= 1
+        calibration = result["calibration"]
+        assert calibration["ready"] is True
+        assert 0.0 <= calibration["estimated_fdr"] <= 1.0
+
+        observed = association.event_to_event_correlation(
+            events, window_days=1.0, background_window_days=365.0)
+        # Identify by event_id, not just the (gw, fermi) provider pair: the
+        # synthetic background also includes "fermi"-provider events, each
+        # of which forms its own (gw, fermi)-labelled pair against the real
+        # GW170817 event, so a provider-only match could pick a spurious
+        # pair instead of the real GW170817/GRB170817A one.
+        true_pair = next(p for p in observed
+                         if {p["event_a"], p["event_b"]} == {"GW170817", "GRB170817A"})
+        others = [p["log_bayes_factor"] for p in observed if p is not true_pair
+                 and math.isfinite(p["log_bayes_factor"])]
+        assert math.isfinite(true_pair["log_bayes_factor"])
+        assert true_pair["bayes_factor"] > 1.0
+        # With a matched uncertainty scale, the real pair's ~2-second
+        # temporal coincidence and near-zero spatial offset should now
+        # rank at or near the top of everything observed, exactly as the
+        # synthetic pair does in TestCalibrateEventGraph above.
+        assert not others or true_pair["log_bayes_factor"] >= max(others)

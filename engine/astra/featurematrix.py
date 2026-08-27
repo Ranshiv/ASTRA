@@ -76,15 +76,17 @@ class BatchReport:
         }
 
 
-def _extract_from_path(path_str: str, periodic_override: dict | None = None
+def _extract_from_path(path_str: str, periodic_override: dict | None = None,
+                       bocpd_override: dict | None = None
                        ) -> tuple[str, list[float] | None, dict | None]:
     """Worker entry point: read one curve and extract its features.
 
-    Module-level and taking only a string plus a small picklable dict because
+    Module-level and taking only a string plus small picklable dicts because
     Windows spawns fresh interpreters for workers, so the callable and its
-    arguments must pickle. `periodic_override`, when given, comes from a
-    parent-process GPU pre-pass -- see `build`'s `periodogram_backend`
-    argument -- so this worker never opens its own CUDA context.
+    arguments must pickle. `periodic_override`/`bocpd_override`, when given,
+    come from a parent-process GPU pre-pass -- see `build`'s
+    `periodogram_backend`/`bocpd_backend` arguments -- so this worker never
+    opens its own CUDA context.
     """
     path = Path(path_str)
     try:
@@ -93,7 +95,8 @@ def _extract_from_path(path_str: str, periodic_override: dict | None = None
         return path_str, None, None
 
     extracted = features.extract(curve, path=path_str,
-                                 periodic_override=periodic_override)
+                                 periodic_override=periodic_override,
+                                 bocpd_override=bocpd_override)
     row = [float(extracted.values[name]) for name in FEATURE_NAMES]
     identity = {
         "object_id": extracted.object_id,
@@ -151,10 +154,59 @@ class FeatureMatrix:
         }
 
 
+def _combined_backend_tag(periodogram_backend: str, bocpd_backend: str) -> str:
+    """One cache tag for two independent backend toggles.
+
+    `featurecache.cache_key`/`get`/`put` take a single opaque `backend`
+    string. Rather than widen that contract to two parameters everywhere it
+    is called, the two choices are folded into one tag here: the default
+    combination ("cpu" + "cpu") maps to the plain "cpu" tag so every existing
+    cache entry stays valid unchanged, and any other combination gets its own
+    distinct tag so a row computed under one combination is never reused for
+    another (the same rule `gpu_periodogram`'s docstring states for the
+    periodogram backend alone, now extended to bocpd).
+    """
+    if periodogram_backend == "cpu" and bocpd_backend == "cpu":
+        return "cpu"
+    return f"periodogram={periodogram_backend},bocpd={bocpd_backend}"
+
+
+def _gpu_bocpd_prepass(paths: list[Path]) -> dict[str, dict]:
+    """Compute bocpd for a batch of curves on GPU, in this process only.
+
+    Same rationale as `_gpu_periodic_prepass`: one CUDA context here, shared
+    across the whole batch, instead of one per worker process. Unlike the
+    periodogram prepass this is a genuine BATCH kernel call (`bocpd_gpu.
+    compute_batch`), not one call per curve, so the CUDA-call overhead is
+    paid once per batch rather than once per curve.
+    """
+    from . import bocpd_gpu
+
+    usable_paths: list[str] = []
+    curves: list[tuple] = []
+    for path in paths:
+        try:
+            curve = store.read_curve(path)
+        except Exception:  # noqa: BLE001 - a corrupt file is the worker's problem
+            continue
+        tidy = curve.dropna().sorted_by_time()
+        if len(tidy) < 3:
+            continue
+        usable_paths.append(str(path))
+        curves.append((tidy.time, tidy.value))
+
+    if not curves:
+        return {}
+
+    results = bocpd_gpu.compute_batch(curves)
+    return dict(zip(usable_paths, results))
+
+
 def build(survey: str | None = None, limit: int = 10_000,
           root: Path | None = None, workers: int | None = None,
           use_cache: bool = True, cache_root: Path | None = None,
           periodogram_backend: str = "cpu",
+          bocpd_backend: str = "cpu",
           ) -> FeatureMatrix:
     """Extract features for every stored curve.
 
@@ -163,21 +215,29 @@ def build(survey: str | None = None, limit: int = 10_000,
     still read one at a time inside each worker, so peak memory stays flat as
     the store grows.
 
-    Feature extraction is where 98.6% of pipeline time was measured, almost
-    all of it in the period search, so these two paths are the whole of the
-    Phase 9 speedup for this stage.
+    Feature extraction is where 98.6% of pipeline time was measured; within
+    it, Lomb-Scargle and bocpd are the two dominant costs (measured at ~76%
+    and ~17% of feature-extraction time respectively on a real local sample
+    -- see `profiling.profile_feature_extraction`), so these are the two
+    targets of the Phase 9 GPU work.
 
     `periodogram_backend="gpu"` computes periods on CUDA instead of astropy's
-    approximate fast method -- see `features.periodic_features`. It is opt-in
-    and never selected implicitly: the two backends are not required to agree
-    bit-for-bit, so cache rows are tagged by backend and a row computed under
-    one is never reused for the other (`featurecache.cache_key`). The period
-    search itself runs once in this process across the whole pending batch,
-    not inside worker processes -- see `_gpu_periodic_prepass`.
+    approximate fast method -- see `features.periodic_features`.
+    `bocpd_backend="gpu"` computes bocpd on CUDA, one thread per curve, via
+    `bocpd_gpu.compute_batch` -- see that module's docstring for why bocpd's
+    inherently serial recursion is parallelised across curves rather than
+    within one. Both are opt-in and never selected implicitly: neither
+    backend pair is required to agree bit-for-bit with its CPU counterpart,
+    so cache rows are tagged by the combined backend
+    (`_combined_backend_tag`) and a row computed under one combination is
+    never reused for another. Both prepasses run once in this process across
+    the whole pending batch, not inside worker processes -- see
+    `_gpu_periodic_prepass`/`_gpu_bocpd_prepass`.
     """
     from . import featurecache
 
     features.backend_token(periodogram_backend)
+    features.bocpd_backend_token(bocpd_backend)
     if periodogram_backend == "gpu":
         from . import gpu_periodogram
         ok, reason = gpu_periodogram.available()
@@ -193,6 +253,16 @@ def build(survey: str | None = None, limit: int = 10_000,
                 "GPU periodogram requested but unavailable (%s); this build "
                 "will use the CPU backend throughout.", reason)
             periodogram_backend = "cpu"
+    if bocpd_backend == "gpu":
+        from . import bocpd_gpu
+        ok, reason = bocpd_gpu.available()
+        if not ok:
+            import logging
+            logging.getLogger(__name__).warning(
+                "GPU bocpd requested but unavailable (%s); this build will "
+                "use the CPU backend throughout.", reason)
+            bocpd_backend = "cpu"
+    cache_tag = _combined_backend_tag(periodogram_backend, bocpd_backend)
     root = root or config.PATHS.datasets
     search_root = root / survey.upper() if survey else root
 
@@ -212,27 +282,30 @@ def build(survey: str | None = None, limit: int = 10_000,
     pending: list[Path] = []
 
     for path in paths:
-        cached = cache.get(path, periodogram_backend) if use_cache else None
+        cached = cache.get(path, cache_tag) if use_cache else None
         if cached is not None:
             rows[str(path)] = cached
             # Identity comes from the cache when it was recorded there; only a
             # pre-existing cache entry costs a read.
-            identities[str(path)] = (cache.identity(path, periodogram_backend)
+            identities[str(path)] = (cache.identity(path, cache_tag)
                                      or _identity_from_path(path))
         else:
             pending.append(path)
 
     if pending:
-        overrides = (_gpu_periodic_prepass(pending)
-                    if periodogram_backend == "gpu" else None)
-        for path_str, row, identity in _extract_many(pending, workers, overrides):
+        periodic_overrides = (_gpu_periodic_prepass(pending)
+                              if periodogram_backend == "gpu" else None)
+        bocpd_overrides = (_gpu_bocpd_prepass(pending)
+                           if bocpd_backend == "gpu" else None)
+        for path_str, row, identity in _extract_many(
+                pending, workers, periodic_overrides, bocpd_overrides):
             if row is None or identity is None:
                 continue
             values = np.asarray(row, dtype=np.float64)
             rows[path_str] = values
             identities[path_str] = identity
             if use_cache:
-                cache.put(Path(path_str), values, identity, periodogram_backend)
+                cache.put(Path(path_str), values, identity, cache_tag)
 
         if use_cache:
             featurecache.save(cache, cache_root)
@@ -336,6 +409,8 @@ def build_resumable(
     use_cache: bool = True,
     cache_root: Path | None = None,
     progress: Callable[[dict], None] | None = None,
+    periodogram_backend: str = "cpu",
+    bocpd_backend: str = "cpu",
 ) -> tuple[FeatureMatrix, BatchReport]:
     """Extract features in durable batches and resume after interruption.
 
@@ -345,9 +420,42 @@ def build_resumable(
     process killed between those writes can safely rebuild the part without
     losing a completed row.  ``progress`` receives a small dictionary after
     every batch and is intentionally optional for CLI/library callers.
+
+    `periodogram_backend`/`bocpd_backend` select the GPU paths documented on
+    `build` -- this is the "streaming batches AND custom GPU kernels
+    together" path backlog item 41 asks for: each `batch_size`-sized chunk
+    gets its own GPU prepass (`_gpu_periodic_prepass`/`_gpu_bocpd_prepass`),
+    so GPU memory use is bounded by `batch_size`, never by the size of the
+    whole store. `backend_tag` is folded into the resume check the same way
+    `feature_version`/`feature_schema_hash` already are: switching backends
+    between runs of the same checkpoint must start a fresh accumulation of
+    parts rather than silently mixing rows computed under different
+    backends into one "resumed" run.
     """
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
+    features.backend_token(periodogram_backend)
+    features.bocpd_backend_token(bocpd_backend)
+    if periodogram_backend == "gpu":
+        from . import gpu_periodogram
+        ok, reason = gpu_periodogram.available()
+        if not ok:
+            import logging
+            logging.getLogger(__name__).warning(
+                "GPU periodogram requested but unavailable (%s); this run "
+                "will use the CPU backend throughout.", reason)
+            periodogram_backend = "cpu"
+    if bocpd_backend == "gpu":
+        from . import bocpd_gpu
+        ok, reason = bocpd_gpu.available()
+        if not ok:
+            import logging
+            logging.getLogger(__name__).warning(
+                "GPU bocpd requested but unavailable (%s); this run will "
+                "use the CPU backend throughout.", reason)
+            bocpd_backend = "cpu"
+    backend_tag = _combined_backend_tag(periodogram_backend, bocpd_backend)
+
     root = root or config.PATHS.datasets
     search_root = root / survey.upper() if survey else root
     checkpoint_path = _batch_root(checkpoint)
@@ -368,6 +476,7 @@ def build_resumable(
                 state.get("fingerprint") == fingerprint
                 and state.get("feature_version") == FEATURE_VERSION
                 and state.get("feature_schema_hash") == schema_hash()
+                and state.get("backend_tag", "cpu") == backend_tag
             )
         except (OSError, json.JSONDecodeError):
             state = {}
@@ -377,6 +486,7 @@ def build_resumable(
             "feature_version": FEATURE_VERSION,
             "feature_schema_hash": schema_hash(),
             "fingerprint": fingerprint,
+            "backend_tag": backend_tag,
             "survey": survey,
             "paths": [str(path) for path in paths],
             "completed": [],
@@ -395,7 +505,14 @@ def build_resumable(
     batches = len(existing_parts)
     for start in range(0, len(pending), batch_size):
         batch = pending[start:start + batch_size]
-        extracted = _extract_many(batch, workers)
+        # Bounded to this one batch, not the whole pending set: this is what
+        # keeps GPU memory use flat as the store grows (item 41's "bounded-
+        # memory vectorized/CUDA execution").
+        periodic_overrides = (_gpu_periodic_prepass(batch)
+                              if periodogram_backend == "gpu" else None)
+        bocpd_overrides = (_gpu_bocpd_prepass(batch)
+                           if bocpd_backend == "gpu" else None)
+        extracted = _extract_many(batch, workers, periodic_overrides, bocpd_overrides)
         rows: list[list[float]] = []
         identities: list[dict] = []
         batch_completed: list[str] = []
@@ -483,16 +600,19 @@ def _gpu_periodic_prepass(paths: list[Path]) -> dict[str, dict]:
 
 
 def _extract_many(paths: list[Path], workers: int | None,
-                  overrides: dict[str, dict] | None = None):
+                  periodic_overrides: dict[str, dict] | None = None,
+                  bocpd_overrides: dict[str, dict] | None = None):
     """Run extraction in parallel, falling back to in-process on failure."""
     count = workers if workers is not None else DEFAULT_WORKERS
     count = max(1, min(count, len(paths)))
-    overrides = overrides or {}
-    override_list = [overrides.get(str(p)) for p in paths]
+    periodic_overrides = periodic_overrides or {}
+    bocpd_overrides = bocpd_overrides or {}
+    periodic_list = [periodic_overrides.get(str(p)) for p in paths]
+    bocpd_list = [bocpd_overrides.get(str(p)) for p in paths]
 
     if count == 1 or len(paths) < PARALLEL_THRESHOLD:
-        return [_extract_from_path(str(p), override)
-                for p, override in zip(paths, override_list)]
+        return [_extract_from_path(str(p), periodic, bocpd)
+                for p, periodic, bocpd in zip(paths, periodic_list, bocpd_list)]
 
     # Set before the pool starts: workers are spawned fresh on Windows and read
     # these when they import NumPy, so the parent's own already-imported
@@ -504,13 +624,13 @@ def _extract_many(paths: list[Path], workers: int | None,
     pool = ProcessPoolExecutor(max_workers=count)
     try:
         return list(pool.map(_extract_from_path,
-                             [str(p) for p in paths], override_list,
+                             [str(p) for p in paths], periodic_list, bocpd_list,
                              chunksize=4, timeout=POOL_TIMEOUT_S))
     except Exception:  # noqa: BLE001 - a pool that cannot start, or wedges
         # and hits POOL_TIMEOUT_S, must not lose the run; sequential
         # extraction produces identical output.
-        return [_extract_from_path(str(p), override)
-                for p, override in zip(paths, override_list)]
+        return [_extract_from_path(str(p), periodic, bocpd)
+                for p, periodic, bocpd in zip(paths, periodic_list, bocpd_list)]
     finally:
         # wait=False: a pool that timed out may have workers stuck forever
         # (e.g. the Windows frozen-multiprocessing respawn bug); waiting on
@@ -624,6 +744,18 @@ GAIA_JOIN_COLUMNS = (
     "gaia_abs_g_mag", "gaia_ra_now_deg", "gaia_dec_now_deg", "gaia_matched",
 )
 
+# Identity dict keys join_gaia_columns additionally attaches (see below) for
+# a matched row's extinction. Deliberately NOT feature-matrix COLUMNS: Gaia
+# extinction is frequently absent even for a well-matched, well-measured
+# source, and adding it as a value column would make finite_mask() exclude
+# an otherwise-usable row from every OTHER detector just because extinction
+# specifically was unpublished -- exactly the kind of feature silently
+# disabling an unrelated feature this project's NaN-not-imputed convention
+# exists to avoid. Living in the identity dict instead (plain per-row
+# metadata, never inspected by finite_mask()) lets stellar_manifold.py read
+# it when present without that side effect.
+GAIA_EXTINCTION_IDENTITY_KEYS = ("gaia_a_g", "gaia_ebpminrp")
+
 
 def join_gaia_columns(matrix: FeatureMatrix, radius_arcsec: float | None = None,
                       projects_root: Path | None = None) -> tuple[FeatureMatrix, dict]:
@@ -678,6 +810,12 @@ def join_gaia_columns(matrix: FeatureMatrix, radius_arcsec: float | None = None,
     ]
 
     extra = np.full((len(matrix), len(GAIA_JOIN_COLUMNS)), np.nan)
+    # Shallow copies, not the original identity dicts: join_gaia_columns
+    # attaches per-row extinction as identity metadata below (see
+    # GAIA_EXTINCTION_IDENTITY_KEYS), and mutating the caller's own
+    # identity objects in place would be a surprising side effect on
+    # `matrix` itself.
+    new_identities = [dict(identity) for identity in matrix.identities]
     matched = 0
 
     if gaia_refs:
@@ -723,6 +861,8 @@ def join_gaia_columns(matrix: FeatureMatrix, radius_arcsec: float | None = None,
                     match.counterpart.extra.get("pmdec"),
                     crossmatch.GAIA_EPOCH, crossmatch.current_epoch(),
                 )
+                new_identities[row_index]["gaia_a_g"] = derived.get("a_g")
+                new_identities[row_index]["gaia_ebpminrp"] = derived.get("ebv")
                 values = [
                     match.counterpart.extra.get("parallax"),
                     derived.get("parallax_snr"),
@@ -740,6 +880,75 @@ def join_gaia_columns(matrix: FeatureMatrix, radius_arcsec: float | None = None,
                     np.nan if v is None else float(v) for v in values
                 ]
                 matched += 1
+
+    stacked = np.hstack([matrix.values, extra]) if len(matrix) else extra
+    diagnostics = {
+        "matched": matched, "total": len(matrix),
+        "match_rate": round(matched / len(matrix), 4) if len(matrix) else None,
+    }
+    return (FeatureMatrix(values=stacked, identities=new_identities,
+                          feature_names=joined_names,
+                          feature_version=matrix.feature_version),
+           diagnostics)
+
+
+# Columns appended by join_stellar_manifold_columns.
+STELLAR_MANIFOLD_COLUMNS = (
+    "manifold_residual_mag", "manifold_arc_length", "manifold_teff_k",
+    "manifold_matched",
+)
+
+
+def join_stellar_manifold_columns(matrix: FeatureMatrix) -> tuple[FeatureMatrix, dict]:
+    """Append `stellar_manifold.isochrone_residual` columns onto a matrix.
+
+    Requires `matrix` to already carry `GAIA_JOIN_COLUMNS` (raise a clear
+    error otherwise): `join_gaia_columns` fetches the raw CMD position and
+    extinction from the archive; this function only derives physics from
+    columns already present, the same layering `join_gaia_columns` itself
+    documents relative to the base feature matrix. Same "column join, NaN
+    for unmatched, `len()` unchanged" contract `join_gaia_columns` already
+    establishes and tests.
+    """
+    from . import stellar_manifold
+
+    missing = [name for name in GAIA_JOIN_COLUMNS if name not in matrix.feature_names]
+    if missing:
+        raise ValueError(
+            "join_stellar_manifold_columns requires join_gaia_columns to "
+            f"run first; missing columns: {missing}"
+        )
+
+    joined_names = matrix.feature_names + STELLAR_MANIFOLD_COLUMNS
+    extra = np.full((len(matrix), len(STELLAR_MANIFOLD_COLUMNS)), np.nan)
+
+    if len(matrix):
+        bp_rp_col = matrix.feature_names.index("gaia_bp_rp")
+        abs_g_col = matrix.feature_names.index("gaia_abs_g_mag")
+
+        matched = 0
+        for row_index in range(len(matrix)):
+            row = matrix.values[row_index]
+            bp_rp = row[bp_rp_col]
+            abs_g = row[abs_g_col]
+            if not (np.isfinite(bp_rp) and np.isfinite(abs_g)):
+                extra[row_index, -1] = 0.0
+                continue
+            # Extinction lives in the identity dict, not a value column --
+            # see GAIA_EXTINCTION_IDENTITY_KEYS for why. Absent for many
+            # otherwise-well-matched rows; None is handled gracefully by
+            # isochrone_residual as "no correction available".
+            identity = matrix.identities[row_index]
+            a_g = identity.get("gaia_a_g")
+            ebpminrp = identity.get("gaia_ebpminrp")
+            result = stellar_manifold.isochrone_residual(bp_rp, abs_g, a_g, ebpminrp)
+            extra[row_index, :] = [
+                result["residual_mag"], result["arc_length_fraction"],
+                result["teff_k"], 1.0,
+            ]
+            matched += 1
+    else:
+        matched = 0
 
     stacked = np.hstack([matrix.values, extra]) if len(matrix) else extra
     diagnostics = {

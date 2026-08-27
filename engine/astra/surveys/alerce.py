@@ -15,14 +15,20 @@ swift.py, xmm.py, des.py, hubble.py, jwst.py), ALeRCE serves real per-object
 detections (mjd/magpsf/sigmapsf/fid or band), so `fetch_light_curves()` here
 is a genuine implementation, not a `[]` stub.
 
-Same live-contract-validation gap as those nine connectors: the exact REST
-paths and JSON field names below come from ALeRCE's documentation and its
-official Python client's method signature, not a live authenticated fetch.
-Only "/ztf/v1/" was confirmed to resolve as a live host this session; LSST
-queries are therefore requested against that same confirmed path with
-survey="lsst" rather than a hypothetical, never-confirmed "/lsst/v1/" path.
-Validate against the real service before trusting a negative cone-search
-result, exactly as instructed for the other nine connectors.
+`cone_search`/`fetch_light_curves` for `survey="ztf"` were confirmed live
+this session (roadmap item 21): a real cone search around RA=180.122,
+Dec=22.411 returns real `{"items": [...]}`-wrapped objects with populated
+`oid`/`meanra`/`meandec` (note: `GET /ztf/v1/objects` without a trailing
+slash 302-redirects to the trailing-slash form -- `requests` follows this
+by default, costing one extra round trip, not a correctness problem), and
+`fetch_light_curves` against a real returned `oid` returns a real bare-list
+detections response with populated `mjd`/`magpsf`/`sigmapsf`/`fid`. Both
+match this module's existing field-name assumptions exactly -- no bug
+found. `survey="lsst"` remains unverified (no live LSST alert has been
+checked this session); "/ztf/v1/" was confirmed to resolve as a live host,
+so LSST queries are requested against that same confirmed path with
+survey="lsst" rather than a hypothetical, never-confirmed "/lsst/v1/" path,
+per the reasoning already stated here before this session's verification.
 """
 
 from __future__ import annotations
@@ -110,6 +116,59 @@ class ALeRCEConnector(SurveyConnector):
                 extra={"classifier": row.get("classifier") or row.get("classifier_name"),
                        "class_name": row.get("class_name") or row.get("class"),
                        "probability": row.get("probability"),
+                       "ndet": row.get("ndet"),
+                       "firstmjd": row.get("firstmjd"),
+                       "lastmjd": row.get("lastmjd")},
+            ))
+        return sources
+
+    def query_classified_objects(self, class_name: str, classifier: str = "lc_classifier",
+                                 min_probability: float = 0.5, limit: int = 100
+                                 ) -> list[SourceRef]:
+        """Real ALeRCE-broker-classified objects, filtered by class -- not a
+        spatial query (unlike `cone_search`).
+
+        Live-verified this session: `classifier=lc_classifier&class=SNIa
+        &order_by=probability&order_mode=DESC` against the real, confirmed-
+        live `/ztf/v1/objects` endpoint returns real classified ZTF
+        supernova candidates with populated `oid`/`class`/`classifier`/
+        `probability` fields (a plain positional cone search on this same
+        endpoint returns these fields as `null` for most objects -- the
+        classifier filter is what actually selects classified rows).
+
+        This is the real-transient source `open_world_eval.py`'s held-out
+        set is built from: a classifier-assigned label plus a probability,
+        both genuinely reported by the broker, not invented here.
+        """
+        top = max(1, min(int(limit), 200))
+        response = netclient.get(
+            OBJECTS_URL,
+            {"survey": self.release, "classifier": classifier, "class": class_name,
+             "page": 1, "page_size": top, "count": "false",
+             "order_by": "probability", "order_mode": "DESC"},
+            timeout=60, provider="alerce",
+        )
+        try:
+            rows = parse_rows(response.json(), top)
+        except ValueError:
+            rows = []
+
+        sources: list[SourceRef] = []
+        for row in rows:
+            try:
+                object_id = str(row["oid"])
+                ra_deg = float(row.get("meanra") if row.get("meanra") is not None else row["ra"])
+                dec_deg = float(row.get("meandec") if row.get("meandec") is not None else row["dec"])
+                probability = float(row.get("probability"))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if probability < min_probability:
+                continue
+            sources.append(SourceRef(
+                survey=self.name, object_id=object_id, ra_deg=ra_deg, dec_deg=dec_deg,
+                extra={"classifier": row.get("classifier") or row.get("classifier_name") or classifier,
+                       "class_name": row.get("class_name") or row.get("class") or class_name,
+                       "probability": probability,
                        "ndet": row.get("ndet"),
                        "firstmjd": row.get("firstmjd"),
                        "lastmjd": row.get("lastmjd")},

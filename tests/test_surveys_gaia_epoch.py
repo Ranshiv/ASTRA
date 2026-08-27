@@ -66,9 +66,9 @@ class TestIngestResumable:
         calls: list[list[dict]] = []
         real_validate = gaia.GaiaEpochAdapter.validate_chunk
 
-        def counting_validate(rows):
+        def counting_validate(rows, **kwargs):
             calls.append(rows)
-            return real_validate(rows)
+            return real_validate(rows, **kwargs)
 
         monkeypatch.setattr(gaia.GaiaEpochAdapter, "validate_chunk", counting_validate)
 
@@ -100,7 +100,7 @@ class TestIngestResumable:
     def test_a_failed_chunk_is_recorded_but_does_not_stop_the_run(self, tmp_path, monkeypatch):
         checkpoint = tmp_path / "checkpoint.json"
 
-        def raising_validate(rows):
+        def raising_validate(rows, **kwargs):
             raise ValueError("boom")
 
         chunks = [[_row("1", 2459000.0)]]
@@ -224,3 +224,92 @@ class TestThroughput:
         assert report.rows_accepted == 2000
         assert report.rows_per_second > 0
         assert np.isfinite(report.rows_per_second)
+
+
+class TestMultiBand:
+    def _bp_row(self, source_id, time, bp_flux=10.0, bp_flux_error=1.0):
+        return {"source_id": source_id, "time": time,
+               "bp_flux": bp_flux, "bp_flux_error": bp_flux_error}
+
+    def test_validate_chunk_accepts_multiple_bands(self):
+        row = {"source_id": "1", "time": 2459000.0,
+              "g_flux": 100.0, "g_flux_error": 2.0,
+              "bp_flux": 10.0, "bp_flux_error": 1.0}
+        result = gaia.GaiaEpochAdapter.validate_chunk([row], bands=("g", "bp"))
+        assert result["accepted"] == 1
+        assert result["rows"][0]["bp_flux"] == pytest.approx(10.0)
+
+    def test_validate_chunk_rejects_unknown_band(self):
+        with pytest.raises(ValueError):
+            gaia.GaiaEpochAdapter.validate_chunk([], bands=("unknown",))
+
+    def test_bp_only_chunk_is_missing_column_under_default_g_band(self):
+        row = self._bp_row("1", 2459000.0)
+        result = gaia.GaiaEpochAdapter.validate_chunk([row])
+        assert result["accepted"] == 0
+        assert result["rejections"][0]["reason"] == "missing_column"
+
+    def test_ingest_resumable_persists_bp_band(self, tmp_path):
+        chunks = [[{"source_id": "1", "time": 2459000.0,
+                   "bp_flux": 10.0, "bp_flux_error": 1.0}]]
+        checkpoint = tmp_path / "checkpoint.json"
+
+        report = gaia_epoch.ingest_resumable(chunks, checkpoint=checkpoint,
+                                             batch_size=10, bands=("bp",))
+        assert report.rows_accepted == 1
+
+        rows = gaia_epoch.read_ingested_rows(checkpoint)
+        assert len(rows) == 1
+        assert rows[0]["bp_flux"] == pytest.approx(10.0)
+
+    def test_a_checkpoint_started_with_one_band_set_does_not_resume_under_another(self, tmp_path):
+        checkpoint = tmp_path / "checkpoint.json"
+        gaia_epoch.ingest_resumable([[_row("1", 2459000.0)]], checkpoint=checkpoint,
+                                    batch_size=10, bands=("g",))
+
+        report = gaia_epoch.ingest_resumable(
+            [[{"source_id": "2", "time": 2459001.0, "bp_flux": 1.0, "bp_flux_error": 0.1}]],
+            checkpoint=checkpoint, batch_size=10, bands=("g", "bp"))
+
+        assert report.resumed is False
+
+
+class TestEpochCompleteness:
+    def test_completeness_with_shared_expectation(self):
+        rows = [_row("1", 2459000.0), _row("1", 2459001.0), _row("2", 2459000.0)]
+        result = gaia_epoch.epoch_completeness(rows, expected_epochs_per_source=2)
+
+        assert result["per_source_completeness"]["1"] == pytest.approx(1.0)
+        assert result["per_source_completeness"]["2"] == pytest.approx(0.5)
+        assert result["fully_complete_sources"] == 1
+
+    def test_completeness_with_per_source_expectation_skips_unlisted_sources(self):
+        rows = [_row("1", 2459000.0), _row("2", 2459000.0)]
+        result = gaia_epoch.epoch_completeness(
+            rows, expected_epochs_per_source={"1": 1})
+
+        assert result["sources_observed"] == 2
+        assert result["sources_scored"] == 1
+        assert "2" not in result["per_source_completeness"]
+
+    def test_shared_expectation_must_be_positive(self):
+        with pytest.raises(ValueError):
+            gaia_epoch.epoch_completeness([], expected_epochs_per_source=0)
+
+
+class TestSustainedIngestThroughput:
+    def test_reports_windowed_throughput_stats(self, tmp_path):
+        chunks = [[_row(str(i * 10 + j), 2459000.0 + j) for j in range(10)] for i in range(20)]
+        checkpoint = tmp_path / "checkpoint.json"
+
+        result = gaia_epoch.sustained_ingest_throughput(
+            chunks, checkpoint=checkpoint, batch_size=50, window_seconds=0.01)
+
+        assert result["report"]["rows_accepted"] == 200
+        assert result["peak_rows_per_second"] >= result["sustained_rows_per_second_p50"]
+        assert result["sustained_rows_per_second_p95"] >= result["sustained_rows_per_second_p50"]
+
+    def test_window_seconds_must_be_positive(self, tmp_path):
+        with pytest.raises(ValueError):
+            gaia_epoch.sustained_ingest_throughput(
+                [], checkpoint=tmp_path / "c.json", window_seconds=0)

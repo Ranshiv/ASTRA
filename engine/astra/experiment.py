@@ -61,6 +61,12 @@ RESAMPLING_CONTRACTS = {
     "phase": {"kind": "phase_folded_grid", "length": 2048,
               "gap_policy": "fold_on_credible_period",
               "requires": "period_snr>=5"},
+    # 3 channels, not 2 -- must have its own entry rather than falling back to
+    # PREPROCESSING_CONTRACT["resampling"], which is "time"'s contract; without
+    # this entry "irregular" and "time" would hash identically despite being
+    # genuinely different (and shape-incompatible) representations.
+    "irregular": {"kind": "real_observations_only", "length": 2048,
+                  "gap_policy": "explicit_time_delta_channel", "channels": 3},
 }
 
 

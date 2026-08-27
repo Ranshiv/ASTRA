@@ -15,7 +15,11 @@ try {
   $bundle = Join-Path $root "engine\dist\astra-engine"
   $internal = Join-Path $bundle "_internal"
   $generatedRoots = @($bundle, $internal) | Where-Object { Test-Path -LiteralPath $_ }
-  foreach ($name in @("torch", "torchvision", "cupy", "cupyx", "cupy_backends", "dask")) {
+  # celerite2: multiband_hier.py's optional GP dependency, gated the same
+  # way torch is -- dev/research-only, never part of the packaged build.
+  # emcee/VBMicrolensing: microlensing_fit.py's posterior sampler and
+  # binary-lens forward model, same "research" extra, same treatment.
+  foreach ($name in @("torch", "torchvision", "cupy", "cupyx", "cupy_backends", "dask", "celerite2", "emcee", "VBMicrolensing")) {
     foreach ($generatedRoot in $generatedRoots) {
       $target = Join-Path $generatedRoot $name
       if (Test-Path -LiteralPath $target) {

@@ -234,6 +234,44 @@ def _handle_event_associate(params: dict[str, Any]) -> dict:
     )
 
 
+def _handle_event_graph_correlate(params: dict[str, Any]) -> dict[str, Any]:
+    """Pairwise cross-messenger Bayes-factor statistics for ingested events.
+
+    Exposes `association.event_to_event_correlation` -- distinct from
+    `events.associate` above, which links an event to a candidate, not one
+    event to another. Callers wanting a specific provider/event subset should
+    pre-filter with `events.list`/`events.get`; this endpoint always runs
+    over `association.fetch_latest_events()`'s full deduplicated view so a
+    revised packet cannot silently produce inconsistent results between the
+    two association RPCs, matching `fetch_latest_events`'s own contract.
+    """
+    events_list = association.fetch_latest_events(
+        root=_workspace_root(params.get("project_id")), provider=params.get("provider"),
+        event_id=params.get("event_id"))
+    return {
+        "events_checked": len(events_list),
+        "pairs": association.event_to_event_correlation(
+            events_list,
+            window_days=float(params.get("window_days", association.DEFAULT_WINDOW_DAYS)),
+            background_window_days=float(params.get("background_window_days", 365.0)),
+        ),
+    }
+
+
+def _handle_event_graph_calibrate(params: dict[str, Any]) -> dict[str, Any]:
+    """Scrambled-time-slide null calibration for the event-graph Bayes factor."""
+    events_list = association.fetch_latest_events(
+        root=_workspace_root(params.get("project_id")), provider=params.get("provider"),
+        event_id=params.get("event_id"))
+    return association.calibrate_event_graph(
+        events_list,
+        window_days=float(params.get("window_days", association.DEFAULT_WINDOW_DAYS)),
+        background_window_days=float(params.get("background_window_days", 365.0)),
+        n_trials=int(params.get("n_trials", 200)),
+        seed=int(params.get("seed", 42)),
+    )
+
+
 def _handle_alert_providers(_params: dict[str, Any]) -> list[dict]:
     return alerts.providers()
 
@@ -304,6 +342,83 @@ def _handle_physical_enrich(params: dict[str, Any]) -> dict:
         root=_workspace_root(params.get("project_id")),
         extinction=params.get("extinction"),
     )
+
+
+def _handle_digital_twin_fit_profile(params: dict[str, Any]) -> dict[str, Any]:
+    """Fit a per-survey cadence/noise profile from real stored curves.
+
+    Read-only diagnostic (backlog item 42): never writes into
+    `scoring.WEIGHTS`/`evidence.py`, the same convention every other
+    interpretation-only method here (`physical.characterize`,
+    `significance.calibrate`) already follows.
+    """
+    from . import survey_digital_twin as sdt
+
+    profile = sdt.fit_survey_profile(
+        str(params["survey"]), limit=int(params.get("limit", 500)),
+        length=int(params.get("length", sdt.DEFAULT_LENGTH)),
+    )
+    return profile.to_dict()
+
+
+def _handle_digital_twin_sample(params: dict[str, Any]) -> dict[str, Any]:
+    """Fit a profile, then sample a synthetic batch from it.
+
+    Returns aggregate stats via `SequenceBatch.to_dict()` (rows, length,
+    mean coverage), not the raw `(n, 2, length)` array -- unsuitable as a
+    JSON payload and unnecessary for a diagnostic summary. Read-only, same
+    scoring/evidence non-goal as every handler in this group.
+    """
+    from . import survey_digital_twin as sdt
+
+    profile = sdt.fit_survey_profile(str(params["survey"]),
+                                     limit=int(params.get("limit", 500)))
+    batch = sdt.sample_synthetic_batch(
+        profile, n=int(params.get("n", 50)), seed=int(params.get("seed", 42)))
+    return {"profile": profile.to_dict(), "batch": batch.to_dict()}
+
+
+def _handle_digital_twin_evaluate_distance(params: dict[str, Any]) -> dict[str, Any]:
+    """Success criterion 1 (item 42): distance between simulated and real
+    summary statistics. Read-only diagnostic; never touches ranking."""
+    from . import survey_digital_twin as sdt
+    from . import survey_digital_twin_eval as sdte
+
+    survey = str(params["survey"])
+    limit = int(params.get("limit", 500))
+    profile = sdt.fit_survey_profile(survey, limit=limit)
+    real = tensors.build(survey=survey, limit=limit)
+    if len(real) < 2:
+        return {"error": f"only {len(real)} usable real sequences; need at least 2",
+                "rows": len(real)}
+    synthetic = sdt.sample_synthetic_batch(
+        profile, n=len(real), seed=int(params.get("seed", 42)))
+    distance = sdte.summary_statistic_distance(real.values, synthetic.values)
+    return {"profile": profile.to_dict(), **distance}
+
+
+def _handle_digital_twin_evaluate_transfer(params: dict[str, Any]) -> dict[str, Any]:
+    """Success criterion 2 (item 42): transfer performance. Minutes, not
+    seconds -- trains one autoencoder per seed per arm, same as
+    `deep.compare`. Read-only diagnostic; never touches ranking."""
+    _require_torch()
+    from . import survey_digital_twin as sdt
+    from . import survey_digital_twin_eval as sdte
+
+    survey = str(params["survey"])
+    limit = int(params.get("limit", 500))
+    profile = sdt.fit_survey_profile(survey, limit=limit)
+    real = tensors.build(survey=survey, limit=limit)
+    if len(real) < 10:
+        return {"error": f"only {len(real)} usable real sequences; need at least 10",
+                "rows": len(real)}
+    synthetic = sdt.sample_synthetic_batch(
+        profile, n=len(real), seed=int(params.get("seed", 42)))
+    seeds = tuple(int(seed) for seed in params.get("seeds", (17, 29, 43)))
+    result = sdte.evaluate_transfer_performance(
+        real, synthetic, fraction=float(params.get("fraction", 0.1)),
+        seeds=seeds, epochs=int(params.get("epochs", 15)))
+    return {"profile": profile.to_dict(), **result}
 
 
 def _handle_manifest_list(params: dict[str, Any]) -> list[dict]:
@@ -1004,6 +1119,23 @@ def _handle_tns_credentials_clear(_params: dict[str, Any]) -> dict[str, Any]:
     return {"cleared": credentials.clear_tns_credentials()}
 
 
+def _handle_rubin_credentials_configure(params: dict[str, Any]) -> dict[str, Any]:
+    """Store a Rubin/LSST data-rights token with Windows DPAPI.
+
+    RubinTAPConnector (surveys/rubin_tap.py) is dormant until this is called
+    with a real token -- see that module's docstring. Never echoed back.
+    """
+    return credentials.save_credentials("rubin", {"token": str(params["token"])})
+
+
+def _handle_rubin_credentials_status(_params: dict[str, Any]) -> dict[str, Any]:
+    return credentials.credential_status("rubin")
+
+
+def _handle_rubin_credentials_clear(_params: dict[str, Any]) -> dict[str, Any]:
+    return {"cleared": credentials.clear_credentials("rubin")}
+
+
 def _handle_ranker_train(params: dict[str, Any]) -> dict[str, Any]:
     return ranker.train(
         name=params.get("name", "default"),
@@ -1253,6 +1385,8 @@ HANDLERS: dict[str, Handler] = {
     "events.get": _handle_event_get,
     "events.replay": _handle_event_replay,
     "events.associate": _handle_event_associate,
+    "events.graph.correlate": _handle_event_graph_correlate,
+    "events.graph.calibrate": _handle_event_graph_calibrate,
     "alerts.providers": _handle_alert_providers,
     "alerts.status": _handle_alert_status,
     "alerts.poll": _handle_alert_poll,
@@ -1267,6 +1401,10 @@ HANDLERS: dict[str, Handler] = {
     "literature.enrich": _handle_literature_enrich,
     "physical.characterize": _handle_physical_characterize,
     "physical.enrich": _handle_physical_enrich,
+    "digital_twin.fit_profile": _handle_digital_twin_fit_profile,
+    "digital_twin.sample": _handle_digital_twin_sample,
+    "digital_twin.evaluate_distance": _handle_digital_twin_evaluate_distance,
+    "digital_twin.evaluate_transfer": _handle_digital_twin_evaluate_transfer,
     "manifest.list": _handle_manifest_list,
     "project.create": _handle_project_create,
     "project.list": _handle_project_list,
@@ -1322,6 +1460,9 @@ HANDLERS: dict[str, Handler] = {
     "features.multiband_build": _handle_multiband_build,
     "credentials.tns.configure": _handle_tns_credentials_configure,
     "credentials.tns.clear": _handle_tns_credentials_clear,
+    "credentials.rubin.configure": _handle_rubin_credentials_configure,
+    "credentials.rubin.status": _handle_rubin_credentials_status,
+    "credentials.rubin.clear": _handle_rubin_credentials_clear,
     "ranker.train": _handle_ranker_train,
     "ranker.apply": _handle_ranker_apply,
     "ranker.list": _handle_ranker_list,

@@ -279,6 +279,15 @@ def _deep_methods(values: np.ndarray, labels: np.ndarray,
     That is the realistic setting: in a real campaign nobody knows which
     objects are anomalous, and a rare contaminant should not stop the model
     learning the ordinary population.
+
+    Which kinds run depends on `values`' own channel count: the three
+    convolutional/attention models share the 2-channel (value, mask)
+    contract from `tensors.py`'s "time"/"season"/"phase" modes, while
+    `neural_ode` needs the 3-channel (value, mask, time-delta) contract only
+    the "irregular" mode produces -- the two representations cannot be
+    stacked into one array, so a caller wanting all four methods compared
+    calls `compare_on_sequences` twice, once per representation, against
+    labels built the same way (`build_injected`) on each.
     """
     import time
 
@@ -299,7 +308,9 @@ def _deep_methods(values: np.ndarray, labels: np.ndarray,
         test_fraction=0.2, seed=seed,
     )
 
-    for kind in ("autoencoder", "vae", "transformer"):
+    channels = values.shape[1] if values.ndim == 3 else 2
+    kinds = ("neural_ode",) if channels == 3 else ("autoencoder", "vae", "transformer")
+    for kind in kinds:
         started = time.time()
         try:
             cfg = train.TrainConfig(

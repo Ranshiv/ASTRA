@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
   Copy,
   Lock,
+  Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -32,6 +33,7 @@ export type SectionId =
   | "explain"
   | "experiments"
   | "models"
+  | "digitaltwin"
   | "reports"
   | "settings";
 
@@ -64,6 +66,7 @@ const NAV_GROUPS: { heading: string; items: NavItem[] }[] = [
     items: [
       { id: "experiments", label: "Experiments", icon: FlaskConical },
       { id: "models", label: "Models", icon: Brain },
+      { id: "digitaltwin", label: "Digital twin", icon: Sparkles },
       { id: "reports", label: "Reports", icon: FileText },
     ],
   },

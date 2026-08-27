@@ -55,21 +55,24 @@ from .. import config
 # over one call at a time. This module does not care how a chunk was formed.
 ChunkSource = Iterable[list[dict]]
 
-GAIA_EPOCH_SCHEMA_VERSION = 1
+GAIA_EPOCH_SCHEMA_VERSION = 2
 
+DEFAULT_BANDS = gaia.GaiaEpochAdapter.DEFAULT_BANDS
+# Preserved for callers that only ever ingested G-band data.
 PARQUET_COLUMNS = ("source_id", "time", "g_flux", "g_flux_error")
 
 
-def schema_hash() -> str:
+def schema_hash(bands: tuple[str, ...] = DEFAULT_BANDS) -> str:
     """Content hash of the accepted-row schema, mirroring features.schema_hash().
 
     Ties a checkpoint (and every Parquet part it references) to the exact
-    required-columns contract that produced it, so a later change to
-    `GaiaEpochAdapter.required_columns` cannot be silently combined with rows
-    validated under a different contract.
+    required-columns contract that produced it -- now including the selected
+    band set, so a checkpoint started with `bands=("g",)` can never be
+    silently resumed or combined with rows ingested under `bands=("g", "bp")`
+    even though both satisfy `GAIA_EPOCH_SCHEMA_VERSION`.
     """
-    payload = (f"v{GAIA_EPOCH_SCHEMA_VERSION}|"
-              + "|".join(gaia.GaiaEpochAdapter.required_columns))
+    columns = gaia.GaiaEpochAdapter.columns_for_bands(bands)
+    payload = f"v{GAIA_EPOCH_SCHEMA_VERSION}|" + "|".join(columns)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -120,7 +123,7 @@ def _state_root(checkpoint: Path) -> Path:
     return checkpoint.parent / checkpoint.stem
 
 
-def _load_state(checkpoint: Path) -> tuple[dict, bool]:
+def _load_state(checkpoint: Path, bands: tuple[str, ...]) -> tuple[dict, bool]:
     if not checkpoint.exists():
         return {}, False
     try:
@@ -128,14 +131,15 @@ def _load_state(checkpoint: Path) -> tuple[dict, bool]:
     except (OSError, json.JSONDecodeError):
         return {}, False
     resumed = (state.get("schema_version") == GAIA_EPOCH_SCHEMA_VERSION
-              and state.get("schema_hash") == schema_hash())
+              and state.get("schema_hash") == schema_hash(bands))
     return (state, True) if resumed else ({}, False)
 
 
-def _fresh_state() -> dict:
+def _fresh_state(bands: tuple[str, ...]) -> dict:
     return {
         "schema_version": GAIA_EPOCH_SCHEMA_VERSION,
-        "schema_hash": schema_hash(),
+        "schema_hash": schema_hash(bands),
+        "bands": list(bands),
         "completed_chunk_ids": [],
         "failed_chunk_ids": [],
         "parts": [],
@@ -145,18 +149,17 @@ def _fresh_state() -> dict:
     }
 
 
-def _write_epoch_part(path: Path, rows: list[dict]) -> None:
+def _write_epoch_part(path: Path, rows: list[dict], bands: tuple[str, ...]) -> None:
     """Write one immutable Parquet part of accepted epoch rows."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    columns = {
-        "source_id": pa.array([str(row["source_id"]) for row in rows], type=pa.string()),
-        "time": pa.array([float(row["time"]) for row in rows], type=pa.float64()),
-        "g_flux": pa.array([float(row["g_flux"]) for row in rows], type=pa.float64()),
-        "g_flux_error": pa.array([float(row["g_flux_error"]) for row in rows], type=pa.float64()),
-    }
+    value_columns = gaia.GaiaEpochAdapter.columns_for_bands(bands)[1:]  # excludes source_id
+    columns = {"source_id": pa.array([str(row["source_id"]) for row in rows], type=pa.string())}
+    for column in value_columns:
+        columns[column] = pa.array([float(row[column]) for row in rows], type=pa.float64())
     table = pa.table(columns, metadata={
         b"gaia_epoch_schema_version": str(GAIA_EPOCH_SCHEMA_VERSION).encode(),
-        b"gaia_epoch_schema_hash": schema_hash().encode(),
+        b"gaia_epoch_schema_hash": schema_hash(bands).encode(),
+        b"gaia_epoch_bands": json.dumps(list(bands)).encode(),
     })
     temporary = path.with_suffix(path.suffix + ".tmp")
     pq.write_table(table, temporary, compression="zstd", compression_level=6)
@@ -164,7 +167,7 @@ def _write_epoch_part(path: Path, rows: list[dict]) -> None:
 
 
 def ingest_resumable(chunk_source: ChunkSource, *, checkpoint: Path,
-                     batch_size: int = 256,
+                     batch_size: int = 256, bands: tuple[str, ...] = DEFAULT_BANDS,
                      progress: Callable[[dict], None] | None = None) -> IngestReport:
     """Validate and persist Gaia DR4 epoch chunks with checkpoint-and-resume.
 
@@ -187,13 +190,15 @@ def ingest_resumable(chunk_source: ChunkSource, *, checkpoint: Path,
     """
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
+    bands = tuple(bands)
+    gaia.GaiaEpochAdapter.columns_for_bands(bands)  # raises on an unknown band up front
     checkpoint = Path(checkpoint)
     state_root = _state_root(checkpoint)
     state_root.mkdir(parents=True, exist_ok=True)
 
-    state, resumed = _load_state(checkpoint)
+    state, resumed = _load_state(checkpoint, bands)
     if not resumed:
-        state = _fresh_state()
+        state = _fresh_state(bands)
 
     completed = set(state.get("completed_chunk_ids", []))
     failed = set(state.get("failed_chunk_ids", []))
@@ -210,7 +215,7 @@ def ingest_resumable(chunk_source: ChunkSource, *, checkpoint: Path,
         if not pending_rows:
             return
         part_path = state_root / f"part-{part_index:06d}.parquet"
-        _write_epoch_part(part_path, pending_rows)
+        _write_epoch_part(part_path, pending_rows, bands)
         parts.append(str(part_path))
         part_index += 1
         pending_rows = []
@@ -240,7 +245,7 @@ def ingest_resumable(chunk_source: ChunkSource, *, checkpoint: Path,
         if chunk_index in completed:
             continue
         try:
-            result = gaia.GaiaEpochAdapter.validate_chunk(chunk)
+            result = gaia.GaiaEpochAdapter.validate_chunk(chunk, bands=bands)
         except Exception:  # noqa: BLE001 - a chunk that cannot even be validated is failed, not fatal
             failed.add(chunk_index)
             _save_and_report(started)
@@ -284,6 +289,7 @@ def read_ingested_rows(checkpoint: Path) -> list[dict]:
     if not checkpoint.exists():
         return []
     state = json.loads(checkpoint.read_text(encoding="utf-8"))
+    checkpoint_bands = tuple(state.get("bands") or DEFAULT_BANDS)
     rows: list[dict] = []
     for part in state.get("parts", []):
         path = Path(part)
@@ -293,14 +299,21 @@ def read_ingested_rows(checkpoint: Path) -> list[dict]:
             table = pq.read_table(path)
             metadata = table.schema.metadata or {}
             version = int(metadata.get(b"gaia_epoch_schema_version", b"0"))
+            part_bands = tuple(json.loads(metadata.get(b"gaia_epoch_bands", b"[]").decode("utf-8"))
+                               or checkpoint_bands)
             recorded_hash = metadata.get(b"gaia_epoch_schema_hash", b"").decode("utf-8")
-            if version != GAIA_EPOCH_SCHEMA_VERSION or recorded_hash != schema_hash():
+            if (version != GAIA_EPOCH_SCHEMA_VERSION or recorded_hash != schema_hash(part_bands)
+                    or part_bands != checkpoint_bands):
                 continue
         except Exception:  # noqa: BLE001 - an unreadable/corrupt part is skipped
             continue
-        columns = {name: table.column(name).to_pylist() for name in PARQUET_COLUMNS}
+        value_columns = gaia.GaiaEpochAdapter.columns_for_bands(part_bands)[1:]
+        columns = {"source_id": table.column("source_id").to_pylist()}
+        for name in value_columns:
+            columns[name] = table.column(name).to_pylist()
         for i in range(table.num_rows):
-            rows.append({name: columns[name][i] for name in PARQUET_COLUMNS})
+            rows.append({"source_id": columns["source_id"][i],
+                        **{name: columns[name][i] for name in value_columns}})
     return rows
 
 
@@ -417,4 +430,106 @@ def positional_residual_self_consistency(ingested_rows: list[dict], *,
         "checked_sources": checked_sources,
         "median_residual_arcsec": float(np.median(residuals_arcsec)),
         "p95_residual_arcsec": float(np.percentile(residuals_arcsec, 95)),
+    }
+
+
+def epoch_completeness(ingested_rows: list[dict], *,
+                       expected_epochs_per_source: dict[str, int] | int) -> dict:
+    """Fraction of expected epochs actually present per source, after ingestion.
+
+    `expected_epochs_per_source` is either one shared expectation (an `int`,
+    for a batch where every source was targeted the same number of times) or
+    a per-`source_id` mapping (for a real cadence plan, where sky position
+    and scanning-law visibility make the expected epoch count genuinely
+    different source to source). A source present in `ingested_rows` but
+    absent from a supplied mapping is not scored -- there is no expectation
+    to compare against, which is a different situation from "0 of N epochs
+    observed" and must not be silently conflated with it. Completeness above
+    1.0 (more epochs observed than expected) is reported as-is, not clipped:
+    it is a real, useful signal that the expectation itself needs revisiting.
+    """
+    observed: dict[str, int] = {}
+    for row in ingested_rows:
+        source_id = str(row["source_id"])
+        observed[source_id] = observed.get(source_id, 0) + 1
+
+    if isinstance(expected_epochs_per_source, int):
+        if expected_epochs_per_source <= 0:
+            raise ValueError("expected_epochs_per_source must be positive")
+        expectations = {source_id: expected_epochs_per_source for source_id in observed}
+    else:
+        expectations = {str(key): int(value) for key, value in expected_epochs_per_source.items()
+                        if str(key) in observed}
+
+    per_source: dict[str, float] = {}
+    for source_id, expected in expectations.items():
+        if expected <= 0:
+            continue
+        per_source[source_id] = observed.get(source_id, 0) / expected
+
+    completeness_values = list(per_source.values())
+    return {
+        "sources_observed": len(observed),
+        "sources_scored": len(per_source),
+        "per_source_completeness": per_source,
+        "mean_completeness": float(np.mean(completeness_values)) if completeness_values else float("nan"),
+        "median_completeness": float(np.median(completeness_values)) if completeness_values else float("nan"),
+        "fully_complete_sources": sum(1 for value in completeness_values if value >= 1.0),
+    }
+
+
+def sustained_ingest_throughput(chunk_source: ChunkSource, *, checkpoint: Path,
+                                batch_size: int = 256, bands: tuple[str, ...] = DEFAULT_BANDS,
+                                window_seconds: float = 1.0) -> dict:
+    """Sustained (windowed) ingest throughput, distinct from one run's average.
+
+    `IngestReport.rows_per_second` is a single number over the whole call --
+    it hides slow patches behind fast ones. This wraps `ingest_resumable`
+    with a `progress` callback (already fired after every chunk) and buckets
+    those callbacks into `window_seconds`-wide wall-clock windows, so a
+    caller can see the *distribution* of throughput across a long run, not
+    just its mean. `polars`/`duckdb` (already pinned project dependencies,
+    otherwise unused in this module's pure-pyarrow write path) do the
+    windowed aggregation here, exercising the columnar stack the project
+    already committed to without changing how Parquet parts themselves are
+    written.
+    """
+    import duckdb
+    import polars as pl
+
+    if window_seconds <= 0:
+        raise ValueError("window_seconds must be positive")
+    samples: list[dict[str, float]] = []
+    started = _time.monotonic()
+
+    def _record(update: dict) -> None:
+        samples.append({
+            "elapsed_seconds": _time.monotonic() - started,
+            "rows_per_second": float(update["rows_per_second"]),
+        })
+
+    report = ingest_resumable(chunk_source, checkpoint=checkpoint, batch_size=batch_size,
+                              bands=bands, progress=_record)
+
+    if not samples:
+        return {"report": report.to_dict(), "windows": [], "peak_rows_per_second": 0.0,
+                "sustained_rows_per_second_p50": 0.0, "sustained_rows_per_second_p95": 0.0}
+
+    frame = pl.DataFrame(samples)
+    windowed = duckdb.sql(f"""
+        SELECT CAST(elapsed_seconds / {float(window_seconds)} AS BIGINT) AS window_index,
+               max(rows_per_second) AS rows_per_second
+        FROM frame
+        GROUP BY window_index
+        ORDER BY window_index
+    """).pl()
+
+    window_rates = windowed["rows_per_second"].to_list()
+    return {
+        "report": report.to_dict(),
+        "window_seconds": float(window_seconds),
+        "windows": window_rates,
+        "peak_rows_per_second": float(max(window_rates)),
+        "sustained_rows_per_second_p50": float(np.percentile(window_rates, 50)),
+        "sustained_rows_per_second_p95": float(np.percentile(window_rates, 95)),
     }

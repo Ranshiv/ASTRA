@@ -211,3 +211,48 @@ def test_rpc_photometry_persists_an_authorized_tpf(isolated_root):
     result = response["result"]
     assert result["shown_points"] == 4
     assert Path(result["curve_path"]).is_file()
+
+
+class _FakeSectorResponse:
+    def __init__(self, payload: object) -> None:
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
+
+
+class TestFindSectors:
+    def test_parses_real_shaped_results(self, monkeypatch):
+        payload = {"results": [
+            {"sectorName": "tess-s0011-2-2", "sector": "0011", "camera": "2", "ccd": "2"},
+            {"sectorName": "tess-s0012-2-1", "sector": "0012", "camera": "2", "ccd": "1"},
+        ]}
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeSectorResponse(payload))
+        assert tess_pixels.find_sectors(219.9, -60.8) == [11, 12]
+
+    def test_deduplicates_and_sorts(self, monkeypatch):
+        payload = {"results": [
+            {"sector": "5"}, {"sector": "2"}, {"sector": "5"},
+        ]}
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeSectorResponse(payload))
+        assert tess_pixels.find_sectors(1.0, 1.0) == [2, 5]
+
+    def test_no_coverage_returns_empty_list(self, monkeypatch):
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeSectorResponse({"results": []}))
+        assert tess_pixels.find_sectors(1.0, 1.0) == []
+
+    def test_malformed_rows_are_skipped(self, monkeypatch):
+        payload = {"results": [{"sector": "not-a-number"}, {"no_sector_key": True}, {"sector": 7}]}
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeSectorResponse(payload))
+        assert tess_pixels.find_sectors(1.0, 1.0) == [7]
+
+    def test_non_json_response_returns_empty_list(self, monkeypatch):
+        class _Broken:
+            def json(self):
+                raise ValueError("not json")
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _Broken())
+        assert tess_pixels.find_sectors(1.0, 1.0) == []
+
+    def test_out_of_range_position_is_rejected(self):
+        with pytest.raises(tess_pixels.TESSProductError):
+            tess_pixels.find_sectors(1.0, 200.0)

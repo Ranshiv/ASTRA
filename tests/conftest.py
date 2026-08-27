@@ -8,6 +8,34 @@ import pytest
 from astra.surveys.base import ConeQuery, LightCurve, SourceRef
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    # Registered here (not only in engine/pyproject.toml) because this
+    # project's test suite is normally invoked as `pytest tests` from the
+    # repo root, where pytest does not discover engine/pyproject.toml's
+    # `[tool.pytest.ini_options]` -- see test_frb_live.py/
+    # test_alerts_gcn_live.py's module docstrings for why a `live` marker
+    # exists at all.
+    config.addinivalue_line(
+        "markers", "live: hits a real external service; skipped by default, run explicitly with -m live")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
+    """Skip `live`-marked tests unless the caller explicitly selected them.
+
+    `pytest tests -m live` sets `config.option.markexpr`, which this checks
+    for and, when present, leaves every item's markers untouched so pytest's
+    own `-m` filtering applies normally. Otherwise every `live`-marked item
+    gets an explicit skip, so a default `pytest tests` run never touches a
+    real external service.
+    """
+    if config.option.markexpr:
+        return
+    skip_live = pytest.mark.skip(reason="live test skipped by default; run with -m live")
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip_live)
+
+
 @pytest.fixture
 def cone() -> ConeQuery:
     return ConeQuery(ra_deg=180.122, dec_deg=22.411, radius_arcsec=10.0)

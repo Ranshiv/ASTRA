@@ -6,7 +6,7 @@
  * needs to know and all it should be able to see.
  */
 import { Database, HardDrive, KeyRound, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 
 import { engine } from "@/lib/engine";
 import { Badge, Button, Empty, Field, KeyValue, Note, Panel, Table, num, useAction, useAsync } from "@/components/ui";
@@ -33,6 +33,12 @@ export function SettingsView() {
     { id: "settings-paths", label: "Engine paths" },
   ];
 
+  function jumpToSection(event: MouseEvent<HTMLAnchorElement>, id: string) {
+    event.preventDefault();
+    window.history.replaceState(null, "", "#/settings");
+    document.getElementById(id)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <nav aria-label="Settings sections" className="flex flex-wrap gap-2 text-xs">
@@ -40,6 +46,7 @@ export function SettingsView() {
           <a
             key={section.id}
             href={`#${section.id}`}
+            onClick={(event) => jumpToSection(event, section.id)}
             className="rounded-full border border-[var(--color-edge)] px-2.5 py-1 text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
           >
             {section.label}

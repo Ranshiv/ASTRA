@@ -45,6 +45,17 @@ class TestGrid:
         configs = sweep.grid("autoencoder", {"latent_dim": (4,)})
         assert {c["latent_dim"] for c in configs} == {4}
 
+    def test_neural_ode_gets_its_own_dimensions(self):
+        """Sweeping latent_dim/channels for neural_ode would vary nothing --
+        it needs ode_hidden_dim/ode_steps instead."""
+        configs = sweep.grid("neural_ode")
+        assert all("latent_dim" not in c and "channels" not in c for c in configs)
+        assert all("ode_hidden_dim" in c and "ode_steps" in c for c in configs)
+
+    def test_neural_ode_capacity_is_explored_in_both_directions(self):
+        hidden_dims = {config["ode_hidden_dim"] for config in sweep.grid("neural_ode")}
+        assert min(hidden_dims) < 32 < max(hidden_dims)
+
 
 class TestTrialSummary:
     def test_interval_is_reported_across_seeds(self):
@@ -121,6 +132,13 @@ class TestRunGuards:
         result = sweep.run(survey="ztf", seeds=(1, 2))
         assert result.rows == 0
         assert "need at least 20" in result.to_dict()["note"]
+
+    def test_neural_ode_requires_irregular_mode(self):
+        """The other modes' 2-channel batches would fail deep inside the
+        model with an opaque tensor-shape error; this guard is the clear
+        version of that same refusal."""
+        with pytest.raises(ValueError, match="requires mode='irregular'"):
+            sweep.run(kind="neural_ode", seeds=(1, 2), mode="time")
 
 
 class TestWithoutTorch:

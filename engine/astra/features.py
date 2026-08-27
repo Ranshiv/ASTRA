@@ -189,6 +189,21 @@ def backend_token(backend: str) -> str:
     return backend
 
 
+# Same "cpu" vs "gpu" split as PERIODOGRAM_BACKENDS, for bocpd's independent
+# batched-CUDA path (bocpd_gpu.py). Kept as its own token/validator rather
+# than reusing backend_token: the two backends are unrelated kernels with
+# unrelated availability, and conflating their validation would make an
+# error about one look like it came from the other.
+BOCPD_BACKENDS = ("cpu", "gpu")
+
+
+def bocpd_backend_token(backend: str) -> str:
+    if backend not in BOCPD_BACKENDS:
+        raise ValueError(f"unknown bocpd backend {backend!r}; "
+                         f"expected one of {BOCPD_BACKENDS}")
+    return backend
+
+
 def periodic_features(time: np.ndarray, value: np.ndarray,
                       value_err: np.ndarray,
                       min_period_days: float = MIN_PERIOD_DAYS,
@@ -411,7 +426,8 @@ def bocpd(time: np.ndarray, value: np.ndarray, hazard: float = 1 / 200.0,
 
 def extract(curve: LightCurve, path: str = "",
            periodogram_backend: str = "cpu",
-           periodic_override: dict[str, float] | None = None) -> FeatureSet:
+           periodic_override: dict[str, float] | None = None,
+           bocpd_override: dict[str, float] | None = None) -> FeatureSet:
     """Full feature vector for one light curve.
 
     `periodogram_backend` selects "cpu" (astropy's approximate fast method,
@@ -426,6 +442,16 @@ def extract(curve: LightCurve, path: str = "",
     period search runs once in the parent process across a batch, and worker
     processes -- each of which would otherwise open its own CUDA context on
     one shared card -- compute only the remaining, CPU-only statistics.
+
+    `bocpd_override` is the same idea for `bocpd_gpu`'s batched kernel:
+    `featurematrix` computes it once per batch in the parent process (one
+    CUDA thread per curve) and hands each worker its own curve's result,
+    rather than each worker opening its own CUDA context for one curve at a
+    time. There is deliberately no `bocpd_backend` parameter here mirroring
+    `periodogram_backend` -- `bocpd`'s own CPU implementation below is always
+    the function a caller gets when no override is supplied; only
+    `featurematrix`'s parent-process prepass ever produces a GPU-computed
+    result.
     """
     tidy = curve.dropna().sorted_by_time()
 
@@ -441,7 +467,8 @@ def extract(curve: LightCurve, path: str = "",
                      periodic_features(tidy.time, tidy.value, tidy.value_err,
                                        backend=periodogram_backend))
         values.update({f"bocpd_{name}": value for name, value in
-                       bocpd(tidy.time, tidy.value).items()})
+                       (bocpd_override if bocpd_override is not None else
+                        bocpd(tidy.time, tidy.value)).items()})
 
     return FeatureSet(
         values={name: float(values.get(name, float("nan")))

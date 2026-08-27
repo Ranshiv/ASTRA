@@ -144,6 +144,57 @@ class TestConeSearch:
         assert captured["params"]["page_size"] == 200
 
 
+CLASSIFIED_ROWS = [
+    {"oid": "ZTF20acobvxk", "meanra": 37.67, "meandec": -14.57,
+     "classifier": "lc_classifier", "class": "SNIa", "probability": 0.722,
+     "ndet": 12, "firstmjd": 59000.1, "lastmjd": 59030.2},
+    {"oid": "ZTF22aalpfln", "meanra": 224.50, "meandec": 49.95,
+     "classifier": "lc_classifier", "class": "SNIa", "probability": 0.401,
+     "ndet": 8, "firstmjd": 59100.0, "lastmjd": 59110.0},
+    {"oid": "no-probability", "meanra": 10.0, "meandec": 5.0,
+     "classifier": "lc_classifier", "class": "SNIa", "probability": None},
+]
+
+
+class TestQueryClassifiedObjects:
+    def test_parses_real_classified_rows_above_the_probability_floor(self, monkeypatch):
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(CLASSIFIED_ROWS))
+        sources = ALeRCEConnector().query_classified_objects("SNIa", min_probability=0.5)
+        assert len(sources) == 1  # the 0.401 and null-probability rows are excluded
+        assert sources[0].object_id == "ZTF20acobvxk"
+        assert sources[0].extra["class_name"] == "SNIa"
+        assert sources[0].extra["probability"] == pytest.approx(0.722)
+
+    def test_sends_the_classifier_and_class_filter_params(self, monkeypatch):
+        captured: dict = {}
+
+        def fake_get(url, params, timeout, provider):
+            captured["params"] = params
+            return _FakeResponse(CLASSIFIED_ROWS)
+
+        monkeypatch.setattr(netclient, "get", fake_get)
+        ALeRCEConnector().query_classified_objects("SNIa", classifier="lc_classifier")
+        assert captured["params"]["classifier"] == "lc_classifier"
+        assert captured["params"]["class"] == "SNIa"
+        assert captured["params"]["order_by"] == "probability"
+
+    def test_malformed_json_yields_no_rows(self, monkeypatch):
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _Broken())
+        assert ALeRCEConnector().query_classified_objects("SNIa") == []
+
+    def test_rows_missing_oid_are_skipped(self, monkeypatch):
+        payload = [{"meanra": 1.0, "meandec": 2.0, "probability": 0.9}]
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(payload))
+        assert ALeRCEConnector().query_classified_objects("SNIa") == []
+
+    def test_respects_the_limit(self, monkeypatch):
+        rows = [{"oid": f"ZTF{i}", "meanra": 1.0, "meandec": 2.0, "probability": 0.9}
+               for i in range(10)]
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(rows))
+        sources = ALeRCEConnector().query_classified_objects("SNIa", limit=3)
+        assert len(sources) == 3
+
+
 ZTF_DETECTION_ROWS = [
     {"mjd": 59000.1, "magpsf": 18.1, "sigmapsf": 0.05, "fid": 1},
     {"mjd": 59000.2, "magpsf": 17.9, "sigmapsf": 0.04, "fid": 2},
@@ -308,3 +359,34 @@ class TestSchemaContract:
         assert curve.time[0] == pytest.approx(row["mjd"])
         assert curve.value[0] == pytest.approx(row["magpsf"], abs=1e-3)
         assert curve.value_err[0] == pytest.approx(row["sigmapsf"], abs=1e-4)
+
+
+@pytest.mark.live
+class TestALeRCELive:
+    """Confirmed live this session (2026-08-25), for roadmap item 21: this
+    connector's own module docstring flagged its response shape as not yet
+    live-verified -- it is now. `GET /ztf/v1/objects` (no trailing slash)
+    issues an HTTP 302 redirect to `/ztf/v1/objects/`; `requests`
+    (`netclient`'s transport) follows redirects by default, so this costs
+    an extra round trip per call but does not break `cone_search`. The
+    redirected response is a real `{"items": [...]}`-wrapped dict with
+    real `oid`/`meanra`/`meandec`/`classifier`/`class`/`probability`
+    fields, exactly matching `parse_rows`'s dict-with-"items" branch and
+    `cone_search`'s field lookups. `GET /ztf/v1/objects/{oid}/detections`
+    returns a bare list (the OTHER branch `parse_rows` already handles)
+    with real `mjd`/`magpsf`/`sigmapsf`/`fid` fields, exactly matching
+    `fetch_light_curves`."""
+
+    def test_cone_search_returns_real_rows(self):
+        sources = ALeRCEConnector("ztf").cone_search(
+            ConeQuery(ra_deg=180.122, dec_deg=22.411, radius_arcsec=3600.0), limit=3)
+        assert len(sources) > 0
+        assert all(source.survey == "ALeRCE" for source in sources)
+
+    def test_fetch_light_curves_returns_real_detections(self):
+        sources = ALeRCEConnector("ztf").cone_search(
+            ConeQuery(ra_deg=180.122, dec_deg=22.411, radius_arcsec=3600.0), limit=1)
+        assert len(sources) > 0
+        curves = ALeRCEConnector("ztf").fetch_light_curves(sources[0])
+        assert len(curves) > 0
+        assert all(len(curve.time) > 0 for curve in curves)

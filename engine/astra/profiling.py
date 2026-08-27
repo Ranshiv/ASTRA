@@ -139,6 +139,13 @@ def profile_feature_extraction(limit: int = 100,
             features_mod.periodic_features(curve.time, curve.value,
                                            curve.value_err)
 
+    # bocpd is a pure-Python per-observation loop (unlike the vectorised
+    # numpy passes above), so it is measured separately rather than assumed
+    # cheap just because it isn't Lomb-Scargle.
+    with measure(profile, "bocpd", len(usable)):
+        for curve in usable:
+            features_mod.bocpd(curve.time, curve.value)
+
     total_points = sum(len(c) for c in usable)
     profile.notes.append(f"{len(usable)} curves, {total_points} total points, "
                          f"{len(periodic)} eligible for a period search")

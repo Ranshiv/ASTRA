@@ -8,6 +8,13 @@ import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { SectionHeader } from "@/components/SectionHeader";
+import {
+  Select as SelectPrimitive,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function Panel({
   icon,
@@ -140,6 +147,14 @@ export function Field({
   );
 }
 
+// Radix's Select.Item reserves the empty string internally to mean "no
+// selection" -- an option genuinely valued "" (e.g. CrossSurveyPanel's
+// "Automatic · largest catalogue" default) is silently unmatchable, so
+// SelectValue renders blank forever, even though the right option is
+// selected. Map "" to this sentinel only at the Radix boundary, so every
+// caller of Select can keep passing/receiving "" exactly as before.
+const EMPTY_SELECT_VALUE = "__select-empty__";
+
 export function Select({
   label,
   value,
@@ -161,24 +176,38 @@ export function Select({
   const selectId = id ?? `select-${generatedId}`;
   const helpId = help ? `${selectId}-help` : undefined;
   return (
-    <label htmlFor={selectId} className="flex min-w-0 flex-col gap-1 text-xs text-[var(--color-muted)]">
-      <span>{label}</span>
-      <select
-        id={selectId}
+    // A styled Radix listbox, not a native <select> -- a native select's
+    // open options popup can't be restyled via CSS in Tauri's WebView2,
+    // which is what made every dropdown in the app look like unstyled OS
+    // chrome once opened. The external API (props) is unchanged, so every
+    // existing caller of Select needed no changes.
+    <div className="flex min-w-0 flex-col gap-1 text-xs text-[var(--color-muted)]">
+      <span id={`${selectId}-label`}>{label}</span>
+      <SelectPrimitive
+        value={value === "" ? EMPTY_SELECT_VALUE : value}
+        onValueChange={(next) => onChange(next === EMPTY_SELECT_VALUE ? "" : next)}
         name={name}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-describedby={helpId}
-        className="min-h-9 rounded border border-[var(--color-edge)] bg-[var(--color-void)] px-2.5 py-1.5 text-sm text-[var(--color-text)] outline-none transition-colors focus-visible:border-[var(--color-accent)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/40"
       >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger
+          id={selectId}
+          aria-labelledby={`${selectId}-label`}
+          aria-describedby={helpId}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem
+              key={option.value}
+              value={option.value === "" ? EMPTY_SELECT_VALUE : option.value}
+            >
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </SelectPrimitive>
       {help && <span id={helpId}>{help}</span>}
-    </label>
+    </div>
   );
 }
 

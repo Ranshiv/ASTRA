@@ -282,6 +282,52 @@ export interface PhysicalCharacterization {
   warnings: string[];
 }
 
+export interface SurveyProfileSummary {
+  survey: string;
+  n_curves_used: number;
+  mean_coverage: number | null;
+  n_gap_runs_sampled: number;
+  noise_std: number | null;
+  length: number;
+  note: string;
+}
+
+export interface DigitalTwinSample {
+  profile: SurveyProfileSummary;
+  batch: {
+    rows: number;
+    length: number;
+    channels: number;
+    mode: string;
+    mean_coverage: number;
+  };
+}
+
+export interface DigitalTwinDistance {
+  profile: SurveyProfileSummary;
+  per_feature: Record<string, number | null>;
+  mean_ks_statistic: number;
+  real_rows: number;
+  synthetic_rows: number;
+  note?: string;
+  error?: string;
+}
+
+export interface DigitalTwinTransferArm {
+  mean: number;
+  std: number;
+  ci95: [number, number];
+  n: number;
+}
+
+export interface DigitalTwinTransferResult {
+  profile: SurveyProfileSummary;
+  trained_on_real: DigitalTwinTransferArm | null;
+  trained_on_synthetic: DigitalTwinTransferArm | null;
+  held_out_test_injection?: Record<string, unknown>;
+  error?: string;
+}
+
 export interface FollowupPlan {
   schema_version: number;
   target_id?: string | null;
@@ -1355,6 +1401,17 @@ export const engine = {
     }),
   physicalEnrich: (name = "default", extinction?: Record<string, unknown>, projectId?: string) =>
     invoke<Record<string, unknown>>("engine_physical_enrich", { name, extinction, projectId }),
+  digitalTwinFitProfile: (survey: string, limit = 500) =>
+    invoke<SurveyProfileSummary>("engine_digital_twin_fit_profile", { survey, limit }),
+  digitalTwinSample: (survey: string, limit = 500, n = 50, seed = 42) =>
+    invoke<DigitalTwinSample>("engine_digital_twin_sample", { survey, limit, n, seed }),
+  digitalTwinEvaluateDistance: (survey: string, limit = 500, seed = 42) =>
+    invoke<DigitalTwinDistance>("engine_digital_twin_evaluate_distance", { survey, limit, seed }),
+  digitalTwinEvaluateTransfer: (survey: string, limit = 500, seeds = [17, 29, 43],
+                                epochs = 15, fraction = 0.1) =>
+    invoke<DigitalTwinTransferResult>("engine_digital_twin_evaluate_transfer", {
+      survey, limit, seeds, epochs, fraction,
+    }),
   gwEvents: (catalog = "GWTC-1-confident", refresh = false, offline = false) =>
     invoke<GwEventsResult>("engine_gw_events", { catalog, refresh, offline }),
   gwEnrich: (name = "default", catalog = "GWTC-1-confident", windowDays = 30,
