@@ -1,0 +1,425 @@
+/* ASTRA download site — sections
+   Hero through the download panel: the page's main content blocks. */
+
+/* ---------- Hero ---------- */
+.hero {
+  position: relative;
+  text-align: center;
+  padding: 3.5rem 0 4.5rem;
+  overflow: hidden;
+}
+
+.hero-canvas-wrap {
+  position: relative;
+  width: min(560px, 90vw);
+  height: min(360px, 46vw);
+  margin: 0 auto 1.5rem;
+}
+
+#hero-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: var(--radius-lg);
+}
+
+.tag {
+  display: inline-block;
+  border: 1px solid var(--color-edge);
+  border-radius: 999px;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  color: var(--color-muted);
+  margin-bottom: 1.4rem;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 1.4rem + 2.6vw, 3rem);
+  margin: 0 auto 1rem;
+  max-width: 780px;
+}
+
+.hero p.lede {
+  color: var(--color-muted);
+  font-size: 1.15rem;
+  max-width: 640px;
+  margin: 0 auto 2.25rem;
+}
+
+.surveys-line {
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  margin-top: 2.25rem;
+}
+
+.surveys-line b {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* ---------- Stats strip ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--color-edge);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.stat {
+  background: var(--color-panel);
+  padding: 1.75rem 1rem;
+  text-align: center;
+}
+
+.stat .num {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.2rem);
+  font-weight: 700;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat .label {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  margin-top: 0.3rem;
+}
+
+/* ---------- Premise + schematic ---------- */
+.premise-quote {
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 1rem + 0.8vw, 1.5rem);
+  font-weight: 500;
+  line-height: 1.5;
+  max-width: 720px;
+  margin: 0 0 2.5rem;
+}
+
+.premise-quote .claim {
+  color: var(--color-muted);
+}
+
+.premise-quote .evidence {
+  color: var(--color-accent);
+}
+
+.schematic-wrap {
+  border: 1px solid var(--color-edge);
+  background: var(--color-panel);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+}
+
+.schematic-caption {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* ---------- Pipeline stepper ---------- */
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+}
+
+.pipe-step {
+  border: 1px solid var(--color-edge);
+  background: var(--color-panel);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 0.9rem;
+  position: relative;
+}
+
+.pipe-step .n {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-accent);
+}
+
+.pipe-step h3 {
+  font-size: 0.92rem;
+  margin: 0.4rem 0 0.3rem;
+}
+
+.pipe-step p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+/* ---------- Cards ---------- */
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.card {
+  border: 1px solid var(--color-edge);
+  background: var(--color-panel);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.4rem;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  border-color: var(--color-accent);
+  box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.02rem;
+}
+
+.card p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- Survey roster ---------- */
+.survey-group {
+  margin-bottom: 1.75rem;
+}
+
+.survey-group h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  margin-bottom: 0.75rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: -0.5rem; /* absorbs the chips' bottom margin */
+}
+
+.chip {
+  /* margins, not flex `gap` — see .status-line */
+  margin: 0 0.5rem 0.5rem 0;
+  border: 1px solid var(--color-edge);
+  background: var(--color-panel);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  transition: border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-2px);
+}
+
+.chip.default {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-panel));
+}
+
+/* ---------- Architecture diagram ---------- */
+.arch-diagram {
+  border: 1px solid var(--color-edge);
+  background: var(--color-panel);
+  border-radius: var(--radius-lg);
+  padding: 2rem 1.5rem;
+}
+
+.arch-tier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.arch-tier .label {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.arch-tier .detail {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.arch-sep {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.arch-sep::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--color-edge);
+}
+
+.arch-sep span {
+  position: relative;
+  background: var(--color-panel);
+  padding: 0 0.75rem;
+  font-size: 0.7rem;
+  color: var(--color-muted);
+}
+
+/* ---------- Download panel ---------- */
+.download-panel {
+  border: 1px solid var(--color-edge);
+  background: var(--color-panel);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+}
+
+/* Deliberately NOT flexbox. This spacing broke twice under flex (`gap`
+   dropped silently with no fallback; a margin-based flex fix still put
+   the dot's position at the mercy of the flex layout algorithm) in a
+   renderer that clearly diverges from this file's own test browser.
+   Plain block flow removes the ambiguity: the dot is pulled OUT of flow
+   with `position: absolute` and pinned to a fixed offset, and the text's
+   left edge is fixed by `padding-left` on the block itself — a value the
+   text cannot start before, in any box model, flex or not. */
+.status-line {
+  position: relative;
+  padding-left: 22px;
+  min-height: 9px;
+  font-size: 0.88rem;
+  color: var(--color-muted);
+  margin-bottom: 1.25rem;
+}
+
+.dot {
+  position: absolute;
+  left: 0;
+  top: 0.5em; /* sits on the first line's cap-height */
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--color-muted);
+}
+
+.dot.ok {
+  background: var(--color-ok);
+}
+
+.dot.warn {
+  background: var(--color-warn);
+}
+
+.dot.pulse {
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+.dl-meta {
+  margin-top: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.dl-meta div {
+  margin-top: 0.35rem;
+}
+
+.checksum {
+  margin-top: 1rem;
+  background: var(--color-panel-2);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-sm);
+  padding: 0.8rem 1rem;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  white-space: pre;
+  position: relative;
+}
+
+.requirements {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-edge);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+}
+
+.requirements b {
+  color: var(--color-text);
+  display: block;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+  font-family: var(--font-mono);
+}
+
+/* ---------- Caveats ---------- */
+.caveats {
+  border: 1px solid var(--color-edge);
+  border-left: 3px solid var(--color-warn);
+  background: var(--color-panel);
+  border-radius: var(--radius-sm);
+  padding: 1.4rem 1.5rem;
+}
+
+.caveats ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.caveats li {
+  margin-bottom: 0.65rem;
+}
+
+.caveats a {
+  color: var(--color-accent);
+}
+
+.roadmap {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.roadmap-item {
+  display: flex;
+  align-items: baseline;
+  font-size: 0.88rem;
+}
+
+.roadmap-item .tag-partial,
+.roadmap-item .tag-gap {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-edge);
+  color: var(--color-muted);
+  flex: none;
+  margin-right: 0.75rem; /* not flex `gap` — see .status-line */
+}
+

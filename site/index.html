@@ -9,456 +9,459 @@
       name="description"
       content="ASTRA finds unusual astronomical objects by combining observations from independent surveys, decides whether an anomaly is real or an artifact, and ranks what to look at next. Free Windows desktop app."
     />
-    <style>
-      /* Tokens copied verbatim from src/index.css so the site and the app
-         read as one product. Same three-state theming order as the app's
-         own index.html: dark default on bare :root, a prefers-color-scheme
-         override, then an explicit [data-theme] block that always wins. */
-      :root {
-        --color-void: #0f131b;
-        --color-panel: #161b26;
-        --color-panel-2: #1e2431;
-        --color-edge: #2a3140;
-        --color-muted: #8a93a6;
-        --color-text: #e6e3dc;
-        --color-accent: #e8563f;
-        --color-ok: #4ade80;
-        --color-warn: #fbbf24;
-        --color-bad: #ff6b8a;
-      }
-      @media (prefers-color-scheme: light) {
-        :root:not([data-theme="dark"]) {
-          --color-void: #f5f3ee;
-          --color-panel: #ffffff;
-          --color-panel-2: #ebe7de;
-          --color-edge: #dcd6c9;
-          --color-muted: #656d7e;
-          --color-text: #2a3140;
-          --color-accent: #be3520;
-          --color-ok: #157a3c;
-          --color-warn: #9a6100;
-          --color-bad: #b3123f;
-        }
-      }
-      :root[data-theme="light"] {
-        --color-void: #f5f3ee;
-        --color-panel: #ffffff;
-        --color-panel-2: #ebe7de;
-        --color-edge: #dcd6c9;
-        --color-muted: #656d7e;
-        --color-text: #2a3140;
-        --color-accent: #be3520;
-        --color-ok: #157a3c;
-        --color-warn: #9a6100;
-        --color-bad: #b3123f;
-      }
-      :root[data-theme="dark"] {
-        --color-void: #0f131b;
-        --color-panel: #161b26;
-        --color-panel-2: #1e2431;
-        --color-edge: #2a3140;
-        --color-muted: #8a93a6;
-        --color-text: #e6e3dc;
-        --color-accent: #e8563f;
-        --color-ok: #4ade80;
-        --color-warn: #fbbf24;
-        --color-bad: #ff6b8a;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-      html {
-        color-scheme: light dark;
-      }
-      body {
-        margin: 0;
-        background: var(--color-void);
-        color: var(--color-text);
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-          Arial, sans-serif;
-        line-height: 1.55;
-      }
-      .mono {
-        font-family:
-          ui-monospace, "Cascadia Code", "Consolas", "SFMono-Regular", Menlo,
-          monospace;
-      }
-      main {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 0 1.5rem 4rem;
-      }
-
-      /* ---------- Nav ---------- */
-      nav {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 1.5rem;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-      }
-      .brand img {
-        width: 28px;
-        height: 28px;
-      }
-      nav a {
-        color: var(--color-muted);
-        text-decoration: none;
-        font-size: 0.9rem;
-        margin-left: 1.25rem;
-      }
-      nav a:hover {
-        color: var(--color-text);
-      }
-
-      /* ---------- Hero ---------- */
-      .hero {
-        text-align: center;
-        padding: 2.5rem 0 3rem;
-      }
-      .hero img {
-        width: 84px;
-        height: 84px;
-        margin-bottom: 1.25rem;
-      }
-      .hero h1 {
-        font-size: 2.4rem;
-        margin: 0 0 0.75rem;
-        letter-spacing: -0.01em;
-      }
-      .hero p.lede {
-        color: var(--color-muted);
-        font-size: 1.1rem;
-        max-width: 640px;
-        margin: 0 auto 2rem;
-      }
-      .hero .tag {
-        display: inline-block;
-        border: 1px solid var(--color-edge);
-        border-radius: 999px;
-        padding: 0.2rem 0.75rem;
-        font-size: 0.78rem;
-        color: var(--color-muted);
-        margin-bottom: 1.25rem;
-      }
-      .surveys {
-        color: var(--color-muted);
-        font-size: 0.85rem;
-        margin-top: 1rem;
-      }
-      .surveys b {
-        color: var(--color-text);
-        font-weight: 600;
-      }
-
-      /* ---------- Download panel ---------- */
-      .download-panel {
-        border: 1px solid var(--color-edge);
-        background: var(--color-panel);
-        border-radius: 0.75rem;
-        padding: 1.75rem;
-        margin: 0 0 2.5rem;
-      }
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: var(--color-accent);
-        color: #fff;
-        border: none;
-        border-radius: 0.5rem;
-        padding: 0.85rem 1.5rem;
-        font-size: 1rem;
-        font-weight: 600;
-        text-decoration: none;
-        cursor: pointer;
-      }
-      .btn.secondary {
-        background: transparent;
-        color: var(--color-text);
-        border: 1px solid var(--color-edge);
-      }
-      .btn[aria-disabled="true"] {
-        opacity: 0.5;
-        pointer-events: none;
-      }
-      .dl-meta {
-        margin-top: 1rem;
-        font-size: 0.85rem;
-        color: var(--color-muted);
-      }
-      .dl-meta div {
-        margin-top: 0.35rem;
-      }
-      .checksum {
-        margin-top: 0.9rem;
-        background: var(--color-panel-2);
-        border: 1px solid var(--color-edge);
-        border-radius: 0.4rem;
-        padding: 0.6rem 0.8rem;
-        font-size: 0.8rem;
-        overflow-x: auto;
-        white-space: pre;
-      }
-      .status-line {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        font-size: 0.85rem;
-        color: var(--color-muted);
-        margin-bottom: 1rem;
-      }
-      .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 999px;
-        background: var(--color-muted);
-        flex: none;
-      }
-      .dot.ok {
-        background: var(--color-ok);
-      }
-      .dot.warn {
-        background: var(--color-warn);
-      }
-
-      /* ---------- Sections ---------- */
-      section {
-        margin-bottom: 3rem;
-      }
-      section h2 {
-        font-size: 1.3rem;
-        margin-bottom: 0.5rem;
-      }
-      section > p.section-lede {
-        color: var(--color-muted);
-        margin-top: 0;
-        margin-bottom: 1.5rem;
-        max-width: 640px;
-      }
-      .cards {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-      }
-      .card {
-        border: 1px solid var(--color-edge);
-        background: var(--color-panel);
-        border-radius: 0.6rem;
-        padding: 1.1rem 1.25rem;
-      }
-      .card h3 {
-        margin: 0 0 0.4rem;
-        font-size: 1rem;
-      }
-      .card p {
-        margin: 0;
-        color: var(--color-muted);
-        font-size: 0.9rem;
-      }
-
-      .caveats {
-        border: 1px solid var(--color-edge);
-        border-left: 3px solid var(--color-warn);
-        background: var(--color-panel);
-        border-radius: 0.4rem;
-        padding: 1.1rem 1.25rem;
-      }
-      .caveats ul {
-        margin: 0.5rem 0 0;
-        padding-left: 1.1rem;
-        color: var(--color-muted);
-        font-size: 0.9rem;
-      }
-      .caveats li {
-        margin-bottom: 0.5rem;
-      }
-      .caveats a {
-        color: var(--color-accent);
-      }
-
-      pre.cmds {
-        background: var(--color-panel);
-        border: 1px solid var(--color-edge);
-        border-radius: 0.5rem;
-        padding: 1rem 1.25rem;
-        font-size: 0.85rem;
-        overflow-x: auto;
-      }
-      pre.cmds .c {
-        color: var(--color-muted);
-      }
-
-      footer {
-        border-top: 1px solid var(--color-edge);
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 1.75rem 1.5rem;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1.25rem;
-        justify-content: space-between;
-        align-items: center;
-        color: var(--color-muted);
-        font-size: 0.85rem;
-      }
-      footer a {
-        color: var(--color-muted);
-        text-decoration: none;
-      }
-      footer a:hover {
-        color: var(--color-text);
-      }
-      .footer-links a {
-        margin-left: 1rem;
-      }
-
-      @media (max-width: 640px) {
-        .cards {
-          grid-template-columns: 1fr;
-        }
-        .hero h1 {
-          font-size: 1.9rem;
-        }
-        nav a {
-          margin-left: 0.75rem;
-        }
-      }
-    </style>
+    <link rel="preload" href="/fonts/roboto-var.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/roboto-mono-400.woff2" as="font" type="font/woff2" crossorigin />
+    <script src="/theme-boot.js?v=2026-09-02-2"></script>
+    <link rel="stylesheet" href="/base.css?v=2026-09-02-2" />
+    <link rel="stylesheet" href="/sections.css?v=2026-09-02-2" />
+    <link rel="stylesheet" href="/components.css?v=2026-09-02-2" />
+    <link rel="stylesheet" href="/motion.css?v=2026-09-02-2" />
   </head>
   <body>
-    <nav>
-      <div class="brand">
-        <img src="/astra_icon.svg" alt="" />
-        <span>ASTRA</span>
-      </div>
-      <div>
-        <a href="#download">Download</a>
-        <a href="#build">Build from source</a>
-        <a href="https://github.com/Ranshiv/ASTRA">GitHub</a>
+    <div class="starfield" aria-hidden="true">
+      <div class="layer" style="background-image: radial-gradient(1px 1px at 10% 20%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 40% 70%, var(--color-muted) 50%, transparent 50%), radial-gradient(1.5px 1.5px at 70% 30%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 85% 80%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 25% 90%, var(--color-muted) 50%, transparent 50%); background-size: 400px 400px;"></div>
+      <div class="layer" style="background-image: radial-gradient(1.5px 1.5px at 15% 45%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 55% 15%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 80% 55%, var(--color-muted) 50%, transparent 50%), radial-gradient(1.5px 1.5px at 30% 85%, var(--color-muted) 50%, transparent 50%); background-size: 560px 560px; opacity: 0.6;"></div>
+    </div>
+
+    <nav id="site-nav">
+      <div class="nav-inner">
+        <a class="brand" href="#top">
+          <img src="/astra_icon.svg" alt="" />
+          <span>ASTRA</span>
+        </a>
+        <div class="nav-links">
+          <a class="navlink" href="#premise">How it works</a>
+          <a class="navlink" href="#surveys">Surveys</a>
+          <a class="navlink" href="#download">Download</a>
+          <a class="navlink" href="#build">Build from source</a>
+          <a class="navlink" href="https://github.com/Ranshiv/ASTRA">GitHub</a>
+          <a id="nav-cta" class="btn small nav-cta" href="#download">Download</a>
+          <button id="theme-toggle" class="icon-btn" type="button" aria-label="Switch theme">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <circle cx="12" cy="12" r="4.5" />
+              <path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8L6 18M18 6l1.8-1.8" />
+            </svg>
+          </button>
+        </div>
       </div>
     </nav>
 
-    <main>
+    <main id="top">
       <section class="hero">
-        <img src="/astra_icon.svg" alt="ASTRA" />
-        <div class="tag">Windows desktop · free · open source</div>
-        <h1>Astronomical Survey &amp; Transient Research Analyzer</h1>
-        <p class="lede">
-          Finds unusual astronomical objects by combining observations from
-          independent surveys, decides whether an anomaly is real or an
-          artifact, explains why it was flagged, and ranks what to look at
-          next.
-        </p>
-        <p class="surveys">
-          Five surveys enabled by default: <b>ZTF</b>, <b>Gaia</b>,
-          <b>TESS</b>, <b>SDSS</b>, <b>Pan-STARRS</b> — plus 20 opt-in
-          connectors including X-ray, infrared and UV instruments.
-        </p>
-      </section>
-
-      <section id="download" class="download-panel">
-        <div id="status" class="status-line">
-          <span class="dot" id="status-dot"></span>
-          <span id="status-text">Checking for the latest release…</span>
+        <div class="wrap">
+          <div class="hero-canvas-wrap">
+            <canvas id="hero-canvas" role="img" aria-label="Animated illustration: a reticle sweeps a star field and locks onto one star, representing anomaly detection across surveys"></canvas>
+          </div>
+          <div class="tag mono">Windows desktop · free · open source</div>
+          <h1>Astronomical Survey &amp; Transient Research Analyzer</h1>
+          <p class="lede">
+            Finds unusual astronomical objects by combining observations from
+            independent surveys, decides whether an anomaly is real or an
+            artifact, explains why it was flagged, and ranks what to look at
+            next.
+          </p>
+          <div id="hero-cta-anchor" class="cta-row">
+            <a class="btn" href="#download">Download for Windows</a>
+            <a class="btn secondary" href="#premise">See how it works</a>
+          </div>
+          <p class="surveys-line">
+            Five surveys enabled by default: <b>ZTF</b>, <b>Gaia</b>,
+            <b>TESS</b>, <b>SDSS</b>, <b>Pan-STARRS</b> — plus 20 opt-in
+            connectors including X-ray, infrared and UV instruments.
+          </p>
         </div>
-        <a id="download-btn" class="btn" href="https://github.com/Ranshiv/ASTRA/releases" aria-disabled="true">
-          Download for Windows
-        </a>
-        <div class="dl-meta" id="dl-meta"></div>
-        <div class="checksum mono" id="checksum" hidden></div>
       </section>
 
-      <section>
-        <h2>What it does</h2>
-        <p class="section-lede">
-          The premise: one survey calling an object odd is a claim. Two
-          instruments with different detectors, cadences and systematics
-          agreeing is evidence.
-        </p>
-        <div class="cards">
-          <div class="card">
-            <h3>Cross-survey corroboration</h3>
-            <p>
-              Matches candidates across independent surveys so a signal has
-              to survive more than one instrument's quirks to count.
-            </p>
-          </div>
-          <div class="card">
-            <h3>Artifact adjudication</h3>
-            <p>
-              Weighs whether an anomaly is astrophysical or a detector,
-              blending, or pipeline artifact before it reaches a ranked list.
-            </p>
-          </div>
-          <div class="card">
-            <h3>Explained flags</h3>
-            <p>
-              Every flagged object comes with the evidence and reasoning
-              behind the score, not just a number.
-            </p>
-          </div>
-          <div class="card">
-            <h3>Ranked follow-up</h3>
-            <p>
-              Surfaces what a researcher should look at next, out of
-              thousands of candidates from a run.
-            </p>
+      <section aria-label="Project statistics">
+        <div class="wrap reveal-group">
+          <div class="stats">
+            <div class="stat reveal">
+              <div class="num" data-target="25">0</div>
+              <div class="label">survey connectors</div>
+            </div>
+            <div class="stat reveal">
+              <div class="num" data-target="690">0</div>
+              <div class="label">Python engine tests</div>
+            </div>
+            <div class="stat reveal">
+              <div class="num" data-target="132">0</div>
+              <div class="label">Tauri IPC commands</div>
+            </div>
+            <div class="stat reveal">
+              <div class="num" data-target="3">0</div>
+              <div class="label">layers — UI, shell, engine</div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section>
-        <h2>What it is not</h2>
-        <div class="caveats">
-          <p style="margin: 0; color: var(--color-text)">
-            These aren't disclaimers — they change how output should be read.
-          </p>
-          <ul>
-            <li>
-              <b>Scores are per-run, not absolute.</b> Detector scores are
-              min-max normalised within a batch; rankings from different runs
-              aren't directly comparable.
-            </li>
-            <li>
-              <b>TESS doesn't resolve individual stars.</b> 21-arcsec pixels
-              mean a TESS match corroborates a neighbourhood, not an object.
-            </li>
-            <li>
-              <b>Injection recovery measures what was injected</b>, not
-              sensitivity to phenomena nobody thought to test for.
-            </li>
-          </ul>
-          <p style="margin: 0.75rem 0 0">
-            Full status, including every known gap and limitation, is tracked
-            in
-            <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/DEFERRED.txt">docs/DEFERRED.txt</a>.
-          </p>
+      <div class="divider" aria-hidden="true">
+        <svg viewBox="0 0 980 40" preserveAspectRatio="none">
+          <path
+            d="M0,20 L120,20 L140,8 L160,32 L180,20 L280,20 L300,4 L320,36 L340,20 L500,20 L520,14 L540,26 L560,20 L700,20 L720,6 L740,34 L760,20 L980,20"
+            fill="none"
+            stroke="var(--color-edge)"
+            stroke-width="1.5"
+          />
+        </svg>
+      </div>
+
+      <section id="premise">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">The premise</div>
+            <p class="premise-quote">
+              <span class="claim">One survey calling an object odd is a claim.</span>
+              <span class="evidence">Two instruments — different detectors, cadences, systematics — agreeing is evidence.</span>
+            </p>
+            <p class="section-lede">
+              The most common cause of a single-survey anomaly is the survey
+              itself. ASTRA exists to tell the difference.
+            </p>
+          </div>
+
+          <div class="schematic-wrap reveal" id="premise-schematic">
+            <svg viewBox="0 0 700 260" role="img" aria-labelledby="schematic-title schematic-desc" style="width:100%;height:auto;">
+              <title id="schematic-title">Cross-survey corroboration schematic</title>
+              <desc id="schematic-desc">A stylised diagram, not application output. Five survey nodes — ZTF, Gaia, TESS, SDSS, Pan-STARRS — each draw an arc toward a shared candidate node. Once two arcs land, the candidate flips from a muted grey "claim" state to a vermilion "evidence" state with an expanding ring.</desc>
+
+              <!-- Survey nodes. Labels sit to the LEFT of each dot: the arcs
+                   leave the dots rightward with a horizontal tangent, so a
+                   right-hand label would be struck through by its own arc. -->
+              <g class="mono" font-size="12" fill="var(--color-muted)">
+                <text x="138" y="44" text-anchor="end">ZTF</text>
+                <circle cx="152" cy="40" r="5" fill="var(--color-muted)" />
+
+                <text x="138" y="92" text-anchor="end">Gaia</text>
+                <circle cx="152" cy="88" r="5" fill="var(--color-muted)" />
+
+                <text x="138" y="140" text-anchor="end">TESS</text>
+                <circle cx="152" cy="136" r="5" fill="var(--color-muted)" />
+
+                <text x="138" y="188" text-anchor="end">SDSS</text>
+                <circle cx="152" cy="184" r="5" fill="var(--color-muted)" />
+
+                <text x="138" y="236" text-anchor="end">Pan-STARRS</text>
+                <circle cx="152" cy="232" r="5" fill="var(--color-muted)" />
+              </g>
+
+              <!-- arcs into the candidate at ~(500,130) -->
+              <path class="draw-path" d="M159,40 C 260,40 380,80 492,124" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,88 C 260,88 380,106 492,127" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,136 C 260,136 380,133 492,130" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,184 C 260,184 380,160 492,133" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,232 C 260,232 380,186 492,136" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+
+              <!-- candidate node -->
+              <circle class="focal-ring" cx="500" cy="130" r="34" fill="none" stroke="var(--color-accent)" stroke-width="1.5" />
+              <circle class="node-pulse" cx="500" cy="130" r="9" fill="var(--color-muted)" />
+              <text x="500" y="176" text-anchor="middle" class="mono" font-size="12" fill="var(--color-text)">candidate</text>
+              <text x="500" y="192" text-anchor="middle" class="mono" font-size="10" fill="var(--color-muted)">claim → evidence</text>
+            </svg>
+            <p class="schematic-caption">
+              Schematic of the corroboration logic — not a screenshot of application output.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="How it works">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">How it works</div>
+            <h2>Five stages, one ranked list</h2>
+            <p class="section-lede">
+              From raw acquisition to a ranked, explained shortlist of what to
+              look at next.
+            </p>
+          </div>
+          <div class="pipeline reveal-group">
+            <div class="pipe-step reveal"><div class="n mono">01</div><h3>Acquire</h3><p>Pull observations from independent surveys for a target field or campaign.</p></div>
+            <div class="pipe-step reveal"><div class="n mono">02</div><h3>Extract features</h3><p>Light curves, astrometry and photometry reduced to comparable feature sets.</p></div>
+            <div class="pipe-step reveal"><div class="n mono">03</div><h3>Detect</h3><p>Per-survey anomaly detectors score candidates within their own batch.</p></div>
+            <div class="pipe-step reveal"><div class="n mono">04</div><h3>Cross-match &amp; adjudicate</h3><p>Independent surveys corroborate a signal — or reveal it as an artifact.</p></div>
+            <div class="pipe-step reveal"><div class="n mono">05</div><h3>Rank &amp; explain</h3><p>A ranked shortlist, each entry with the evidence behind its score.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="What it does">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">What it does</div>
+            <h2>Four jobs, in order</h2>
+          </div>
+          <div class="cards reveal-group">
+            <div class="card reveal">
+              <h3>Cross-survey corroboration</h3>
+              <p>
+                Matches candidates across independent surveys so a signal has
+                to survive more than one instrument's quirks to count.
+              </p>
+            </div>
+            <div class="card reveal">
+              <h3>Artifact adjudication</h3>
+              <p>
+                Weighs whether an anomaly is astrophysical or a detector,
+                blending, or pipeline artifact before it reaches a ranked list.
+              </p>
+            </div>
+            <div class="card reveal">
+              <h3>Explained flags</h3>
+              <p>
+                Every flagged object comes with the evidence and reasoning
+                behind the score, not just a number.
+              </p>
+            </div>
+            <div class="card reveal">
+              <h3>Ranked follow-up</h3>
+              <p>
+                Surfaces what a researcher should look at next, out of
+                thousands of candidates from a run.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="surveys">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Surveys</div>
+            <h2>25 connectors, 5 on by default</h2>
+            <p class="section-lede">
+              A further 20 are available opt-in once their provider contract
+              is validated for a given campaign.
+            </p>
+          </div>
+
+          <div class="survey-group reveal">
+            <h3>Enabled by default</h3>
+            <div class="chip-row"><span class="chip default">ZTF</span><span class="chip default">Gaia</span><span class="chip default">TESS</span><span class="chip default">SDSS</span><span class="chip default">Pan-STARRS</span></div>
+          </div>
+          <div class="survey-group reveal">
+            <h3>Alert brokers</h3>
+            <div class="chip-row"><span class="chip">ALeRCE</span><span class="chip">ANTARES</span><span class="chip">ASAS-SN</span><span class="chip">NEOWISE</span></div>
+          </div>
+          <div class="survey-group reveal">
+            <h3>X-ray</h3>
+            <div class="chip-row"><span class="chip">Chandra</span><span class="chip">Swift</span><span class="chip">XMM</span><span class="chip">eROSITA</span></div>
+          </div>
+          <div class="survey-group reveal">
+            <h3>Infrared / UV</h3>
+            <div class="chip-row"><span class="chip">WISE</span><span class="chip">2MASS</span><span class="chip">GALEX</span><span class="chip">Herschel</span></div>
+          </div>
+          <div class="survey-group reveal">
+            <h3>Other</h3>
+            <div class="chip-row"><span class="chip">Hubble</span><span class="chip">JWST</span><span class="chip">DESI</span><span class="chip">VLASS</span><span class="chip">OGLE</span><span class="chip">Kepler</span><span class="chip">DES</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Architecture">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Architecture</div>
+            <h2>Three layers, deliberately separated</h2>
+            <p class="section-lede">
+              The Python engine runs as a sidecar process, not an embedded
+              interpreter — so a released build never silently falls back to a
+              developer's virtualenv.
+            </p>
+          </div>
+          <div class="arch-diagram reveal">
+            <div class="arch-tier">
+              <span class="label mono">React + TypeScript</span>
+              <span class="detail">UI, 11 views</span>
+            </div>
+            <div class="arch-sep"><span class="mono">Tauri IPC · 132 commands</span></div>
+            <div class="arch-tier">
+              <span class="label mono">Rust</span>
+              <span class="detail">process supervision, filesystem, hardware, security</span>
+            </div>
+            <div class="arch-sep"><span class="mono">JSON-lines RPC</span></div>
+            <div class="arch-tier">
+              <span class="label mono">Python</span>
+              <span class="detail">Astropy · Astroquery · Lightkurve · NumPy · SciPy</span>
+            </div>
+            <div class="arch-sep"></div>
+            <div class="arch-tier">
+              <span class="label mono">PyTorch / CUDA</span>
+              <span class="detail">anomaly models, GPU acceleration (dev checkout only)</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="download">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Download</div>
+            <h2>Get the Windows build</h2>
+          </div>
+          <div class="download-panel">
+            <div id="status" class="status-line">
+              <span class="dot pulse" id="status-dot"></span>
+              <span id="status-text">Checking for the latest release…</span>
+            </div>
+            <a id="download-btn" class="btn" href="https://github.com/Ranshiv/ASTRA/releases" aria-disabled="true">
+              Download for Windows
+            </a>
+            <div class="dl-meta mono" id="dl-meta"></div>
+            <div class="checksum mono" id="checksum" hidden></div>
+
+            <div class="requirements">
+              <div>
+                <b>OS</b>
+                Windows 11
+              </div>
+              <div>
+                <b>Cost</b>
+                Free, open source
+              </div>
+              <div>
+                <b>GPU models</b>
+                Build from source
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="What it is not">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">What it is not — and what's next</div>
+            <h2>The honest part</h2>
+            <p class="section-lede">These aren't disclaimers — they change how output should be read.</p>
+          </div>
+          <div class="caveats reveal">
+            <ul>
+              <li><b>Scores are per-run, not absolute.</b> Detector scores are min-max normalised within a batch; rankings from different runs aren't directly comparable.</li>
+              <li><b>TESS doesn't resolve individual stars.</b> 21-arcsec pixels mean a TESS match corroborates a neighbourhood, not an object.</li>
+              <li><b>Composite scores renormalise over available evidence.</b> A score of 0.70 from 75% of the weight isn't the same quantity as 0.70 from all of it — <code class="mono">weight_used</code> is reported alongside every score.</li>
+              <li><b>Injection recovery measures what was injected</b>, not sensitivity to phenomena nobody thought to test for.</li>
+              <li><b>Almost all evidence is still synthetic-labelled</b>, and the one real result got smaller as it got more honest. A first real TESS artifact-rejection run scored 0.99 mean AUPRC — on just 2 camera groups. Expanded to real diversity (3 CCDs, 4 nights), the honest number fell to 0.64–0.80 depending on grouping, and a domain-adaptation attempt scored worse than doing nothing at all — reported anyway.</li>
+            </ul>
+
+            <div class="roadmap">
+              <div class="roadmap-item"><span class="tag-partial mono">BLOCKED</span><span>Gaia epoch photometry — only the DR3 static table today; DR4's full time-series is the eventual fix, expected December 2026.</span></div>
+              <div class="roadmap-item"><span class="tag-partial mono">BLOCKED</span><span>Live-contract validation — Chandra CSC, Swift, XMM, DES, Hubble, JWST and ALeRCE haven't been confirmed against a real response yet; each degrades to zero sources rather than crashing on a mismatch.</span></div>
+              <div class="roadmap-item"><span class="tag-gap mono">SCOPED</span><span>Deep-model packaging — <code class="mono">deep.train</code> and <code class="mono">deep.sweep</code> are excluded from the installer to keep it under 3.5 GB; they run from a development checkout.</span></div>
+            </div>
+
+            <p style="margin: 1.25rem 0 0">
+              Full status — every known gap, what's blocked on what, and what
+              was deliberately left out — is tracked in
+              <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/LIMITATIONS.md">docs/LIMITATIONS.md</a>.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Frequently asked questions">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">FAQ</div>
+            <h2>Before you install</h2>
+          </div>
+
+          <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="chev-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></symbol></svg>
+
+          <div class="faq-list">
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="faq-a-1"><span>Is it Windows only?</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="faq-a-1"><div class="faq-a-inner"><p>Yes — ASTRA is a Windows-first desktop app, packaged as an NSIS installer. There is no macOS or Linux build today.</p></div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="faq-a-2"><span>Why does the installer exclude PyTorch and CUDA?</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="faq-a-2"><div class="faq-a-inner"><p>They add roughly 3.5 GB — <code class="mono">torch_cuda.dll</code> alone is 1 GB — for a capability most sessions never use. Acquisition, feature extraction, baseline detection, cross-survey matching, ranking and export all work normally in an installed copy.</p></div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="faq-a-3"><span>Is it free and open source?</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="faq-a-3"><div class="faq-a-inner"><p>Yes. Source is on <a href="https://github.com/Ranshiv/ASTRA">GitHub</a>; see the repository for licence terms.</p></div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="faq-a-4"><span>Do I need API credentials to start?</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="faq-a-4"><div class="faq-a-inner"><p>No — the five default surveys work without one. The 20 opt-in connectors are enabled per campaign once their provider contract is validated; some require credentials, some (like ALeRCE and ANTARES) don't.</p></div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="faq-a-5"><span>What about GPU-accelerated deep models?</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="faq-a-5"><div class="faq-a-inner"><p><code class="mono">deep.train</code> and <code class="mono">deep.sweep</code> need a development checkout with an NVIDIA driver and the CUDA toolkit — see Build from source below.</p></div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="faq-a-6"><span>Where's the honest status document?</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="faq-a-6"><div class="faq-a-inner"><p><a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/LIMITATIONS.md">docs/LIMITATIONS.md</a> covers every remaining gap — what's blocked on an external release, credential, or real data file, and what was deliberately left out of scope — each with what would close it. Read it before trusting any number the app produces.</p></div></div>
+            </div>
+          </div>
         </div>
       </section>
 
       <section id="build">
-        <h2>Build from source</h2>
-        <p class="section-lede">
-          The installer excludes PyTorch and CuPy to stay small. Deep-model
-          training (<code class="mono">deep.train</code>,
-          <code class="mono">deep.sweep</code>) and GPU acceleration need a
-          development checkout.
-        </p>
-        <pre class="cmds mono"><span class="c"># Windows 11, Node.js LTS, Rust, Python 3.12, VS Build Tools</span>
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Build from source</div>
+            <h2>For deep-model work and development</h2>
+            <p class="section-lede">
+              The installer excludes PyTorch and CuPy to stay small. Deep-model
+              training (<code class="mono">deep.train</code>,
+              <code class="mono">deep.sweep</code>) and GPU acceleration need a
+              development checkout.
+            </p>
+          </div>
+          <div class="code-block">
+            <pre class="cmds mono" id="build-cmds"><span class="c"># Windows 11, Node.js LTS, Rust, Python 3.12, VS Build Tools</span>
 npm install
 uv pip install -e engine          <span class="c"># add [gpu] for PyTorch and CuPy</span>
 npm run app                       <span class="c"># Tauri dev: Vite + the Rust shell</span></pre>
+            <button class="copy-btn" type="button" data-copy-target="build-cmds">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span class="label">Copy</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Citation and documentation">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Citation &amp; docs</div>
+            <h2>Citing and reading further</h2>
+          </div>
+          <div class="citation-grid">
+            <div class="code-block">
+              <pre class="cmds mono" id="citation-block">title: "ASTRA: a cross-survey anomaly detection platform"
+type: software
+authors:
+  - name: "ASTRA contributors"
+repository-code: "https://github.com/Ranshiv/ASTRA"
+keywords: astronomy, anomaly-detection, cross-survey,
+          time-domain, ztf, gaia, tess</pre>
+              <button class="copy-btn" type="button" data-copy-target="citation-block">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                <span class="label">Copy</span>
+              </button>
+            </div>
+            <div class="doc-index">
+              <a href="https://github.com/Ranshiv/ASTRA/blob/master/README.md">
+                README
+                <span class="desc">Architecture, tests, packaging, scientific caveats.</span>
+              </a>
+              <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/LIMITATIONS.md">
+                docs/LIMITATIONS.md
+                <span class="desc">Every remaining gap, what it's blocked on, and what was scoped out.</span>
+              </a>
+              <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/METHODS.md">
+                docs/METHODS.md
+                <span class="desc">Scoring, detection and cross-match methodology.</span>
+              </a>
+              <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/RESEARCH-INTEGRATION.md">
+                docs/RESEARCH-INTEGRATION.md
+                <span class="desc">Event packets, calibration, follow-up constraints.</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
 
@@ -471,91 +474,7 @@ npm run app                       <span class="c"># Tauri dev: Vite + the Rust s
       </span>
     </footer>
 
-    <script>
-      (function () {
-        const REPO = "Ranshiv/ASTRA";
-        const dot = document.getElementById("status-dot");
-        const text = document.getElementById("status-text");
-        const btn = document.getElementById("download-btn");
-        const meta = document.getElementById("dl-meta");
-        const checksumEl = document.getElementById("checksum");
-
-        function bytesToMiB(n) {
-          return (n / (1024 * 1024)).toFixed(1) + " MiB";
-        }
-
-        function fallback(message) {
-          dot.className = "dot warn";
-          text.textContent = message;
-          btn.textContent = "See all releases on GitHub";
-          btn.href = "https://github.com/" + REPO + "/releases";
-          btn.removeAttribute("aria-disabled");
-        }
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 6000);
-
-        fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
-          headers: { Accept: "application/vnd.github+json" },
-          signal: controller.signal,
-        })
-          .then((res) => {
-            clearTimeout(timeout);
-            if (res.status === 404) {
-              fallback("No Windows build published yet — build from source below.");
-              return null;
-            }
-            if (!res.ok) {
-              fallback("Couldn't reach GitHub — see releases directly.");
-              return null;
-            }
-            return res.json();
-          })
-          .then((release) => {
-            if (!release) return;
-            const assets = release.assets || [];
-            const exe = assets.find((a) => a.name.toLowerCase().endsWith(".exe"));
-            if (!exe) {
-              fallback("No Windows build published yet — build from source below.");
-              return;
-            }
-            const checksumAsset = assets.find((a) =>
-              /checksum/i.test(a.name) && /\.(sha256|json)$/i.test(a.name)
-            );
-
-            dot.className = "dot ok";
-            text.textContent = "Latest release " + (release.tag_name || "");
-            btn.textContent = "Download for Windows";
-            btn.href = exe.browser_download_url;
-            btn.removeAttribute("aria-disabled");
-
-            const published = release.published_at
-              ? new Date(release.published_at).toLocaleDateString(undefined, {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })
-              : null;
-
-            const lines = [];
-            lines.push(exe.name + " · " + bytesToMiB(exe.size));
-            if (published) lines.push("Published " + published);
-            meta.innerHTML = lines.map((l) => "<div>" + l + "</div>").join("");
-
-            if (checksumAsset) {
-              checksumEl.hidden = false;
-              checksumEl.textContent =
-                "# Verify after downloading (PowerShell)\n" +
-                "Get-FileHash .\\" + exe.name + " -Algorithm SHA256\n" +
-                "# compare against " + checksumAsset.name + ":\n" +
-                "# " + checksumAsset.browser_download_url;
-            }
-          })
-          .catch(() => {
-            clearTimeout(timeout);
-            fallback("Couldn't reach GitHub — see releases directly.");
-          });
-      })();
-    </script>
+    <script src="/hero-canvas.js?v=2026-09-02-2" defer></script>
+    <script src="/astra.js?v=2026-09-02-2" defer></script>
   </body>
 </html>

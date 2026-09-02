@@ -1,0 +1,174 @@
+/* ASTRA download site — motion
+   Keyframes and reveal/transition classes. Every rule in this file has a
+   matching override in the prefers-reduced-motion block at the bottom, which
+   is the actual accessibility contract: nothing here may be the only path to
+   a visible end state. */
+
+/* ---------- Scroll reveal ---------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+.reveal.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-group .reveal:nth-child(1) { transition-delay: 0ms; }
+.reveal-group .reveal:nth-child(2) { transition-delay: 60ms; }
+.reveal-group .reveal:nth-child(3) { transition-delay: 120ms; }
+.reveal-group .reveal:nth-child(4) { transition-delay: 180ms; }
+.reveal-group .reveal:nth-child(5) { transition-delay: 240ms; }
+.reveal-group .reveal:nth-child(6) { transition-delay: 300ms; }
+.reveal-group .reveal:nth-child(7) { transition-delay: 360ms; }
+.reveal-group .reveal:nth-child(8) { transition-delay: 420ms; }
+
+/* ---------- Parallax star layers ---------- */
+.starfield .layer {
+  transition: transform 0s linear;
+  will-change: transform;
+}
+
+/* ---------- Dot pulse ---------- */
+@keyframes dot-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 0%, transparent);
+  }
+}
+
+/* ---------- SVG draw-on (schematic, pipeline connectors, arch diagram) ---------- */
+.draw-path {
+  stroke-dasharray: var(--path-len, 300);
+  stroke-dashoffset: var(--path-len, 300);
+  transition: stroke-dashoffset 900ms var(--ease-out);
+}
+
+.draw-path.in {
+  stroke-dashoffset: 0;
+}
+
+.node-pulse {
+  transform-origin: center;
+  transform-box: fill-box;
+  transition: fill var(--dur-med) var(--ease-out), transform var(--dur-med) var(--ease-out);
+}
+
+.node-pulse.locked {
+  fill: var(--color-accent);
+}
+
+.focal-ring {
+  transform-origin: center;
+  transform-box: fill-box;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+.focal-ring.in {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* ---------- Count-up numbers ---------- */
+.stat .num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Sparkline divider ---------- */
+.divider path {
+  stroke-dasharray: 900;
+  stroke-dashoffset: 900;
+  transition: stroke-dashoffset 1400ms var(--ease-out);
+}
+
+.divider.in path {
+  stroke-dashoffset: 0;
+}
+
+/* ---------- Theme crossfade ---------- */
+.theme-fade-target,
+body,
+.card,
+.chip,
+.panel,
+nav#site-nav {
+  transition:
+    background var(--dur-med) var(--ease-out),
+    border-color var(--dur-med) var(--ease-out),
+    color var(--dur-med) var(--ease-out);
+}
+
+/* ---------- Copy button success flip ---------- */
+.copy-btn .label {
+  display: inline-block;
+}
+
+.copy-btn.done {
+  color: var(--color-ok);
+  border-color: var(--color-ok);
+}
+
+/* ---------- Hero canvas fade-in on load ---------- */
+.hero-canvas-wrap {
+  opacity: 0;
+  transform: scale(0.98);
+  animation: hero-in var(--dur-slow) var(--ease-out) 120ms forwards;
+}
+
+@keyframes hero-in {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ================================================================
+   Reduced motion — every animated element resolves to its final,
+   fully-visible state and nothing loops.
+   ================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+
+  .starfield .layer {
+    transform: none !important;
+  }
+
+  .draw-path {
+    stroke-dashoffset: 0;
+  }
+
+  .focal-ring {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .divider path {
+    stroke-dashoffset: 0;
+  }
+
+  .hero-canvas-wrap {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
+  .dot.pulse {
+    animation: none;
+  }
+}

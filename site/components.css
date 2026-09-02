@@ -1,0 +1,223 @@
+/* ASTRA download site — components
+   FAQ accordion, code blocks, citation, divider, footer, and the shared
+   responsive overrides. */
+
+/* ---------- FAQ accordion ---------- */
+.faq-item {
+  border-bottom: 1px solid var(--color-edge);
+}
+
+.faq-q {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 1.15rem 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 44px;
+}
+
+.faq-q .chev {
+  flex: none;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.faq-q[aria-expanded="true"] .chev {
+  transform: rotate(180deg);
+}
+
+.faq-a {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-med) var(--ease-out);
+}
+
+.faq-a-inner {
+  overflow: hidden;
+}
+
+.faq-item.open .faq-a {
+  grid-template-rows: 1fr;
+}
+
+.faq-a p {
+  margin: 0 0 1.1rem;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  max-width: 620px;
+}
+
+/* ---------- Code block ---------- */
+pre.cmds {
+  background: var(--color-panel);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.25rem;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  position: relative;
+  max-width: 100%;
+}
+
+pre.cmds .c {
+  color: var(--color-muted);
+}
+
+.code-block {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  background: var(--color-panel-2);
+  border: 1px solid var(--color-edge);
+  color: var(--color-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.copy-btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+.copy-btn svg {
+  width: 13px;
+  height: 13px;
+  margin-right: 0.35rem; /* not flex `gap` — see .status-line */
+}
+
+/* ---------- Citation ---------- */
+.citation-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1.5rem;
+}
+
+.doc-index {
+  border: 1px solid var(--color-edge);
+  background: var(--color-panel);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.4rem;
+}
+
+.doc-index a {
+  display: block;
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-edge);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.doc-index a:last-child {
+  border-bottom: none;
+}
+
+.doc-index a:hover {
+  color: var(--color-accent);
+}
+
+.doc-index .desc {
+  display: block;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+/* ---------- Divider ---------- */
+.divider {
+  height: 40px;
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 0 1.5rem;
+}
+
+.divider svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- Footer ---------- */
+footer {
+  border-top: 1px solid var(--color-edge);
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+footer a {
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+footer a:hover {
+  color: var(--color-text);
+}
+
+.footer-links a {
+  margin-left: 1rem;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 860px) {
+  .cards,
+  .citation-grid {
+    grid-template-columns: 1fr;
+  }
+  .pipeline {
+    grid-template-columns: 1fr;
+  }
+  .arch-tier {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  .arch-tier .detail {
+    text-align: left;
+  }
+  .requirements {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  section {
+    padding: 3.5rem 0;
+  }
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .nav-links a.navlink {
+    display: none;
+  }
+  .hero h1 {
+    font-size: 1.9rem;
+  }
+}

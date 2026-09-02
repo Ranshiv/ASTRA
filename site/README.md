@@ -1,15 +1,53 @@
 # ASTRA download site
 
-A single static page that explains ASTRA and links to the Windows installer.
+A static page that explains ASTRA and links to the Windows installer.
 Independent of the Tauri app's own build — no Node dependencies, no build
 step, no shared routing with the root `index.html`.
 
 ## Files
 
-- `index.html` — the entire page (markup, CSS and JS inline).
-- `astra_icon.svg` — copy of `public/astra_icon.svg`, used as favicon and hero
-  mark. Re-copy it here if the app's icon changes.
+- `index.html` — markup only.
+- `base.css` — tokens (copied verbatim from `src/index.css`), fonts, the
+  reset, and page chrome (starfield, nav, buttons).
+- `sections.css` — hero through the download panel: the main content blocks.
+- `components.css` — FAQ accordion, code blocks, citation, divider, footer,
+  and the shared responsive overrides.
+- `motion.css` — keyframes and reveal/transition classes, plus the
+  `prefers-reduced-motion` overrides that give every animated element a
+  final, fully-visible resting state.
+- `astra.js` — theme toggle, nav scroll state, scroll reveals, count-up
+  stats, SVG draw-ons, FAQ accordion, copy buttons, and the GitHub release
+  fetch (see below).
+- `hero-canvas.js` — the Canvas 2D hero animation (a reticle locking onto a
+  star). Self-pauses via `IntersectionObserver` and `document.hidden`;
+  renders one static frame under reduced motion.
+- `theme-boot.js` — stamps the stored theme before first paint, loaded
+  blocking (no `defer`) in `<head>`. Kept in its own file rather than an
+  inline `<script>` because CSP blocks inline scripts — see below.
+- `fonts/` — self-hosted `woff2` for Roboto (display and body) and Roboto
+  Mono (data/code), plus their SIL OFL licences. Latin subset only.
+  Vendored because the page's CSP has no `font-src` allowance for
+  `fonts.gstatic.com`, so a Google Fonts `<link>` would be blocked.
+- `astra_icon.svg` — copy of `public/astra_icon.svg`, used as favicon and
+  hero mark. Re-copy it here if the app's icon changes.
+
+CSS is split three ways, and JS four, to keep every file under this
+project's 500-line limit — not for any architectural reason. Add new rules
+to whichever file already owns that part of the page.
 - `vercel.json` — static hosting config: no build command, security headers.
+
+## Why JS and CSS are external files, not inline
+
+`vercel.json`'s CSP sets `script-src 'self'` with no `'unsafe-inline'` and no
+nonce. An earlier version of this page put all behaviour in an inline
+`<script>` — which is silently blocked by that CSP on the deployed site,
+leaving the download button stuck at "Checking for the latest release…"
+forever. It looked fine locally because `npx serve site` (see below) doesn't
+apply `vercel.json`'s headers, so the bug only showed up in production.
+
+**When testing changes here, always verify against the real CSP** (see
+"Local preview"), not just a plain static server — that's exactly how the
+bug shipped unnoticed.
 
 ## How the download button works
 
@@ -52,8 +90,28 @@ directory `.`.
 
 ## Local preview
 
-Just open `index.html` in a browser, or serve it:
+For a quick look, open `index.html` in a browser or serve it with
+`npx serve site` — but that does not apply `vercel.json`'s headers, so it
+cannot catch a CSP regression.
+
+To preview with the real headers:
 
 ```bash
-npx serve site
+cd site
+vercel dev
 ```
+
+Or check manually: open the deployed page's DevTools console and confirm
+there are zero `Content-Security-Policy` violation messages, and that the
+download button leaves its "Checking…" state.
+
+## Cache-busting
+
+Every local `<link>`/`<script src>` in `index.html` carries a `?v=YYYY-MM-DD-N`
+query string. Vercel's own `Cache-Control: max-age=0, must-revalidate` header
+already forces a real reload to fetch fresh content, so this isn't needed for
+correctness — but bump it (increment `N`, or use the new date) on any deploy
+that changes `base.css`, `sections.css`, `components.css`, `motion.css`,
+`theme-boot.js`, `hero-canvas.js`, or `astra.js`. It's cheap insurance against
+any caching layer that ignores the header, and it makes it possible to tell
+from a page-source view alone which build a given complaint is about.
