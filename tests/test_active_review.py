@@ -132,8 +132,54 @@ def test_reviewer_agreement_with_priority_reports_not_ready_below_gate(tmp_path)
     assert result["ready"] is False
 
 
+def test_true_inter_rater_agreement_reports_not_ready_below_min_overlap(tmp_path):
+    result = ar.true_inter_rater_agreement(root=tmp_path)
+    assert result["ready"] is False
+    assert result["overlap"] == 0
+
+
+def test_true_inter_rater_agreement_computes_real_kappa(tmp_path):
+    # Two reviewers vote on the same six candidates, agreeing on all but one.
+    for i in range(6):
+        key = f"c{i}"
+        agree = i != 5
+        candidates.cast_label_vote(key, "alice", "interesting", "", tmp_path)
+        candidates.cast_label_vote(
+            key, "bob", "interesting" if agree else "artifact", "", tmp_path)
+
+    result = ar.true_inter_rater_agreement(tmp_path, min_overlap=5)
+    assert result["ready"] is True
+    assert {result["reviewer_a"], result["reviewer_b"]} == {"alice", "bob"}
+    assert result["overlap"] == 6
+    assert result["observed_agreement"] == pytest.approx(5 / 6)
+    assert -1.0 <= result["cohen_kappa"] <= 1.0
+
+
+def test_true_inter_rater_agreement_picks_the_pair_with_most_overlap(tmp_path):
+    # alice/bob share 6 candidates; alice/carol share only 2.
+    for i in range(6):
+        candidates.cast_label_vote(f"c{i}", "alice", "interesting", "", tmp_path)
+        candidates.cast_label_vote(f"c{i}", "bob", "interesting", "", tmp_path)
+    for i in range(2):
+        candidates.cast_label_vote(f"d{i}", "carol", "artifact", "", tmp_path)
+        candidates.cast_label_vote(f"d{i}", "alice", "artifact", "", tmp_path)
+
+    result = ar.true_inter_rater_agreement(tmp_path, min_overlap=1)
+    assert {result["reviewer_a"], result["reviewer_b"]} == {"alice", "bob"}
+    assert result["overlap"] == 6
+
+
+def test_true_inter_rater_agreement_ignores_non_binary_labels(tmp_path):
+    # "uncertain" is neither review.POSITIVE nor review.NEGATIVE.
+    candidates.cast_label_vote("c1", "alice", "uncertain", "", tmp_path)
+    candidates.cast_label_vote("c1", "bob", "uncertain", "", tmp_path)
+    result = ar.true_inter_rater_agreement(tmp_path, min_overlap=1)
+    assert result["ready"] is False
+    assert result["overlap"] == 0
+
+
 def test_active_review_is_wired_into_rpc_for_active_mode():
-    """Deliberately promoted (docs/DEFERRED.txt, roadmap item 36): `review.next`
+    """Deliberately promoted (docs/LIMITATIONS.md, roadmap item 36): `review.next`
     with `active=True` reweights via active_review; see test_rpc.py for the
     dispatch-level behavior this wiring provides."""
     # `review.next`'s handler lives in rpc_handlers/tap_review.py (rpc.py

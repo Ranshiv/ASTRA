@@ -286,7 +286,7 @@ def associate_candidates(name: str = "default", *, root: Path | None = None,
 # positional/timing uncertainty model, and how to combine three or more
 # simultaneously coincident messengers, are real statistics decisions a
 # domain expert should confirm before this is trusted for a real search.
-# See docs/DEFERRED.txt for the explicit open-questions note.
+# See docs/LIMITATIONS.md for the explicit open-questions note.
 #
 # Deliberately NOT wired into scoring.WEIGHTS/combine() -- the same
 # restraint applied everywhere else in this module, doubly warranted here
@@ -442,7 +442,7 @@ def calibrate_event_graph(events_list: list[dict[str, Any]], *,
     matches at all and making `significance.calibrate` report "no finite
     scores" even for a real, well-populated background. The exact bounds
     remain a real search-design choice a domain expert should confirm; see
-    this module's docstring above and docs/DEFERRED.txt.
+    this module's docstring above and docs/LIMITATIONS.md.
 
     Feeds both populations into `significance.calibrate` -- the same
     empirical-tail/FDR machinery already used for candidate-score

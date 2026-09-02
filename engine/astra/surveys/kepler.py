@@ -1,6 +1,6 @@
 """Kepler/K2 — high-cadence time-series photometry via Lightkurve/MAST.
 
-The standing gap named repeatedly in `docs/DEFERRED.txt` since items 16
+The standing gap named repeatedly in `docs/LIMITATIONS.md` since items 16
 and 18 landed: `lightkurve` (already a core dependency, used unchanged by
 `surveys/tess.py`) has a built-in MAST search that reaches Kepler/K2
 without any new HTTP code -- this connector is that search, following

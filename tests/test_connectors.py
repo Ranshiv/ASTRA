@@ -281,7 +281,7 @@ class TestTESSAuthorAndRelease:
     """B2: release must follow author, or QLP/SPOC data collides in the
     store (same (survey, release, object_id, band) storage key) and the
     resumable-fetch cursor treats a QLP fetch as "already done" because a
-    SPOC fetch used the same release. See docs/DEFERRED.txt Phase 8."""
+    SPOC fetch used the same release. See docs/LIMITATIONS.md Phase 8."""
 
     def test_default_release_is_unchanged_for_spoc(self):
         from astra.surveys import tess

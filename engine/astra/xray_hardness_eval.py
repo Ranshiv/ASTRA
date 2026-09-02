@@ -108,7 +108,7 @@ def flux_hardness_calibration(band_flux_rows: list[dict]) -> dict:
     marginal sources where a Bayesian and a point estimate diverge most.
     This function still reports a genuine, real calibration number; it
     is not a bug-free "should match exactly" comparison, and that
-    real gap is documented here and in `docs/DEFERRED.txt`, not hidden.
+    real gap is documented here and in `docs/LIMITATIONS.md`, not hidden.
     """
     computed: list[float] = []
     released: list[float] = []

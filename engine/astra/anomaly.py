@@ -18,7 +18,7 @@ Nothing here is supervised. Plan section 13's warning applies: a newer method
 is not automatically better, and the comparison has to be quantitative.
 
 Consensus is an average of per-detector RANKS, not an average of the raw
-normalised scores. Measured on 301 real ZTF sequences (docs/DEFERRED.txt,
+normalised scores. Measured on 301 real ZTF sequences (docs/LIMITATIONS.md,
 Phase 8): an equal-weight mean of normalised scores scored WORSE (0.824) than
 Isolation Forest alone (0.840), because One-Class SVM's weaker, noisier score
 (0.646) dragged the mean down.

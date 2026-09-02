@@ -21,12 +21,13 @@ only. Turning a `MatchGroup` into a *photometric* pair here additionally
 requires each member survey to expose comparable magnitude/error fields --
 today that means Gaia (`phot_g_mean_mag`/`phot_bp_mean_mag`/
 `phot_rp_mean_mag` plus the flux-derived errors from
-`surveys.gaia.photometric_errors`) and Pan-STARRS (`g_mean`..`y_mean` plus
-`*_mean_error`). `surveys/sdss.py` remains catalogue-only (no photometry
-fields at all) as of this writing, so SDSS pairs are silently unavailable --
-not silently wrong -- until that connector is extended; `coverage` in the
-returned report makes this visible rather than presenting a two-survey
-result as if it were three.
+`surveys.gaia.photometric_errors`), Pan-STARRS (`g_mean`..`y_mean` plus
+`*_mean_error`), and SDSS (`mag_u`..`mag_z` plus `mag_*_error`, sourced from
+`PhotoObj` via `surveys/sdss.py::cone_search`'s `bestObjID` join -- only
+covers spectroscopic objects with a matched photometric counterpart, since
+this connector's `cone_search` still queries `SpecObjAll` first; `coverage`
+in the returned report makes a two- vs. three-survey result visible either
+way rather than presenting fewer surveys as if all three were included).
 """
 
 from __future__ import annotations
@@ -59,8 +60,16 @@ _PANSTARRS_BANDS = {
     "i": ("i_mean", "i_mean_error"), "z": ("z_mean", "z_mean_error"),
     "y": ("y_mean", "y_mean_error"),
 }
+# SDSS `PhotoObj` ugriz model magnitudes, joined onto `SpecObjAll` rows in
+# `surveys/sdss.py::cone_search` -- see that module's docstring for the
+# real gap this closes (SDSS pairs were previously unavailable here at all).
+_SDSS_BANDS = {
+    "u": ("mag_u", "mag_u_error"), "g": ("mag_g", "mag_g_error"),
+    "r": ("mag_r", "mag_r_error"), "i": ("mag_i", "mag_i_error"),
+    "z": ("mag_z", "mag_z_error"),
+}
 SURVEY_BANDS: dict[str, dict[str, tuple[str, str]]] = {
-    "GAIA": _GAIA_BANDS, "PAN-STARRS": _PANSTARRS_BANDS,
+    "GAIA": _GAIA_BANDS, "PAN-STARRS": _PANSTARRS_BANDS, "SDSS": _SDSS_BANDS,
 }
 
 
@@ -93,6 +102,22 @@ def source_magnitude(source: SourceRef, band: str) -> tuple[float | None, float 
     else:
         error = _number(source.extra.get(error_field))
     return magnitude, error
+
+
+def derive_stratum_by_object_id(sources: list[SourceRef],
+                                field: str) -> dict[str, Any]:
+    """Build a `stratum_by_object_id` map from one metadata field already
+    present on a survey's own `SourceRef.extra` (e.g. SDSS's `run2d`
+    reduction-run label), instead of requiring the caller to hand-assemble
+    the dict. This does not invent a night/camera label where a survey
+    carries none -- when `field` is absent on a source, that source's id
+    maps to `None`, which `fit_zero_point` treats exactly like an
+    unassigned stratum (falls into `"default"`), never a fabricated group.
+    """
+    stratum: dict[str, Any] = {}
+    for source in sources:
+        stratum[source.object_id] = source.extra.get(field)
+    return stratum
 
 
 def build_matched_pairs(anchor_survey: str, comparison_survey: str,
@@ -225,6 +250,7 @@ def calibrate(anchor_survey: str, comparison_survey: str,
              color_survey: str | None = None,
              color_bands: tuple[str, str] | None = None,
              stratum_by_object_id: dict[str, Any] | None = None,
+             stratum_field: str | None = None,
              regularization: float = 1.0, min_pairs: int = 10) -> dict[str, Any]:
     """Top-level entry point: assemble pairs, fit per stratum, and report.
 
@@ -232,11 +258,21 @@ def calibrate(anchor_survey: str, comparison_survey: str,
     object to a night/camera label (e.g. from that survey's own metadata);
     when omitted, every pair falls into one `"default"` stratum and this
     degrades gracefully to a single global zero-point/color-term fit.
+    `stratum_field` is a convenience alternative: name one field already
+    present on the comparison survey's `SourceRef.extra` (e.g. `"run2d"`
+    for SDSS) and `derive_stratum_by_object_id` builds the map
+    automatically, rather than requiring the caller to assemble it by
+    hand. Passing both raises -- pick one derivation path explicitly.
     """
+    if stratum_by_object_id and stratum_field:
+        raise ValueError("pass at most one of stratum_by_object_id, stratum_field")
     raw_pairs = build_matched_pairs(
         anchor_survey, comparison_survey, anchor_band, comparison_band,
         by_survey=by_survey, radius_arcsec=radius_arcsec,
         color_survey=color_survey, color_bands=color_bands)
+    if stratum_field:
+        stratum_by_object_id = derive_stratum_by_object_id(
+            by_survey.get(comparison_survey, []), stratum_field)
     if stratum_by_object_id:
         for row in raw_pairs:
             row["stratum"] = stratum_by_object_id.get(row["comparison_object_id"])
@@ -277,5 +313,5 @@ def save(payload: dict[str, Any], *, root: Path | None = None,
 
 __all__ = [
     "SCHEMA_VERSION", "SURVEY_BANDS", "source_magnitude", "build_matched_pairs",
-    "fit_zero_point", "calibrate", "save",
+    "derive_stratum_by_object_id", "fit_zero_point", "calibrate", "save",
 ]

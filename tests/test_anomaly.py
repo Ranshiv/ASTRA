@@ -133,7 +133,7 @@ class TestGaiaJoin:
     only route into a feature matrix is a positional column join onto rows
     another survey already contributed -- never rows of its own. See
     featurematrix.join_gaia_columns and the ztf_gaia entry in
-    docs/DEFERRED.txt for why a row union would be wrong here."""
+    docs/LIMITATIONS.md for why a row union would be wrong here."""
 
     def _ztf_curve(self, object_id: str, ra_deg: float, dec_deg: float) -> LightCurve:
         source = SourceRef(survey="ZTF", object_id=object_id,
@@ -379,7 +379,7 @@ class TestRankConsensus:
     """Consensus averages per-detector RANKS, not raw normalised scores --
     see the anomaly.py module docstring for the measured reason (an
     equal-weight mean of scores scored WORSE than Isolation Forest alone on
-    301 real ZTF sequences, docs/DEFERRED.txt Phase 8). These test the
+    301 real ZTF sequences, docs/LIMITATIONS.md Phase 8). These test the
     mechanics of _rank_consensus directly; the actual claim that this beats
     a plain mean on real data is verified separately by re-running
     ablation.detector_ablation against the live store, not by a
@@ -477,7 +477,7 @@ class TestEnsemble:
 
 
 class TestCalibrationReferencePersistence:
-    """Cross-run comparability (docs/DEFERRED.txt) needs a reference that
+    """Cross-run comparability (docs/LIMITATIONS.md) needs a reference that
     survives past a single `detect` call. These test the persistence layer
     directly; TestCrossRunCalibration below tests it end-to-end through
     EnsembleResult."""

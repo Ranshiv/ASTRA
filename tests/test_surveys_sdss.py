@@ -24,12 +24,15 @@ class _FakeResponse:
 
 # SpecObjAll-shaped rows, matching the real live schema verified while
 # building this connector (bestObjID, specObjID, plate, mjd, fiberID, run2d,
-# class) -- NOT PhotoObj, which does not carry these columns (confirmed
-# live: a PhotoObj query for them returns HTTP 500).
+# class), LEFT-joined with PhotoObj's ugriz model magnitudes/errors -- NOT a
+# bare `FROM PhotoObj` query, which does not carry the SpecObjAll columns
+# (confirmed live: a PhotoObj query for them returns HTTP 500).
 VALID_CSV = (
-    "bestObjID,specObjID,ra,dec,plate,mjd,fiberID,run2d,class\n"
-    "1237648720693379140,299489980023179264,180.122,22.411,751,52251,131,26,STAR\n"
-    "0,299489980023179265,180.130,22.420,752,52252,132,26,STAR\n"
+    "bestObjID,specObjID,ra,dec,plate,mjd,fiberID,run2d,class,"
+    "u,g,r,i,z,err_u,err_g,err_r,err_i,err_z\n"
+    "1237648720693379140,299489980023179264,180.122,22.411,751,52251,131,26,STAR,"
+    "19.5,18.2,17.8,17.6,17.5,0.02,0.01,0.01,0.01,0.02\n"
+    "0,299489980023179265,180.130,22.420,752,52252,132,26,STAR,,,,,,,,,,\n"
 )
 
 
@@ -74,7 +77,10 @@ class TestSDSSConnector:
         monkeypatch.setattr(netclient, "get", fake_get)
         SDSSConnector().cone_search(cone, limit=10)
         assert "FROM SpecObjAll" in captured["sql"]
-        assert "PhotoObj" not in captured["sql"]
+        # PhotoObj is LEFT-joined for ugriz photometry (not the primary
+        # `FROM PhotoObj` shape the original, confirmed-broken query used).
+        assert "LEFT OUTER JOIN PhotoObj" in captured["sql"]
+        assert "FROM PhotoObj" not in captured["sql"]
 
     def test_cone_search_parses_valid_rows(self, monkeypatch, cone: ConeQuery):
         monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(VALID_CSV))
@@ -86,6 +92,18 @@ class TestSDSSConnector:
         assert sources[0].extra["spectrum_ready"] is True
         assert sources[0].extra["run2d"] == "26"
         assert sources[0].extra["photometric_match"] is True
+        assert sources[0].extra["mag_g"] == "18.2"
+        assert sources[0].extra["mag_g_error"] == "0.01"
+        assert sources[0].extra["mag_u"] == "19.5"
+        assert sources[0].extra["mag_z"] == "17.5"
+
+    def test_missing_photometry_join_leaves_mag_fields_falsy(self, monkeypatch, cone: ConeQuery):
+        # bestObjID=0 (no photometric counterpart) means the LEFT JOIN
+        # yields NULL/empty photometry columns -- missing, not fabricated.
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(VALID_CSV))
+        sources = SDSSConnector().cone_search(cone, limit=10)
+        assert not sources[1].extra["mag_g"]
+        assert not sources[1].extra["mag_u_error"]
 
     def test_zero_bestobjid_falls_back_to_specobjid(self, monkeypatch, cone: ConeQuery):
         monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(VALID_CSV))

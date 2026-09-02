@@ -207,7 +207,7 @@ class TestFinerResolutionDustCubesLive:
 
 @pytest.mark.live
 class TestDustExtinctionAgainstARealStar:
-    """The quantitative validation this item's own `DEFERRED.txt` entry
+    """The quantitative validation this item's own `docs/LIMITATIONS.md` entry
     named as open: a real Gaia DR3 source (4056453296603930624, found
     live this session via an ADQL query for a real, well-constrained
     -- parallax_over_error > 20 -- moderately extincted star near the

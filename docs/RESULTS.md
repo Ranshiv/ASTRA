@@ -164,7 +164,7 @@ respectively at arbitrary sky positions.
 
 ## Step 0: the five staged scale studies, actually run
 
-The five "ready-to-run" job payloads staged in `docs/DEFERRED.txt` (line
+The five "ready-to-run" job payloads staged in `docs/LIMITATIONS.md` (line
 3748) were executed directly (bypassing the `job.submit` queue, which only
 adds progress-survivability that this session's direct background execution
 already provided). The roadmap's `limit=10000` was requested in every case;
@@ -174,7 +174,7 @@ artificial scale reduction was applied.
 
 **1–2. Stage-B method comparison, ZTF, 5 seeds (17,29,43,59,71), deep
 models ON, 20 epochs — both resampling modes.** Replaces the original n=54
-finding ("PCA beat both deep models") that `docs/DEFERRED.txt` line 2412
+finding ("PCA beat both deep models") that `docs/LIMITATIONS.md` line 2412
 explicitly flagged as not yet evidence.
 
 | Mode | n (rows) | Winner (mean ROC-AUC) | Runner-up | Separated? |
@@ -201,7 +201,7 @@ channel/learning-rate grid, 3 seeds, per the roadmap's own "start with a
 sub-grid" note) — `separated: false`; best mean ROC-AUC 0.7834
 (`latent_dim=32, channels=(16,32), lr=3e-4`) vs. worst-shown 0.7562, CIs
 overlapping throughout. **Capacity does not measurably matter within noise
-at this scale** — the answer `docs/DEFERRED.txt`'s "model capacity is far
+at this scale** — the answer `docs/LIMITATIONS.md`'s "model capacity is far
 below what the GPU allows" note said was blocked on this exact study.
 
 **4. Repeated ablation, ZTF, 10 seeds** (17,29,43,59,71,83,97,101,103,107)
@@ -281,5 +281,5 @@ AUC improves from 0.9689 (current hand-set `artifact.WEIGHTS`) to 0.9815
 under the proposed weights (`auc_delta=0.0126`). **Not adopted** — per this
 module's own stated discipline, a calibration result is a proposal a human
 reads and decides on, never auto-applied, and it is measured on synthetic
-defect shapes only (`docs/DEFERRED.txt`'s "no real artifact label store"
+defect shapes only (`docs/LIMITATIONS.md`'s "no real artifact label store"
 gap still applies).

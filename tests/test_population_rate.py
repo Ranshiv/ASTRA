@@ -43,6 +43,55 @@ def test_survey_footprint_rejects_non_positive_inputs():
         pr.SurveyFootprint(survey="ZTF", area_deg2=100.0, baseline_days=-1.0)
 
 
+class TestHealpixCoverage:
+    def test_from_healpix_coverage_derives_area_from_real_pixel_count(self):
+        astropy_healpix = pytest.importorskip("astropy_healpix")
+        import astropy.units as u
+
+        nside = 32
+        healpix = astropy_healpix.HEALPix(nside=nside, order="nested")
+        pixel_area_deg2 = float(healpix.pixel_area.to(u.deg ** 2).value)
+        pixels = frozenset({0, 1, 2, 3, 4})
+
+        footprint = pr.SurveyFootprint.from_healpix_coverage(
+            "ZTF", baseline_days=30.0, covered_pixel_indices=pixels, nside=nside)
+
+        assert footprint.area_deg2 == pytest.approx(pixel_area_deg2 * 5)
+        assert footprint.has_coverage_map is True
+        assert footprint.nside == nside
+
+    def test_from_healpix_coverage_rejects_empty_pixel_set(self):
+        pytest.importorskip("astropy_healpix")
+        with pytest.raises(pr.PopulationRateError):
+            pr.SurveyFootprint.from_healpix_coverage(
+                "ZTF", baseline_days=30.0, covered_pixel_indices=set(), nside=32)
+
+    def test_covers_reports_membership_via_shared_healpix_common_lookup(self):
+        astropy_healpix = pytest.importorskip("astropy_healpix")
+        import astropy.units as u
+
+        from astra.healpix_common import _target_pixel
+
+        nside = 32
+        target_pixel = _target_pixel(180.0, 30.0, nside, "nested")
+        footprint = pr.SurveyFootprint.from_healpix_coverage(
+            "ZTF", baseline_days=30.0, covered_pixel_indices={target_pixel}, nside=nside)
+
+        assert footprint.covers(180.0, 30.0) is True
+        assert footprint.covers(0.0, -80.0) is False
+
+    def test_plain_footprint_has_no_coverage_map(self):
+        footprint = pr.SurveyFootprint(survey="ZTF", area_deg2=100.0, baseline_days=30.0)
+        assert footprint.has_coverage_map is False
+        with pytest.raises(pr.PopulationRateError):
+            footprint.covers(180.0, 30.0)
+
+    def test_covered_pixels_without_nside_rejected(self):
+        with pytest.raises(pr.PopulationRateError):
+            pr.SurveyFootprint(survey="ZTF", area_deg2=100.0, baseline_days=30.0,
+                               covered_pixel_indices=frozenset({0, 1}))
+
+
 def test_stratum_rejects_bad_completeness_and_detected():
     footprint = pr.SurveyFootprint(survey="ZTF", area_deg2=100.0, baseline_days=30.0)
     with pytest.raises(pr.PopulationRateError):

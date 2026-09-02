@@ -60,8 +60,9 @@ class TestCalibrateFromInjection:
     """Small n_per_class / few seeds here -- this exercises the real
     features.extract() pipeline (Lomb-Scargle included) end to end, so kept
     deliberately small for test runtime rather than statistically precise.
-    The real calibration numbers this produced are recorded in
-    docs/DEFERRED.txt, not asserted here."""
+    See `TestHardRealPopulationDifferentiatesIndicators` below for the
+    larger, still-bounded run that checks the harder population actually
+    does its job (pushes indicator precision below the ceiling)."""
 
     def test_report_covers_every_feature_indicator(self):
         report = artifact.calibrate_from_injection(n_per_class=12, seeds=(1, 2))
@@ -107,6 +108,38 @@ class TestCalibrateFromInjection:
 
         for indicator in report.indicators:
             assert indicator.weight <= artifact.MAX_CALIBRATED_WEIGHT
+
+
+class TestHardRealPopulationDifferentiatesIndicators:
+    """Regression check for the harder `_synthetic_real(hard=True)`
+    population: before the `coincidental_period`/`quiescent`/
+    `real_outburst` flavours were added, 5 of the 6 calibrated indicators
+    pinned at exactly `MAX_CALIBRATED_WEIGHT` (measured: only
+    `sparse_sampling` calibrated below it), because the ceiling is a HARD
+    CAP on the reported weight -- a 5/6 pin meant those five indicators'
+    real synthetic false-positive rate never pushed empirical precision
+    below 0.85 in the first place, not that the ceiling was merely hiding
+    a lower number. This is a real, larger run (not the n_per_class=12
+    smoke tests above) that checks the harder population actually
+    generates enough real false positives for MORE than one indicator to
+    calibrate below the ceiling -- a specific, checkable claim about
+    what changed, not just "the code runs"."""
+
+    def test_more_than_one_indicator_calibrates_below_the_ceiling(self):
+        report = artifact.calibrate_from_injection(n_per_class=60, seeds=(1, 2, 3))
+        below_ceiling = [i for i in report.indicators
+                         if i.weight < artifact.MAX_CALIBRATED_WEIGHT]
+        assert len(below_ceiling) >= 2
+
+    def test_sampling_period_and_consistent_with_constant_are_now_reachable(self):
+        # These two indicators had NO false-positive-generating hard-real
+        # case at all before `coincidental_period`/`quiescent` were added
+        # -- confirm the new flavours give them real support (fired on at
+        # least one held-out real object) rather than remaining unreachable.
+        report = artifact.calibrate_from_injection(n_per_class=60, seeds=(1, 2, 3))
+        by_name = {i.name: i for i in report.indicators}
+        assert by_name["sampling_period"].support > 0
+        assert by_name["consistent_with_constant"].support > 0
 
 
 class TestSmoothedPrecision:

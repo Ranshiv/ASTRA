@@ -337,7 +337,7 @@ class TestFailureAccounting:
 class TestSurveyOptions:
     """B2: acquire() must thread per-survey connector kwargs (e.g. an HLSP
     author choice for TESS) down to surveys.get(), and do nothing different
-    when survey_options is omitted. See docs/DEFERRED.txt Phase 8 for why
+    when survey_options is omitted. See docs/LIMITATIONS.md Phase 8 for why
     this plumbing was missing entirely before."""
 
     def test_survey_options_reach_surveys_get(self, registered, cone, monkeypatch):

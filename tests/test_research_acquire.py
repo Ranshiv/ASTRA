@@ -4,7 +4,7 @@ Before this test existed, `acquire_core_corpus` fed `splits.sky_time_split`
 a constant cone-centre position and a constant placeholder MJD for every
 object -- every object landed in one sky/time cell, so `detect_leakage`
 reported `clean: true` because there was nothing to leak between, not
-because the split actually separated anything. See docs/DEFERRED.txt and
+because the split actually separated anything. See docs/LIMITATIONS.md and
 the P0 research plan.
 """
 

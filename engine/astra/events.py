@@ -43,7 +43,7 @@ _PROVIDERS = (
     # (signalness/energy/far) and Fermi/Swift (instrument-specific error-
     # radius units) carry structure the generic normalizer does not
     # preserve. This is a documented, not-yet-live-validated gap -- see
-    # docs/DEFERRED.txt, matching every other unvalidated connector's caveat.
+    # docs/LIMITATIONS.md, matching every other unvalidated connector's caveat.
     {"name": "icecube", "kind": "neutrino", "online": True},
     {"name": "fermi", "kind": "gamma_ray", "online": True},
     {"name": "swift", "kind": "gamma_ray", "online": True},
@@ -173,7 +173,7 @@ def _localization(obj: dict[str, Any]) -> dict[str, Any]:
         # degrees or arcmin, not arcsec, and the generic normalizer has no
         # per-provider unit table. This is a documented, not-yet-live-
         # validated gap (see events._PROVIDERS's icecube/fermi/swift
-        # comment and docs/DEFERRED.txt): a bespoke per-notice-type parser
+        # comment and docs/LIMITATIONS.md): a bespoke per-notice-type parser
         # would be needed to convert correctly, and is deliberately not
         # built until a real payload is examined.
         "error_radius_arcsec": ("error_radius_arcsec", "radius_arcsec", "error",

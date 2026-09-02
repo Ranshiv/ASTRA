@@ -61,6 +61,8 @@ pub fn run() {
             commands::tap_review::engine_selection_evaluate,
             commands::tap_review::engine_review_next,
             commands::tap_review::engine_candidates_evaluate,
+            commands::tap_review::engine_review_experiment_arm,
+            commands::tap_review::engine_review_experiment_vote,
             commands::followup_schedule::engine_followup_plan,
             commands::followup_schedule::engine_discard_scan,
             commands::followup_schedule::engine_followup_request,

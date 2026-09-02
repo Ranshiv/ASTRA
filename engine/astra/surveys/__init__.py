@@ -83,7 +83,7 @@ def register(name: str, connector: type[SurveyConnector]) -> None:
     required, `data.lsst.cloud/api/tap`) is also registered, but stays
     DORMANT until a real Rubin data-rights token exists: it is written and
     tested only against mocked TAP responses, and `enabled_by_default` is
-    False -- see the ALeRCE entry in docs/DEFERRED.txt for the full history
+    False -- see the ALeRCE entry in docs/LIMITATIONS.md for the full history
     of why the direct-TAP path was deliberately deferred rather than built
     speculatively, and rubin_tap.py's own module docstring for what remains
     unvalidated.

@@ -129,7 +129,7 @@ def save_result_records(records: list[ResultRecord], *, synthetic: bool) -> Path
     25-row demonstration leaderboard, recovered afterward from git history
     rather than lost. A benchmark leaderboard is meant to accumulate one
     row set per real run, the same append-only discipline
-    docs/DEFERRED.txt's own journal already follows -- this function now
+    docs/LIMITATIONS.md's own journal already follows -- this function now
     matches that instead of contradicting it.
     """
     name = "metrics_synthetic.parquet" if synthetic else "metrics.parquet"

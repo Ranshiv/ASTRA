@@ -5,7 +5,7 @@ morphology patches (backlog item 14).
 shapes (`evaluate.ANOMALY_KINDS`): a fast-rise/exponential-decay flare, a
 flat-bottomed eclipse dip, a persistent step, and literal Gaussian noise.
 Winning there proves sensitivity to those specific shapes -- this module is
-this project's answer to `docs/DEFERRED.txt`'s own
+this project's answer to `docs/LIMITATIONS.md`'s own
 `[KNOWN] Injection-recovery measures the anomalies that were injected` entry:
 instead of a hand-coded formula, `inject_generative` splices a patch SAMPLED
 from a trained `diffusion.py` denoiser -- a shape nobody wrote a formula for.

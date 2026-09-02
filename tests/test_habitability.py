@@ -70,6 +70,66 @@ class TestHabitableZone:
             hab.effective_flux(5780.0, "not_a_real_boundary")
 
 
+class TestTimeAveragedEffectiveFlux:
+    def test_circular_orbit_reduces_to_flux_at_semimajor_axis(self):
+        # e=0 (and e=None, treated as e=0) must reduce exactly to Seff(a) = L/a^2.
+        via_zero = hab.time_averaged_effective_flux(1.0, 1.0, 0.0)
+        via_none = hab.time_averaged_effective_flux(1.0, 1.0, None)
+        assert via_zero == pytest.approx(1.0)
+        assert via_none == pytest.approx(via_zero)
+
+    def test_eccentric_orbit_receives_more_time_averaged_flux(self):
+        # Equation (4): <Seff'> = Seff(a) / sqrt(1-e^2) > Seff(a) for any e > 0.
+        circular = hab.time_averaged_effective_flux(1.0, 1.0, 0.0)
+        eccentric = hab.time_averaged_effective_flux(1.0, 1.0, 0.6)
+        assert eccentric == pytest.approx(circular / 0.8)  # sqrt(1-0.36) = 0.8
+        assert eccentric > circular
+
+    def test_non_positive_luminosity_raises(self):
+        with pytest.raises(hab.HabitabilityError):
+            hab.time_averaged_effective_flux(0.0, 1.0, 0.1)
+
+    def test_non_positive_semimajor_axis_raises(self):
+        with pytest.raises(hab.HabitabilityError):
+            hab.time_averaged_effective_flux(1.0, 0.0, 0.1)
+
+    def test_eccentricity_out_of_range_raises(self):
+        with pytest.raises(hab.HabitabilityError):
+            hab.time_averaged_effective_flux(1.0, 1.0, 1.0)
+        with pytest.raises(hab.HabitabilityError):
+            hab.time_averaged_effective_flux(1.0, 1.0, -0.1)
+
+
+class TestEccentricityCorrectedHzMembership:
+    def test_circular_orbit_matches_semimajor_axis_membership(self):
+        planet = hab.PlanetParameters(semi_major_axis_au=1.0, eccentricity=0.0)
+        result = hab.score(_sun(), planet)
+        assert result["eccentricity_corrected"]["in_conservative_hz"] == result["in_conservative_hz"]
+
+    def test_high_eccentricity_can_push_a_safe_semimajor_axis_out_of_hz(self):
+        # A planet just inside the conservative outer edge (cold boundary) on
+        # a highly eccentric orbit receives MORE time-averaged flux than its
+        # semi-major axis alone suggests, which pushes it further IN (hotter),
+        # not out -- so this specific case stays inside; the real regression
+        # this guards is that the two membership tests are independent and
+        # can legitimately disagree instead of one silently mirroring the other.
+        planet = hab.PlanetParameters(semi_major_axis_au=1.6, eccentricity=0.8)
+        result = hab.score(_sun(), planet)
+        assert result["eccentricity_corrected"]["eccentricity_used"] == 0.8
+        assert result["eccentricity_corrected"]["time_averaged_effective_flux"] > \
+            hab.time_averaged_effective_flux(1.0, 1.6, 0.0)
+
+    def test_missing_eccentricity_assumes_circular_and_warns(self):
+        planet = hab.PlanetParameters(semi_major_axis_au=1.0)
+        result = hab.score(_sun(), planet)
+        assert result["eccentricity_corrected"]["eccentricity_used"] == 0.0
+        assert any("circular" in w for w in result["warnings"])
+
+    def test_missing_semimajor_axis_leaves_eccentricity_corrected_none(self):
+        result = hab.score(_sun(), hab.PlanetParameters())
+        assert result["eccentricity_corrected"] is None
+
+
 class TestEarthSimilarityIndex:
     def test_earth_via_true_surface_temperature_is_unity(self):
         # Definitional anchor: plugging Earth's own true surface temperature

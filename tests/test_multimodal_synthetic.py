@@ -91,3 +91,97 @@ class TestBuildSyntheticPairs:
             for i in range(len(centroids)) for j in range(i + 1, len(centroids))
         ]
         assert min(pairwise_distances) > 0.5
+
+
+class TestAssembleRealMultimodalObject:
+    """`assemble_real_multimodal_object`: assembly (not acquisition) from
+    already-fetched real-shaped pieces -- see module docstring."""
+
+    @staticmethod
+    def _curve(n=80, seed=0):
+        from astra.surveys.base import LightCurve, SourceRef
+
+        rng = np.random.default_rng(seed)
+        time = np.sort(rng.uniform(0, 200, n))
+        value = 15.0 + 0.1 * np.sin(time / 10) + rng.normal(0, 0.02, n)
+        err = np.full(n, 0.02)
+        return LightCurve(
+            source=SourceRef(survey="ZTF", object_id="x", ra_deg=10.0, dec_deg=20.0),
+            release="dr1", band="g", value_kind="mag",
+            time=time, value=value, value_err=err, time_system="JD_UTC")
+
+    @staticmethod
+    def _gaia_extra():
+        return {"parallax": 5.0, "parallax_error": 0.1, "pmra": 1.0, "pmdec": -1.0,
+               "phot_g_mean_mag": 15.5, "phot_bp_mean_mag": 15.8, "phot_rp_mean_mag": 15.1,
+               "ra_deg": 10.001, "dec_deg": 20.001}
+
+    def test_catalog_row_has_the_real_40_dim_contract(self):
+        result = syn.assemble_real_multimodal_object(self._curve(), self._gaia_extra())
+        assert result["catalog_features"].shape == (syn.CATALOG_FEATURE_COUNT,)
+        assert np.all(np.isfinite(result["catalog_features"]))
+
+    def test_lightcurve_tensor_matches_tensors_resample_shape(self):
+        result = syn.assemble_real_multimodal_object(self._curve(), self._gaia_extra(),
+                                                      lc_length=128)
+        assert result["lightcurve_values"].shape == (2, 128)
+
+    def test_gaia_derived_quantities_match_derived_properties_directly(self):
+        from astra.surveys.gaia import derived_properties
+
+        gaia_extra = self._gaia_extra()
+        result = syn.assemble_real_multimodal_object(self._curve(), gaia_extra)
+        derived = derived_properties(gaia_extra)
+
+        from astra import featurematrix
+        bp_rp_index = len(featurematrix.FEATURE_NAMES) + featurematrix.GAIA_JOIN_COLUMNS.index(
+            "gaia_bp_rp")
+        assert result["catalog_features"][bp_rp_index] == np.float32(derived["bp_rp"])
+
+    def test_gaia_matched_flag_is_always_one(self):
+        from astra import featurematrix
+
+        result = syn.assemble_real_multimodal_object(self._curve(), self._gaia_extra())
+        matched_index = len(featurematrix.FEATURE_NAMES) + featurematrix.GAIA_JOIN_COLUMNS.index(
+            "gaia_matched")
+        assert result["catalog_features"][matched_index] == 1.0
+
+    def test_missing_spectrum_and_image_are_nan_not_fabricated(self):
+        result = syn.assemble_real_multimodal_object(self._curve(), self._gaia_extra())
+        assert np.all(np.isnan(result["spectrum_array"]))
+        assert np.all(np.isnan(result["image_array"]))
+
+    def test_real_spectrum_is_resampled_via_resample_spectrum(self):
+        rng = np.random.default_rng(1)
+        wavelength = np.linspace(4000.0, 9000.0, 200)
+        flux = rng.normal(1.0, 0.1, 200)
+        error = np.full(200, 0.05)
+        result = syn.assemble_real_multimodal_object(
+            self._curve(), self._gaia_extra(),
+            spectrum_wavelength=wavelength, spectrum_flux=flux, spectrum_error=error,
+            spectrum_length=64)
+        assert result["spectrum_array"].shape == (3, 64)
+        assert np.all(np.isfinite(result["spectrum_array"]))
+
+    def test_real_image_is_preprocessed_via_preprocess_image(self):
+        rng = np.random.default_rng(2)
+        image = rng.normal(100.0, 5.0, (20, 20))
+        result = syn.assemble_real_multimodal_object(
+            self._curve(), self._gaia_extra(), image_array=image, image_size=16)
+        assert result["image_array"].shape == (1, 16, 16)
+        assert np.all(np.isfinite(result["image_array"]))
+
+    def test_scale_scalars_derive_from_the_real_flux_relation(self):
+        gaia_extra = self._gaia_extra()
+        result = syn.assemble_real_multimodal_object(self._curve(), gaia_extra)
+        expected = 10 ** (-0.4 * (gaia_extra["phot_g_mean_mag"] - syn.ZEROPOINT))
+        assert result["lightcurve_scale"] == np.float32(expected)
+        assert result["image_scale"] == np.float32(expected)
+
+    def test_too_short_curve_raises(self):
+        curve = self._curve(n=1)
+        try:
+            syn.assemble_real_multimodal_object(curve, self._gaia_extra())
+            assert False, "expected ValueError"
+        except ValueError:
+            pass

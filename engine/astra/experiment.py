@@ -6,12 +6,17 @@ hyperparameters, hardware, execution time, results and random seeds. Section 37
 adds that a researcher must be able to reopen an old experiment and reproduce
 it.
 
-The awkward part is code version. This project is not a git repository, so
-there is no commit to record. Rather than store nothing, the engine's own
-source is hashed: every `.py` file under `astra/` is read in sorted order and
-digested. That gives a content-addressed code version which is arguably
-stronger than a commit hash, because it changes if and only if the code that
-ran actually changed — uncommitted edits included.
+The awkward part is code version. The engine's own source is hashed: every
+`.py` file under `astra/` is read in sorted order and digested. That gives a
+content-addressed code version which is arguably stronger than a commit
+hash, because it changes if and only if the code that ran actually changed
+— uncommitted edits included. This repository IS also a git checkout, so
+`code_revision()` additionally records the containing commit (`git
+rev-parse HEAD`) alongside the content hash when one is available — best
+line: git is more familiar than a bare hash string, and the content hash
+still catches uncommitted edits a commit hash alone would miss. A source
+archive or packaged sidecar with no `.git` directory simply gets `None` for
+`code_revision`; `code_version` never depends on git being present.
 
 `verify` re-derives the whole provenance and reports what drifted, so
 "reproducible" is a checkable claim rather than an assertion.

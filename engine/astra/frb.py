@@ -423,7 +423,7 @@ def credible_region_containment(*, nside: int = DEFAULT_NSIDE, trials: int = 500
     checks the empirical fraction `localization_membership` reports inside
     each nominal credible level. A well-calibrated 90% region should contain
     the truth in ~90% of trials, not 60% or 99% -- this turns the one-off
-    manual spot-check already described in docs/DEFERRED.txt into a
+    manual spot-check already described in docs/LIMITATIONS.md into a
     repeatable, quantitative test.
     """
     import h5py

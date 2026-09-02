@@ -126,3 +126,46 @@ pub(crate) async fn engine_candidates_evaluate(
     ).await
 }
 
+
+/// Resolve a reviewer's arm (score_shown/score_blinded/score_shuffled) and
+/// what they should see for one candidate under the reviewer human-factors
+/// experiment (Direction 6), WITHOUT casting a vote -- what the review UI
+/// calls before rendering the score so it can arm-gate what is displayed.
+#[tauri::command]
+pub(crate) async fn engine_review_experiment_arm(
+    state: tauri::State<'_, Arc<Engine>>,
+    candidate_id: String,
+    reviewer_id: String,
+    score_lookup: Option<Value>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "review.experiment.arm", json!({
+        "candidate_id": candidate_id,
+        "reviewer_id": reviewer_id,
+        "score_lookup": score_lookup.unwrap_or_else(|| json!({})),
+    })).await
+}
+
+
+/// Cast one vote under the reviewer human-factors experiment (Direction 6):
+/// resolves the same arm `engine_review_experiment_arm` reported and records
+/// it alongside the vote.
+#[tauri::command]
+pub(crate) async fn engine_review_experiment_vote(
+    state: tauri::State<'_, Arc<Engine>>,
+    candidate_id: String,
+    reviewer_id: String,
+    label: String,
+    score_lookup: Option<Value>,
+    note: Option<String>,
+    project_id: Option<String>,
+) -> Result<Value, String> {
+    call_blocking(Arc::clone(&state), "review.experiment.vote", json!({
+        "candidate_id": candidate_id,
+        "reviewer_id": reviewer_id,
+        "label": label,
+        "score_lookup": score_lookup.unwrap_or_else(|| json!({})),
+        "note": note.unwrap_or_default(),
+        "project_id": project_id,
+    })).await
+}
+

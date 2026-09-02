@@ -48,11 +48,23 @@ with n=4 -- both forms are used below and are algebraically identical.
 Earth-mass planet with an H2O/CO2/N2 atmosphere (Kasting-class model);
 it is not a 3D climate result and the paper's own abstract states real
 boundaries "may extend further in both directions" once clouds are
-included. Eccentricity is reported on `PlanetRecord` but is NOT
-integrated into a time-averaged flux here (the paper's Equation (4),
-`<Seff'> = Seff / sqrt(1-e^2)`, is a documented, not-yet-implemented
-extension -- left out because it changes the returned quantity's meaning
-and needs its own test, not because it is hard).
+included.
+
+Eccentric orbits: the paper's Equation (4), `<Seff'> = Seff / sqrt(1-e^2)`,
+is implemented in `time_averaged_effective_flux`. An eccentric orbit's
+time-averaged flux exceeds the flux at its semi-major axis by
+`1/sqrt(1-e^2)` (Williams & Pollard 2002, the paper's own cited source
+for this correction), so a planet can receive more flux over an orbit
+than its semi-major-axis distance alone would suggest -- pushing an
+apparently-safe orbit outside a conservative boundary once eccentricity
+is accounted for. `score()` reports this as a SEPARATE, clearly-named
+`eccentricity_corrected` block alongside the existing semi-major-axis-only
+`hz_position`/`in_conservative_hz`/`in_optimistic_hz` fields, rather than
+silently replacing them -- the two use different physical quantities
+(instantaneous distance vs. time-averaged flux) and should not be
+conflated. When `eccentricity` is `None` on the input `PlanetParameters`,
+the correction assumes a circular orbit (`e=0`, factor of 1) and this is
+stated in a warning, not silently assumed.
 
 ESI is a geometric similarity metric to Earth, not a probability of
 life, and the paper's own reference implementation does not claim
@@ -108,7 +120,7 @@ ESI_WEIGHT_DENSITY = 1.07
 ESI_WEIGHT_ESCAPE_VELOCITY = 0.70
 ESI_WEIGHT_SURFACE_TEMP = 5.58
 DEFAULT_BOND_ALBEDO = 0.3
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # v2 adds `score()`'s `eccentricity_corrected` block (Eq. 4)
 _G_CGS = 6.67430e-8  # CODATA 2018 gravitational constant, cm^3 g^-1 s^-2
 _M_EARTH_G = 5.9722e27
 _R_EARTH_CM = 6.371e8
@@ -166,6 +178,25 @@ def effective_flux(teff_k: float, boundary: str) -> float:
     seff_sun, a, b, c, d = HZ_COEFFICIENTS[boundary]
     t_star = teff_k - TEFF_SUN_K
     return seff_sun + a * t_star + b * t_star ** 2 + c * t_star ** 3 + d * t_star ** 4
+
+
+def time_averaged_effective_flux(luminosity_lsun: float, semimajor_au: float,
+                                 eccentricity: float | None) -> float:
+    """Kopparapu et al. (2013) Equation (4): the orbit-time-averaged
+    effective stellar flux `<Seff'> = Seff(a) / sqrt(1-e^2)`, where
+    `Seff(a) = (L/Lsun) / a^2` is the flux at the semi-major axis (the
+    e=0 case this reduces to). `eccentricity=None` is treated as e=0
+    (circular orbit) by the caller, not silently guessed here -- this
+    function always requires an explicit numeric value."""
+    if luminosity_lsun <= 0:
+        raise HabitabilityError("luminosity_lsun must be positive")
+    if semimajor_au <= 0:
+        raise HabitabilityError("semimajor_au must be positive")
+    e = 0.0 if eccentricity is None else eccentricity
+    if not (0.0 <= e < 1.0):
+        raise HabitabilityError("eccentricity must be in [0, 1)")
+    seff_at_a = luminosity_lsun / (semimajor_au ** 2)
+    return seff_at_a / math.sqrt(1.0 - e ** 2)
 
 
 def habitable_zone(star: StellarParameters) -> dict[str, Any]:
@@ -287,12 +318,37 @@ def score(star: StellarParameters, planet: PlanetParameters, *,
     quality = "usable" if (esi["esi_global"] is not None and hz_position is not None
                            and not zone["extrapolated"]) else "insufficient"
 
+    # Equation (4) eccentricity correction: a SEPARATE flux-based membership
+    # test, alongside (not replacing) the semi-major-axis-only fields above.
+    eccentricity_corrected: dict[str, Any] | None = None
+    if planet.semi_major_axis_au is not None and planet.semi_major_axis_au > 0:
+        luminosity = star.effective_luminosity_lsun()
+        if planet.eccentricity is None:
+            warnings.append("eccentricity unavailable; Equation (4) correction assumes "
+                            "a circular orbit (e=0)")
+        avg_flux = time_averaged_effective_flux(luminosity, planet.semi_major_axis_au,
+                                                planet.eccentricity)
+        seff_cons_inner = effective_flux(star.teff_k, CONSERVATIVE_INNER)
+        seff_cons_outer = effective_flux(star.teff_k, CONSERVATIVE_OUTER)
+        seff_opt_inner = effective_flux(star.teff_k, OPTIMISTIC_INNER)
+        seff_opt_outer = effective_flux(star.teff_k, OPTIMISTIC_OUTER)
+        # Flux decreases outward (Seff ~ L/a^2), so "inside" the HZ means the
+        # time-averaged flux falls between the (lower) outer-boundary Seff
+        # and the (higher) inner-boundary Seff.
+        eccentricity_corrected = {
+            "eccentricity_used": 0.0 if planet.eccentricity is None else planet.eccentricity,
+            "time_averaged_effective_flux": round(avg_flux, 6),
+            "in_conservative_hz": bool(seff_cons_outer <= avg_flux <= seff_cons_inner),
+            "in_optimistic_hz": bool(seff_opt_outer <= avg_flux <= seff_opt_inner),
+        }
+
     return {
         "schema_version": SCHEMA_VERSION,
         "habitable_zone": zone,
         "hz_position": hz_position,
         "in_conservative_hz": in_conservative_hz,
         "in_optimistic_hz": in_optimistic_hz,
+        "eccentricity_corrected": eccentricity_corrected,
         "esi_interior": esi["esi_interior"],
         "esi_surface_from_teq": esi["esi_surface_from_teq"],
         "esi_global": esi["esi_global"],

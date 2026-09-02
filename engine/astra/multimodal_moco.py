@@ -1,6 +1,6 @@
 """MoCo-style momentum contrast across four modalities (backlog item 11).
 
-Resolves `docs/DEFERRED.txt`'s `[BLOCKED] Multimodal encoder ... and
+Resolves `docs/LIMITATIONS.md`'s `[BLOCKED] Multimodal encoder ... and
 contrastive learning` entry: standard InfoNCE needs large in-batch negative
 counts (1024-4096) that don't fit this machine's ~2.2 GB usable VRAM, and
 gradient accumulation doesn't fix that (more gradient steps, not more
@@ -274,7 +274,7 @@ def train_moco(train_batch, val_batch, cfg: MultimodalMoCoConfig | None = None,
     `cfg.lc_length` as a representative length to get a starting candidate,
     then clamped to at most 256. This whole model is on the order of 250K
     parameters and well under 50 MB of activation memory at batch 64 (see
-    `docs/DEFERRED.txt`'s entry for this backlog item), two orders of
+    `docs/LIMITATIONS.md`'s entry for this backlog item), two orders of
     magnitude below the VRAM budget regardless -- the clamp is a
     conservative floor, not a load-bearing calculation.
     """

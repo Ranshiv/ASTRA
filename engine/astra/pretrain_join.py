@@ -3,7 +3,7 @@
 `pretrain.py` trains a self-supervised light-curve encoder; `pretrain_probe.py`
 measures whether its embeddings help a linear probe at small label budgets.
 Neither has ever produced a checkpoint or a favorable, real-data result in
-this codebase (docs/DEFERRED.txt marks the item `[PARTIAL]` with no reported
+this codebase (docs/LIMITATIONS.md marks the item `[PARTIAL]` with no reported
 numbers), and both are explicit that this is "new evidence about a training
 strategy, not a production score change." Wiring embeddings into
 `anomaly.detect()`'s default path without that evidence would promote an

@@ -19,12 +19,12 @@ def _record(time_start=20.0, time_end=24.0, survey="ZTF"):
     )
 
 
-def _curve(survey, time, value, err=0.02, band="g"):
+def _curve(survey, time, value, err=0.02, band="g", time_system="JD_UTC"):
     return LightCurve(
         source=SourceRef(survey=survey, object_id="1", ra_deg=0.0, dec_deg=0.0),
         release="dr1", band=band, value_kind="mag",
         time=np.asarray(time, dtype=float), value=np.asarray(value, dtype=float),
-        value_err=np.full(len(time), err), time_system="JD_UTC",
+        value_err=np.full(len(time), err), time_system=time_system,
     )
 
 
@@ -98,3 +98,49 @@ class TestCorroborate:
         result = dc.corroborate(_record(), [])
         payload = result.to_dict()
         assert payload["record"]["object_id"] == "1"
+
+
+class TestTimeSystemReconciliation:
+    def test_without_record_curve_mismatched_time_systems_find_no_overlap(self):
+        # record.time_start/time_end are small MJD-like day numbers (~20),
+        # but the "other" curve's raw times are JD-like (~2400020) -- an
+        # offset of ~2.4 million days. Without reconciliation these never
+        # overlap, even though both cover "the same" real dates once their
+        # own time systems are accounted for.
+        record = _record(time_start=20.0, time_end=24.0)
+        jd_time = 2400000.5 + np.arange(15.0, 30.0)
+        value = np.full(len(jd_time), 15.0)
+        value[5:10] = 15.5
+        other = _curve("Gaia", jd_time, value, band="g", time_system="JD_UTC")
+
+        result = dc.corroborate(record, [other], pad_days=0.5)
+        assert result.components[0].in_window_points == 0
+
+    def test_with_record_curve_the_common_frame_finds_the_real_overlap(self):
+        record = _record(time_start=20.0, time_end=24.0)
+        record_curve = _curve("ZTF", np.arange(15.0, 30.0), np.full(15, 15.0),
+                              band="g", time_system="MJD_UTC")
+        jd_time = 2400000.5 + np.arange(15.0, 30.0)
+        value = np.full(len(jd_time), 15.0)
+        value[5:10] = 15.5  # real MJD days 20-24, expressed as JD
+        other = _curve("Gaia", jd_time, value, band="g", time_system="JD_UTC")
+
+        result = dc.corroborate(record, [other], record_curve=record_curve, pad_days=0.5)
+        assert result.components[0].in_window_points > 0
+
+    def test_record_curve_already_in_target_system_is_a_no_op(self):
+        # BJD_TDB record_curve/other curve both already in the target
+        # frame -- reconciliation must not change anything the un-converted
+        # path would have found.
+        record = _record(time_start=20.0, time_end=24.0)
+        record_curve = _curve("TESS", np.arange(15.0, 30.0), np.full(15, 15.0),
+                              band="g", time_system="BJD_TDB")
+        time = np.arange(15.0, 30.0)
+        value = np.full(len(time), 15.0)
+        value[5:10] = 15.5
+        other = _curve("Gaia", time, value, band="g", time_system="BJD_TDB")
+
+        without = dc.corroborate(record, [other], pad_days=0.5)
+        with_conversion = dc.corroborate(record, [other], record_curve=record_curve, pad_days=0.5)
+        assert (without.components[0].in_window_points
+               == with_conversion.components[0].in_window_points)

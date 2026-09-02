@@ -12,7 +12,7 @@ semi-major axis) and `teff_ratio`. Converting those into physical units
 spectroscopy: the RV semi-amplitudes give the semi-major axis `a` in
 physical units directly, and from there Kepler's third law gives the total
 mass. This codebase has no real RV data source (confirmed by grep across
-`engine/astra/` while planning this module -- see `docs/DEFERRED.txt`).
+`engine/astra/` while planning this module -- see `docs/LIMITATIONS.md`).
 
 What this module does INSTEAD, stated explicitly as a genuine substitute
 technique used in the real literature when RV is unavailable, not a

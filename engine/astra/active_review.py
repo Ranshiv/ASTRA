@@ -28,19 +28,28 @@ per label, so a real chronological label history exists in this
 codebase -- `labels_per_recovery` uses it directly, not a synthetic
 proxy.
 
-Confirmed UNREACHABLE for "reviewer agreement": `metadata.labels`'
-schema keys the `labels` table on `candidate_key` ALONE (`metadata.py`
-line ~40-43, `PRIMARY KEY`) -- one label per candidate, overwritten on
-relabel. True inter-rater agreement (two independent reviewers labelling
-the SAME candidate, compared) cannot be reconstructed from this storage
-layer; there is nowhere a second, independent label could even be
-written. `reviewer_agreement_with_priority` below is therefore a stated
-PROXY -- agreement between the human's final label and what `review.
+`reviewer_agreement_with_priority` below is a PROXY reviewer-agreement
+metric -- agreement between the human's final label and what `review.
 select_next`'s own priority score would have predicted -- not true
-inter-rater agreement. `active_review_eval.py`'s synthetic dual-reviewer
-study exercises real inter-rater-kappa arithmetic on synthetic labels to
-show the metric mechanism is correct, since real dual-reviewer data does
-not exist to check it against.
+inter-rater agreement, and kept exactly as it was.
+
+UPDATE: true inter-rater agreement (two independent reviewers labelling
+the SAME candidate, compared) WAS unreachable from `metadata.labels`
+(`candidate_key` is that table's own `PRIMARY KEY` -- one label per
+candidate, overwritten on relabel) at the time that claim was written.
+It no longer is: `metadata.label_votes` (schema 8, the multi-reviewer
+citizen-science voting table) stores one row per `(candidate_key,
+reviewer_id)` pair, which is exactly the storage true inter-rater
+agreement needs and simply did not exist yet when this module's proxy
+metric was designed. `true_inter_rater_agreement` below computes real
+Cohen's kappa between the two most active reviewers' overlapping votes
+via `candidates.all_label_votes`, reusing `active_review_eval.py`'s own
+`cohen_kappa_score` call rather than a second implementation. The proxy
+metric is NOT removed -- it answers a different, still-useful question
+("does the priority score predict the human"), and votes cast through
+the ordinary single-label `candidates.label`/`metadata.labels` path
+still cannot participate in true agreement, only ones cast via
+`candidates.cast_label_vote`/`review_experiment.cast_experimental_vote`.
 
 Explicitly NOT done: does not modify `review.py` or `candidates.py` in
 any way -- `select_next`'s formula, `record_label`, and `load_labels`
@@ -232,8 +241,63 @@ def reviewer_agreement_with_priority(name: str = "default", root: Path | None = 
             "cohen_kappa": float(cohen_kappa_score(human, predicted))}
 
 
+def true_inter_rater_agreement(root: Path | None = None, *,
+                               min_overlap: int = 5) -> dict:
+    """Real inter-rater agreement between two independent reviewers, from
+    `metadata.label_votes` -- see the module docstring's UPDATE note for
+    why this was unreachable when `reviewer_agreement_with_priority` was
+    written and is not anymore.
+
+    Picks the PAIR of reviewers with the most candidates in common (ties
+    broken by reviewer id, for a deterministic choice) rather than pooling
+    every reviewer together, since Cohen's kappa is defined between two
+    raters -- pooling would silently average over reviewer pairs with
+    very different real agreement. Only POSITIVE/NEGATIVE-labelled votes
+    on candidates BOTH reviewers voted on are used; a candidate either
+    reviewer left unvoted, or labelled outside those two classes, does not
+    count as a comparison.
+    """
+    votes = candidates.all_label_votes(root)
+    by_reviewer: dict[str, dict[str, bool]] = {}
+    for vote in votes:
+        label = vote.get("label")
+        if label not in review.POSITIVE | review.NEGATIVE:
+            continue
+        reviewer_id = str(vote.get("reviewer_id", ""))
+        candidate_key = str(vote.get("candidate_key", ""))
+        if not reviewer_id or not candidate_key:
+            continue
+        by_reviewer.setdefault(reviewer_id, {})[candidate_key] = label in review.POSITIVE
+
+    reviewer_ids = sorted(by_reviewer)
+    best_pair: tuple[str, str] | None = None
+    best_overlap: list[str] = []
+    for i, reviewer_a in enumerate(reviewer_ids):
+        for reviewer_b in reviewer_ids[i + 1:]:
+            shared = sorted(set(by_reviewer[reviewer_a]) & set(by_reviewer[reviewer_b]))
+            if len(shared) > len(best_overlap):
+                best_overlap = shared
+                best_pair = (reviewer_a, reviewer_b)
+
+    if best_pair is None or len(best_overlap) < min_overlap:
+        return {"ready": False, "reason": "insufficient overlapping independent votes",
+               "min_overlap": min_overlap, "overlap": len(best_overlap),
+               "n_reviewers": len(reviewer_ids)}
+
+    reviewer_a, reviewer_b = best_pair
+    a_labels = [int(by_reviewer[reviewer_a][key]) for key in best_overlap]
+    b_labels = [int(by_reviewer[reviewer_b][key]) for key in best_overlap]
+
+    from sklearn.metrics import cohen_kappa_score
+    agreement = sum(a == b for a, b in zip(a_labels, b_labels)) / len(best_overlap)
+    return {"ready": True, "reviewer_a": reviewer_a, "reviewer_b": reviewer_b,
+           "overlap": len(best_overlap), "n_reviewers": len(reviewer_ids),
+           "observed_agreement": agreement,
+           "cohen_kappa": float(cohen_kappa_score(a_labels, b_labels))}
+
+
 __all__ = [
     "ActiveReviewError", "REASON_TAGS", "label_history", "labels_per_recovery",
     "reason_yield", "ReasonWeights", "learn_reason_weights", "reweighted_select_next",
-    "reviewer_agreement_with_priority",
+    "reviewer_agreement_with_priority", "true_inter_rater_agreement",
 ]

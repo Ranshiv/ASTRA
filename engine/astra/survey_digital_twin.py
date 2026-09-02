@@ -15,7 +15,7 @@ Every distribution here is FIT from real, already-locally-stored curves via
 `tensors.build`/`tensors.resample` (unchanged), never invented. A survey
 with too few locally stored curves gets an explicit, stated degradation
 (`SurveyProfile.note`), not a silently-fabricated profile -- the same
-discipline `docs/DEFERRED.txt` documents throughout this codebase for
+discipline `docs/LIMITATIONS.md` documents throughout this codebase for
 missing/insufficient real data.
 
 Real per-cadence artifact patches (`artifact_patches.extract_artifact_patches`,

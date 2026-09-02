@@ -365,7 +365,7 @@ def evaluate_multi_survey_coverage_real(candidates: list[dict[str, float]], *,
     """The real, POPULATION-scale study this item's own "real recall/
     precision" gap could not get (no live-reachable catalogue of real
     multi-image lens ASTROMETRY was found this session -- see this
-    module's `DEFERRED.txt` entry), done instead with what IS real and
+    module's `docs/LIMITATIONS.md` entry), done instead with what IS real and
     reachable: for each real KiDS DR4 strong-lens CANDIDATE position
     (`candidates`, each a `{"kidsid", "ra", "dec"}` dict -- the real 564-
     candidate catalogue was fetched live this session via VizieR's plain

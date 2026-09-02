@@ -20,6 +20,83 @@ NEVER_VISIBLE = {"candidate_id": "hidden", "ra_deg": 180.0, "dec_deg": -85.0,
                  "tail_probability": 0.5}
 
 
+class TestWithinAnyWindow:
+    def test_start_and_end_both_inside_one_window_is_true(self):
+        base = datetime(2026, 12, 1, tzinfo=timezone.utc)
+        windows = [(base, base + timedelta(hours=2))]
+        assert sch._within_any_window(base + timedelta(minutes=10),
+                                      base + timedelta(minutes=40), windows) is True
+
+    def test_end_outside_every_window_is_false(self):
+        base = datetime(2026, 12, 1, tzinfo=timezone.utc)
+        windows = [(base, base + timedelta(hours=1))]
+        assert sch._within_any_window(base + timedelta(minutes=50),
+                                      base + timedelta(hours=2), windows) is False
+
+    def test_no_windows_is_false(self):
+        base = datetime(2026, 12, 1, tzinfo=timezone.utc)
+        assert sch._within_any_window(base, base + timedelta(hours=1), []) is False
+
+
+class TestLocalSearchRespectsWindows:
+    def _timeline(self) -> list:
+        base = datetime(2026, 12, 1, tzinfo=timezone.utc)
+        # a(170) is far from both b(0) and c(175); swapping a and b (slots
+        # 0/1) brings a next to c (5 deg apart) instead of b, reducing
+        # total slew from |170-0|+|0-175|=345 to |0-170|+|170-175|=175.
+        obs_a = sch.ScheduledObservation(
+            candidate_id="a", ra_deg=170.0, dec_deg=80.0,
+            start_utc=base.isoformat(), end_utc=(base + timedelta(hours=1)).isoformat(),
+            exposure_hours=1.0, entropy_bits=1.0, slew_deg_from_previous=None)
+        obs_b = sch.ScheduledObservation(
+            candidate_id="b", ra_deg=0.0, dec_deg=80.0,
+            start_utc=(base + timedelta(hours=1)).isoformat(),
+            end_utc=(base + timedelta(hours=2)).isoformat(),
+            exposure_hours=1.0, entropy_bits=1.0, slew_deg_from_previous=None)
+        obs_c = sch.ScheduledObservation(
+            candidate_id="c", ra_deg=175.0, dec_deg=80.0,
+            start_utc=(base + timedelta(hours=2)).isoformat(),
+            end_utc=(base + timedelta(hours=3)).isoformat(),
+            exposure_hours=1.0, entropy_bits=1.0, slew_deg_from_previous=None)
+        return [obs_a, obs_b, obs_c], base
+
+    def test_without_windows_arg_swap_behavior_is_unchanged(self):
+        timeline, _ = self._timeline()
+        before_ids = [o.candidate_id for o in timeline]
+        violations = sch._local_search_reduce_slew(timeline, passes=3)
+        assert violations == 0
+        assert [o.candidate_id for o in timeline] != before_ids  # a swap happened
+
+    def test_swap_rejected_when_it_would_violate_a_true_window(self):
+        timeline, base = self._timeline()
+        before_ids = [o.candidate_id for o in timeline]
+        # Candidate "a" is only ever visible in slot a's own (original)
+        # time -- the beneficial swap would move it into slot b's time,
+        # which must be rejected.
+        windows_by_id = {
+            "a": [(base, base + timedelta(hours=1))],
+            "b": [(base, base + timedelta(hours=3))],
+            "c": [(base, base + timedelta(hours=3))],
+        }
+        violations = sch._local_search_reduce_slew(
+            timeline, passes=3, windows_by_candidate_id=windows_by_id)
+        assert violations > 0
+        # "a" must stay in its own slot -- b and c may still legitimately
+        # swap between themselves, since both have wide-enough windows.
+        assert timeline[0].candidate_id == before_ids[0] == "a"
+
+    def test_swap_accepted_when_all_windows_are_wide_enough(self):
+        timeline, base = self._timeline()
+        windows_by_id = {
+            "a": [(base, base + timedelta(hours=3))],
+            "b": [(base, base + timedelta(hours=3))],
+            "c": [(base, base + timedelta(hours=3))],
+        }
+        violations = sch._local_search_reduce_slew(
+            timeline, passes=3, windows_by_candidate_id=windows_by_id)
+        assert violations == 0
+
+
 class TestBuildNightSchedule:
     def test_schedules_a_visible_candidate(self):
         result = sch.build_night_schedule([VISIBLE_A], start_utc=START, duration_hours=12.0,

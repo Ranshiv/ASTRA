@@ -14,15 +14,35 @@ magnitude via the real photometric relation
 `flux = 10**(-0.4*(mag-zeropoint))`, so they are genuinely correlated the
 way a real object's would be -- randomising them independently would make
 `multimodal_eval.probe_brightness_preservation` measure nothing real.
+
+`assemble_real_multimodal_object` is the missing piece named above: a
+REAL-data assembler, given already-fetched pieces from existing
+connectors (a real `LightCurve`, a real Gaia `SourceRef.extra`, and
+optionally a real SDSS spectrum / image cutout array) rather than a
+network fetch of its own -- the same "the caller resolves data, this
+module only assembles" layering `discard_corroboration.py`/`sed.py`
+already use throughout this codebase. It closes the ASSEMBLY gap, not
+the ACQUISITION gap: no connector bundles all four modalities in one
+call (still true, see above), so a caller must still fetch each modality
+itself via `surveys.gaia`/`surveys.sdss`/`surveys.ztf`/a cutout FITS
+file -- what this function adds is turning those four already-real
+pieces into the exact tensor shapes `multimodal_encoders.py`/
+`multimodal_pixels.py` expect, reusing `tensors.resample`/
+`resample_spectrum`/`preprocess_image`/`features.extract` UNCHANGED
+rather than a second implementation of any of them. The real training
+run these tensors would feed remains blocked on real acquisition SCALE
+(thousands of matched four-modality objects), not on this assembly step.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
 from .multimodal_encoders import CATALOG_FEATURE_COUNT
+from .surveys.base import LightCurve
 
 CLASS_KINDS: tuple[str, ...] = (
     "quiet_dwarf", "flare_star", "eclipsing_binary", "hot_subdwarf", "agn_like",
@@ -177,3 +197,108 @@ def build_synthetic_pairs(n: int = 200, seed: int = 42,
         catalog_features=catalog_features,
         catalog_scale=magnitudes.astype(np.float32),
     )
+
+
+def _real_catalog_row(gaia_extra: dict[str, Any]) -> np.ndarray:
+    """The real `features.FEATURE_NAMES` + `featurematrix.GAIA_JOIN_COLUMNS`
+    40-dim contract for ONE object, from a real light curve's extracted
+    features plus a real matched Gaia `SourceRef.extra`.
+
+    Reuses `surveys.gaia.derived_properties` (the same function
+    `featurematrix.join_gaia_columns` calls) for every derived quantity it
+    computes -- distance, color, absolute magnitude, parallax S/N -- so
+    those 6 of `GAIA_JOIN_COLUMNS`'s 11 entries are bit-identical to the
+    production join. One explicit, documented simplification: `gaia_ra_
+    now_deg`/`gaia_dec_now_deg` in the production join are proper-motion-
+    propagated to the CURRENT epoch (`join_gaia_columns`, via a real
+    epoch-propagation step this function does not reproduce); here they
+    are the raw catalog `ra_deg`/`dec_deg` instead, since the caller has
+    already performed the real position match itself and epoch
+    propagation is not needed to build a valid encoder input, only to
+    re-derive a match. `gaia_matched=1.0` always, since the caller
+    supplies a real match by construction (a synthetic-batch caller would
+    use `build_synthetic_pairs` instead, which models unmatched rows too).
+    """
+    from . import featurematrix
+    from .surveys.gaia import derived_properties
+
+    derived = derived_properties(gaia_extra)
+    join_values = {
+        "gaia_parallax": gaia_extra.get("parallax"),
+        "gaia_parallax_snr": derived["parallax_snr"],
+        "gaia_pmra": gaia_extra.get("pmra"),
+        "gaia_pmdec": gaia_extra.get("pmdec"),
+        "gaia_phot_g_mean_mag": gaia_extra.get("phot_g_mean_mag"),
+        "gaia_bp_rp": derived["bp_rp"],
+        "gaia_distance_pc": derived["distance_pc"],
+        "gaia_abs_g_mag": derived["abs_g_mag"],
+        "gaia_ra_now_deg": gaia_extra.get("ra_deg"),
+        "gaia_dec_now_deg": gaia_extra.get("dec_deg"),
+        "gaia_matched": 1.0,
+    }
+    return np.array([float(join_values[name]) if join_values[name] is not None else np.nan
+                     for name in featurematrix.GAIA_JOIN_COLUMNS], dtype=np.float64)
+
+
+def assemble_real_multimodal_object(
+    light_curve: LightCurve, gaia_extra: dict[str, Any], *,
+    spectrum_wavelength: np.ndarray | None = None,
+    spectrum_flux: np.ndarray | None = None,
+    spectrum_error: np.ndarray | None = None,
+    image_array: np.ndarray | None = None,
+    lc_length: int = 256, spectrum_length: int = 256, image_size: int = 32,
+) -> dict[str, np.ndarray]:
+    """Assemble ONE real object's four modality tensors from already-fetched
+    real data. See module docstring for the "assembly, not acquisition"
+    scope and what each modality is reused from unchanged.
+
+    Spectrum and image are OPTIONAL (a caller may not have a spectroscopic
+    or imaging counterpart for every object); when omitted, the returned
+    tensor is filled with NaN rather than a fabricated zero, following the
+    same missing-is-NaN convention `featurematrix.join_gaia_columns` and
+    `to_fixed_size`'s own background-fill already use elsewhere -- a
+    caller/collate function decides how to handle a missing modality, this
+    function never guesses one.
+    """
+    from . import features as features_mod
+    from . import tensors
+    from .multimodal_encoders import resample_spectrum
+    from .multimodal_pixels import preprocess_image, to_fixed_size
+
+    resampled = tensors.resample(light_curve, length=lc_length)
+    if resampled is None:
+        raise ValueError("light_curve has too few finite points to resample")
+    lightcurve_values = resampled.astype(np.float32)
+
+    extracted = features_mod.extract(light_curve)
+    lc_row = np.array([float(extracted.values[name]) for name in features_mod.FEATURE_NAMES],
+                      dtype=np.float64)
+    catalog_features = np.concatenate([lc_row, _real_catalog_row(gaia_extra)]).astype(np.float32)
+    if len(catalog_features) != CATALOG_FEATURE_COUNT:
+        raise ValueError(
+            f"assembled catalog row has {len(catalog_features)} entries, "
+            f"expected CATALOG_FEATURE_COUNT={CATALOG_FEATURE_COUNT}")
+
+    if spectrum_wavelength is not None and spectrum_flux is not None and spectrum_error is not None:
+        spectrum_array = resample_spectrum(spectrum_wavelength, spectrum_flux, spectrum_error,
+                                           length=spectrum_length).astype(np.float32)
+    else:
+        spectrum_array = np.full((3, spectrum_length), np.nan, dtype=np.float32)
+
+    if image_array is not None:
+        image_tensor = preprocess_image(to_fixed_size(image_array, size=image_size))
+        image_tensor = image_tensor[np.newaxis, :, :]
+    else:
+        image_tensor = np.full((1, image_size, image_size), np.nan, dtype=np.float32)
+
+    magnitude = gaia_extra.get("phot_g_mean_mag")
+    scale = float(10 ** (-0.4 * (float(magnitude) - ZEROPOINT))) if magnitude is not None else np.nan
+
+    return {
+        "lightcurve_values": lightcurve_values, "lightcurve_scale": np.float32(scale),
+        "image_array": image_tensor, "image_scale": np.float32(scale),
+        "spectrum_array": spectrum_array, "spectrum_scale": np.float32(scale * 0.1),
+        "catalog_features": catalog_features, "catalog_scale": np.float32(magnitude
+                                                                            if magnitude is not None
+                                                                            else np.nan),
+    }

@@ -13,7 +13,7 @@ service contract defines). `CATEGORY_NAMES` is therefore coarser than
 TESS's five categories -- `("clean", "flagged")` -- stated as coarser, not
 glossed over as equivalent.
 
-This closes the gap `docs/DEFERRED.txt`/`artifact_bank.py` previously
+This closes the gap `docs/LIMITATIONS.md`/`artifact_bank.py` previously
 described as requiring "changing ZTF acquisition codebase-wide": that
 was true for the DEFAULT acquisition path, but recovering the epochs only
 needed a new, additive method

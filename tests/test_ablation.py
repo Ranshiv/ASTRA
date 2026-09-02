@@ -346,7 +346,7 @@ class TestFeatureAblation:
 
 class TestGaiaColumnJoinInAblation:
     """End-to-end: Gaia catalogue rows join onto ZTF sequences as columns,
-    which is what makes ztf_gaia scorable at all (see docs/DEFERRED.txt's
+    which is what makes ztf_gaia scorable at all (see docs/LIMITATIONS.md's
     'Section 20's survey groups cannot be run yet' entry -- this closes the
     ztf_gaia half of that gap; gaia_tess/all_three still need more real TESS
     coverage, which is a separate, later piece of work)."""

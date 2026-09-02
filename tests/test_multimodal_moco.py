@@ -1,5 +1,5 @@
 """multimodal_moco.py: MoCo momentum contrast across four modalities
-(backlog item 11) -- the mechanism that resolves docs/DEFERRED.txt's
+(backlog item 11) -- the mechanism that resolves docs/LIMITATIONS.md's
 `[BLOCKED] Multimodal encoder ... and contrastive learning` entry.
 
 Deliberately tiny configs throughout: this machine's real GPU (GTX 1650)

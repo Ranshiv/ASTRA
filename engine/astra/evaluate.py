@@ -331,3 +331,68 @@ def _deep_methods(values: np.ndarray, labels: np.ndarray,
                                        note=f"failed: {exc}"))
 
     return results
+
+
+def compare_cadence_representations(survey: str | None = None, *,
+                                    length: int = 128, limit: int = 10_000,
+                                    fraction: float = 0.1, strength: float = 6.0,
+                                    epochs: int = 20, seed: int = 42,
+                                    root=None) -> dict:
+    """The two `compare_on_sequences` calls the "gaps are masked, not
+    modelled" limitation named as its own missing evidence: build the SAME
+    injected-anomaly study twice on the same stored curves, once under
+    `tensors.build(mode="time")` (irregular cadence resampled onto a
+    uniform grid and MASKED -- the three convolutional/attention models'
+    contract) and once under `mode="irregular"` (the raw time-delta
+    between real observations kept as a third channel -- `neural_ode`'s
+    own contract, `models.make_neural_ode`'s whole reason to exist). Both
+    runs share `fraction`/`strength`/`seed`, so the same anomalies land at
+    the same indices in both -- the comparison isolates the cadence
+    REPRESENTATION, not a second confound from re-randomised injections.
+
+    Reuses `tensors.build`/`build_injected`/`compare_on_sequences`
+    UNCHANGED; this function only calls them twice and reports both
+    results side by side. Like every other research-evidence function in
+    this codebase, this is diagnostic evidence only -- it does not choose
+    a cadence representation for production and is not wired into
+    `scoring.WEIGHTS`/`evidence.py`.
+    """
+    from . import tensors
+
+    result: dict = {"survey": survey, "length": length, "fraction": fraction,
+                    "strength": strength, "seed": seed, "modes": {}}
+    for mode in ("time", "irregular"):
+        batch = tensors.build(survey=survey, length=length, limit=limit, root=root, mode=mode)
+        if len(batch) < 10:
+            result["modes"][mode] = {"ready": False, "reason": "fewer than 10 usable sequences",
+                                     "rows": len(batch)}
+            continue
+        injection = build_injected(batch.values, batch.identities,
+                                   fraction=fraction, strength=strength, seed=seed)
+        comparison = compare_on_sequences(injection, include_deep=True,
+                                          epochs=epochs, seed=seed)
+        result["modes"][mode] = {"ready": True, **comparison.to_dict()}
+
+    ready_modes = {mode: payload for mode, payload in result["modes"].items()
+                  if payload.get("ready")}
+    result["comparable"] = len(ready_modes) == 2
+    if result["comparable"]:
+        # neural_ode only ever runs under "irregular" (see _deep_methods),
+        # so the cadence-representation-specific comparison is neural_ode's
+        # own PR-AUC there against the best 2-channel model's PR-AUC under
+        # "time" -- not a claim that any two individual models are
+        # otherwise comparable, only that this is what each cadence
+        # representation's best available detector achieves.
+        time_best = max((m for m in ready_modes["time"]["methods"]
+                         if np.isfinite(m["average_precision"])),
+                        key=lambda m: m["average_precision"], default=None)
+        irregular_neural_ode = next(
+            (m for m in ready_modes["irregular"]["methods"] if m["name"] == "deep_neural_ode"),
+            None)
+        result["cadence_shift_summary"] = {
+            "time_mode_best_method": time_best["name"] if time_best else None,
+            "time_mode_best_average_precision": time_best["average_precision"] if time_best else None,
+            "irregular_mode_neural_ode_average_precision": (
+                irregular_neural_ode["average_precision"] if irregular_neural_ode else None),
+        }
+    return result

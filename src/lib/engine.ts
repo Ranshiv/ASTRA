@@ -8,8 +8,8 @@ import type {
   CurveSummary, DatasetStatus, DeepComparison, DeepTrainReport,
   DetectionResult, DeviceReport, DigitalTwinDistance, DigitalTwinSample,
   DigitalTwinTransferResult, DiscardScanResult, EngineJob, EnginePaths,
-  EventCluster, EventPacket, EventProviderInfo, ExperimentComparison,
-  ExperimentRecord, ExperimentSummary, ExperimentVerification, FeatureMatrixBatchBuild,
+  EventCluster, EventPacket, EventProviderInfo, ExperimentArmResolution, ExperimentComparison,
+  ExperimentRecord, ExperimentSummary, ExperimentVerification, ExperimentVote, FeatureMatrixBatchBuild,
   FeatureMatrixBuild, FeatureMatrixInfo, FeatureNames, FitsDescription,
   FitsHeader, FoldedCurve, FollowupPlan, FollowupRequestEntry,
   FrameOffset, FrbEnrichmentResult, FrbEventsResult, GwEnrichmentResult,
@@ -168,6 +168,20 @@ export const engine = {
     invoke<{ votes: LabelVote[]; tally: VoteTally }>("engine_candidate_votes", { candidateId, projectId }),
   promoteVoteConsensus: (candidateId: string, projectId?: string) =>
     invoke<VotePromotion>("engine_candidate_vote_promote", { candidateId, projectId }),
+  // Reviewer human-factors experiment (Direction 6, "the review UI as a
+  // controlled experiment"): resolve a reviewer's arm before rendering the
+  // score, then cast a vote that records the same arm.
+  experimentArm: (candidateId: string, reviewerId: string, scoreLookup?: Record<string, number>) =>
+    invoke<ExperimentArmResolution>("engine_review_experiment_arm", {
+      candidateId, reviewerId, scoreLookup,
+    }),
+  castExperimentalVote: (
+    candidateId: string, reviewerId: string, label: string,
+    scoreLookup?: Record<string, number>, note = "", projectId?: string,
+  ) =>
+    invoke<ExperimentVote>("engine_review_experiment_vote", {
+      candidateId, reviewerId, label, scoreLookup, note, projectId,
+    }),
   exportCandidates: (format: "csv" | "fits" | "pdf", name = "default", projectId?: string) =>
     invoke<{ path: string; count: number }>("engine_candidates_export", { format, name, projectId }),
   broadcastFeed: (name = "default", threshold = 0.5, projectId?: string) =>

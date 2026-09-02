@@ -3,7 +3,7 @@
 `profiling.profile_feature_extraction` measured `features.bocpd` as the
 second-heaviest per-curve cost after the Lomb-Scargle period search (16.5%
 of feature-extraction time on a real 200-curve local sample, at 75 ms/curve
--- see the measured table this entry adds to `docs/DEFERRED.txt`). Unlike
+-- see the measured table this entry adds to `docs/LIMITATIONS.md`). Unlike
 Lomb-Scargle, BOCPD's recursion is inherently serial *within* one curve: each
 observation's posterior depends on the previous one. There is no frequency
 axis to parallelise the way `gpu_periodogram.py` parallelises across

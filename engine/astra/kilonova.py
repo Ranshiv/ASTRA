@@ -14,13 +14,30 @@ and read directly, not reproduced from memory or a summarized excerpt:
 - Eq. 2: thermalization efficiency `eps_th(t) = 0.36*[exp(-a*t) +
   ln(1+2*b*t^d)/(2*b*t^d)]`. The paper states `a`/`b`/`d` are "constants of
   order unity that depend on the ejecta velocity and mass", fitted via "an
-  interpolation of Table 1 of [Barnes et al. 2016]" (arXiv:1605.07218) --
-  that full mass/velocity-dependent table was NOT extracted this session
-  (a separate paper). `THERMALIZATION_A/B/D` below are fixed, representative
-  fiducial values instead (the same defaults several public kilonova
-  light-curve codes use), a stated simplification -- the same discipline
-  `agn_changepoint.tde_flare_model`'s own docstring already uses for its
-  own simplified TDE model.
+  interpolation of Table 1 of [Barnes et al. 2016]" (arXiv:1605.07218).
+  `THERMALIZATION_A/B/D` below are fixed fiducial values -- they turn out to
+  be EXACTLY Barnes et al. (2016) Table 1's own row for `(Mej, vej) =
+  (1e-2 Msun, 0.1c)` (a=0.56, b=0.17, d=0.74), not an independently
+  invented default, though the module previously described them only as
+  "the same defaults several public kilonova codes use" without naming the
+  source row.
+  UPDATE: Barnes et al. (2016) Table 1's full 4x3 grid (`Mej` in
+  {1e-3, 5e-3, 1e-2, 5e-2} Msun x `vej` in {0.1, 0.2, 0.3} c, 12 rows) is
+  now transcribed in `BARNES2016_TABLE` below -- fetched and read directly
+  from the paper's own PDF this session (Section 6.1, Table 1), not
+  reconstructed from memory or a secondary source. `barnes2016_coefficients`
+  bilinearly interpolates `(a, b, d)` over this grid in `(log10 Mej, vej)`
+  space (log-spaced in mass since the grid itself is log-spaced there,
+  linear in velocity since the grid is linear there), clamping to the
+  grid's own domain and flagging extrapolation rather than silently
+  guessing outside it. `thermalization_efficiency` accepts optional
+  `m_ej_msun`/`v_ej_c` kwargs that route through this table when given;
+  omitting them preserves the exact prior fiducial-constant behavior
+  unchanged (the same "opt-in, never implicit" discipline `multiband_hier.py`
+  and the GPU periodogram backend already use in this codebase) --
+  `bolometric_luminosity` and `KilonovaParams` are UNCHANGED, so this is
+  purely a more accurate, still-optional coefficient choice, not a new
+  code path through the rest of the model.
 - Eq. 3: bolometric luminosity via the Arnett-formalism integral
   `L_bol(t) = exp(-t^2/td^2) * integral_0^t L_in(t')*eps_th(t')*
   exp(t'^2/td^2)*(t'/td) dt'`, `td = sqrt(2*kappa*M_rp/(beta*v*c))`,
@@ -72,7 +89,9 @@ gap rather than silently accepted.
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
+from typing import Any
 
 import numpy as np
 
@@ -97,6 +116,28 @@ BETA_DIFFUSION = 13.4
 THERMALIZATION_A = 0.56
 THERMALIZATION_B = 0.17
 THERMALIZATION_D = 0.74
+
+# Barnes et al. (2016, arXiv:1605.07218) Table 1 -- the full fitted
+# (a, b, d) grid for Eq. 36 of that paper (== Eq. 2 above), transcribed
+# directly from the paper's own PDF this session. Keys are
+# (Mej_msun, vej_c); FRDM nuclear mass model, random magnetic fields
+# (the paper's own stated assumptions for this table).
+BARNES2016_TABLE: dict[tuple[float, float], tuple[float, float, float]] = {
+    (1e-3, 0.1): (2.01, 0.28, 1.12),
+    (1e-3, 0.2): (4.52, 0.62, 1.39),
+    (1e-3, 0.3): (8.16, 1.19, 1.52),
+    (5e-3, 0.1): (0.81, 0.19, 0.86),
+    (5e-3, 0.2): (1.90, 0.28, 1.21),
+    (5e-3, 0.3): (3.20, 0.45, 1.39),
+    (1e-2, 0.1): (0.56, 0.17, 0.74),
+    (1e-2, 0.2): (1.31, 0.21, 1.13),
+    (1e-2, 0.3): (2.19, 0.31, 1.32),
+    (5e-2, 0.1): (0.27, 0.10, 0.60),
+    (5e-2, 0.2): (0.55, 0.13, 0.90),
+    (5e-2, 0.3): (0.95, 0.15, 1.13),
+}
+BARNES2016_MEJ_MSUN_GRID = (1e-3, 5e-3, 1e-2, 5e-2)
+BARNES2016_VEJ_C_GRID = (0.1, 0.2, 0.3)
 
 # A typical lanthanide first-ionisation-temperature scale (Villar 2017's
 # own stated physical interpretation of the floor).
@@ -165,16 +206,77 @@ def radioactive_heating_rate(time_s, m_rp_g: float) -> np.ndarray:
     return HEATING_NORMALIZATION_ERG_S_G * m_rp_g * bracket ** ALPHA_HEATING
 
 
-def thermalization_efficiency(time_s) -> np.ndarray:
-    """Eq. 2, using the fiducial `THERMALIZATION_A/B/D` constants (see
-    module docstring)."""
+def barnes2016_coefficients(m_ej_msun: float, v_ej_c: float) -> dict[str, Any]:
+    """Bilinear interpolation of Barnes et al. (2016) Table 1's `(a, b, d)`
+    grid (`BARNES2016_TABLE`) at an arbitrary `(m_ej_msun, v_ej_c)`.
+    Interpolates linearly in `log10(m_ej_msun)` (the grid's own mass
+    spacing is logarithmic: 1e-3, 5e-3, 1e-2, 5e-2) and linearly in
+    `v_ej_c` (the grid's velocity spacing is linear: 0.1, 0.2, 0.3).
+    Values outside the grid's domain are CLAMPED to the nearest edge, with
+    `extrapolated=True` returned rather than silently extrapolating a fit
+    that was never validated outside its own table."""
+    if m_ej_msun <= 0 or v_ej_c <= 0:
+        raise KilonovaError("m_ej_msun and v_ej_c must be positive")
+
+    mej_grid = BARNES2016_MEJ_MSUN_GRID
+    vej_grid = BARNES2016_VEJ_C_GRID
+    log_mej_grid = [math.log10(m) for m in mej_grid]
+    log_mej = math.log10(m_ej_msun)
+
+    extrapolated = not (mej_grid[0] <= m_ej_msun <= mej_grid[-1]
+                        and vej_grid[0] <= v_ej_c <= vej_grid[-1])
+    log_mej_clamped = min(max(log_mej, log_mej_grid[0]), log_mej_grid[-1])
+    vej_clamped = min(max(v_ej_c, vej_grid[0]), vej_grid[-1])
+
+    # Bracket each axis (clamped values always fall within [grid[i], grid[i+1]]).
+    mi = max(0, min(len(mej_grid) - 2,
+                    next(i for i in range(len(mej_grid) - 1)
+                        if log_mej_grid[i] <= log_mej_clamped <= log_mej_grid[i + 1])))
+    vi = max(0, min(len(vej_grid) - 2,
+                    next(i for i in range(len(vej_grid) - 1)
+                        if vej_grid[i] <= vej_clamped <= vej_grid[i + 1])))
+
+    mej_lo, mej_hi = log_mej_grid[mi], log_mej_grid[mi + 1]
+    vej_lo, vej_hi = vej_grid[vi], vej_grid[vi + 1]
+    fm = 0.0 if mej_hi == mej_lo else (log_mej_clamped - mej_lo) / (mej_hi - mej_lo)
+    fv = 0.0 if vej_hi == vej_lo else (vej_clamped - vej_lo) / (vej_hi - vej_lo)
+
+    def corner(mi_: int, vi_: int) -> tuple[float, float, float]:
+        return BARNES2016_TABLE[(mej_grid[mi_], vej_grid[vi_])]
+
+    c00, c01 = corner(mi, vi), corner(mi, vi + 1)
+    c10, c11 = corner(mi + 1, vi), corner(mi + 1, vi + 1)
+    coeffs = tuple(
+        (c00[k] * (1 - fm) * (1 - fv) + c10[k] * fm * (1 - fv)
+         + c01[k] * (1 - fm) * fv + c11[k] * fm * fv)
+        for k in range(3)
+    )
+    return {"a": float(coeffs[0]), "b": float(coeffs[1]), "d": float(coeffs[2]),
+           "extrapolated": bool(extrapolated)}
+
+
+def thermalization_efficiency(time_s, *, m_ej_msun: float | None = None,
+                              v_ej_c: float | None = None) -> np.ndarray:
+    """Eq. 2. By default, uses the fiducial `THERMALIZATION_A/B/D`
+    constants (see module docstring) -- unchanged behavior when
+    `m_ej_msun`/`v_ej_c` are omitted. When BOTH are given, `(a, b, d)` are
+    instead interpolated from Barnes et al. (2016) Table 1 via
+    `barnes2016_coefficients`, a strictly more accurate, opt-in choice that
+    does not alter the default code path."""
     t = np.clip(np.asarray(time_s, dtype=np.float64), 0.0, None)
-    x = 2.0 * THERMALIZATION_B * t ** THERMALIZATION_D
+    if m_ej_msun is not None and v_ej_c is not None:
+        coeffs = barnes2016_coefficients(m_ej_msun, v_ej_c)
+        a, b, d = coeffs["a"], coeffs["b"], coeffs["d"]
+    elif m_ej_msun is not None or v_ej_c is not None:
+        raise KilonovaError("m_ej_msun and v_ej_c must be given together")
+    else:
+        a, b, d = THERMALIZATION_A, THERMALIZATION_B, THERMALIZATION_D
+    x = 2.0 * b * t ** d
     # ln(1+x)/x -> 1 as x -> 0 (l'Hopital); np.log1p(x)/x is exact but 0/0
     # at x=0, so that limit is substituted explicitly.
     safe_x = np.where(x > 1e-12, x, 1.0)
     log_term = np.where(x > 1e-12, np.log1p(x) / safe_x, 1.0)
-    return 0.36 * (np.exp(-THERMALIZATION_A * t) + log_term)
+    return 0.36 * (np.exp(-a * t) + log_term)
 
 
 def bolometric_luminosity(time_s, params: KilonovaParams) -> np.ndarray:

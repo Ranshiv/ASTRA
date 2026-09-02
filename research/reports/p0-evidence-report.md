@@ -83,7 +83,7 @@ See docs/BENCHMARKS.md for the full per-fold breakdown.
 
 ### Five staged scale studies, actually run
 
-All five job payloads staged in `docs/DEFERRED.txt` (line 3748) as
+All five job payloads staged in `docs/LIMITATIONS.md` (line 3748) as
 "ready-to-run" were executed against the real local ZTF corpus (~610
 curves; the roadmap's `limit=10000` was requested unmodified and simply
 never binds). Full detail in docs/RESULTS.md; headline findings:
@@ -173,7 +173,7 @@ to load-then-append, a regression test was added
 (`test_result_records_accumulate_across_calls`), and the validation run was
 redone cleanly. Both the original and new rows now coexist correctly. This
 is disclosed here in full rather than quietly repaired, per the same
-discipline `docs/DEFERRED.txt`'s "GAP CLOSED, REAL BUG FOUND" entries use
+discipline `docs/LIMITATIONS.md`'s "GAP CLOSED, REAL BUG FOUND" entries use
 throughout this project's history.
 
 ## Reproducibility

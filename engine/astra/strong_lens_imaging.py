@@ -12,7 +12,7 @@ cutout service (`ps1images.stsci.edu`) -- confirmed live this session:
 `ps1filenames.py` (resolves a real position to a real stacked-image
 filename) followed by `fitscut.cgi` (returns a real FITS cutout) both
 work with no authentication. DES was checked first and confirmed broken
-(see `docs/DEFERRED.txt`'s item-29 entry: `surveys/des.py`'s TAP cone
+(see `docs/LIMITATIONS.md`'s item-29 entry: `surveys/des.py`'s TAP cone
 search currently fails server-side); Hubble/JWST are pointed, narrow-
 footprint programmes unlikely to cover a generic candidate; PS1 is the
 practical real, all-sky (`dec > -30`) choice. PS1's real plate scale

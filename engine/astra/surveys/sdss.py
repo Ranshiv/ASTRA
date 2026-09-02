@@ -7,6 +7,15 @@ against the real SkyServer SQL endpoint (`HTTP 500`, invalid column). Getting
 real `plate`/`mjd`/`fiberID`/`run2d` is required to build a real spectrum
 download URL, so this was a genuine bug, not a style choice.
 
+`cone_search` also LEFT-joins `PhotoObj` on `bestObjID` for `ugriz` model
+magnitudes and errors (`u/g/r/i/z`, `err_u/err_g/err_r/err_i/err_z`), closing
+a real gap `photometric_calibration.py` used to document explicitly: this
+connector previously returned identifiers/positions only, so SDSS pairs were
+silently unavailable to that module's zero-point/color-term fit. A spectrum
+with `bestObjID="0"` (no photometric counterpart -- see `photometric_match`
+above) gets NULL photometry columns from the join, surfaced as `None` in
+`extra`, never a fabricated value.
+
 `fetch_spectrum`/`extract_sdss_spectrum` add real spectrum acquisition,
 verified live while building this: the public, unauthenticated download URL
 is `https://data.sdss.org/sas/dr17/sdss/spectro/redux/{run2d}/spectra/lite/
@@ -108,13 +117,24 @@ class SDSSConnector(SurveyConnector):
 
     def cone_search(self, query: ConeQuery, limit: int = 100) -> list[SourceRef]:
         top = max(1, min(int(limit), 200))
-        # The fixed query returns only identifiers/positions and does not allow
-        # user-provided SQL, which keeps the connector injection-safe.
+        # The fixed query returns only identifiers/positions/photometry and
+        # does not allow user-provided SQL, which keeps the connector
+        # injection-safe. `PhotoObj` is LEFT-joined on `bestObjID` for
+        # `ugriz` model magnitudes/errors -- the photometry closes a real
+        # gap `photometric_calibration.py` documents (SDSS pairs were
+        # silently unavailable to zero-point/color-term fitting because
+        # this connector carried no magnitude fields at all). A spectrum
+        # with `bestObjID=0` (no photometric counterpart, see the class
+        # docstring above) simply gets NULL photometry columns here, the
+        # same "missing, not fabricated" contract `spectrum_ready` already
+        # uses for that case.
         sql = (
-            f"SELECT TOP {top} bestObjID, specObjID, ra, dec, plate, mjd, "
-            "fiberID, run2d, class "
-            "FROM SpecObjAll "
-            f"WHERE dbo.fDistanceArcMinEq(ra, dec, {query.ra_deg}, {query.dec_deg}) "
+            f"SELECT TOP {top} s.bestObjID, s.specObjID, s.ra, s.dec, "
+            "s.plate, s.mjd, s.fiberID, s.run2d, s.class, "
+            "p.u, p.g, p.r, p.i, p.z, "
+            "p.err_u, p.err_g, p.err_r, p.err_i, p.err_z "
+            "FROM SpecObjAll s LEFT OUTER JOIN PhotoObj p ON p.objID = s.bestObjID "
+            f"WHERE dbo.fDistanceArcMinEq(s.ra, s.dec, {query.ra_deg}, {query.dec_deg}) "
             f"<= {query.radius_arcsec / 60.0:.8f}"
         )
         response = netclient.get(
@@ -143,7 +163,12 @@ class SDSSConnector(SurveyConnector):
                        "fiber_id": row.get("fiberID"), "run2d": row.get("run2d"),
                        "class": row.get("class"),
                        "photometric_match": photometric_match,
-                       "spectrum_ready": bool(row.get("plate"))},
+                       "spectrum_ready": bool(row.get("plate")),
+                       "mag_u": row.get("u"), "mag_u_error": row.get("err_u"),
+                       "mag_g": row.get("g"), "mag_g_error": row.get("err_g"),
+                       "mag_r": row.get("r"), "mag_r_error": row.get("err_r"),
+                       "mag_i": row.get("i"), "mag_i_error": row.get("err_i"),
+                       "mag_z": row.get("z"), "mag_z_error": row.get("err_z")},
             ))
         if rows and not sources:
             import logging

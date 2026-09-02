@@ -4,7 +4,7 @@
 41 asks for is proof that a GPU-backed run stays bounded by `batch_size`
 rather than by the size of the whole store -- the "Gaia-scale chunks"
 requirement. Since no Gaia-scale local dataset exists (Gaia epoch photometry
-is explicitly blocked pending DR4, see docs/DEFERRED.txt), this measures the
+is explicitly blocked pending DR4, see docs/LIMITATIONS.md), this measures the
 same relationship on a synthetic population large enough to show the trend:
 GPU device memory used by one prepass call tracks `batch_size`, not the
 total object count, and end-to-end host memory for a full `build_resumable`

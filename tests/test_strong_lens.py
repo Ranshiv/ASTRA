@@ -294,7 +294,7 @@ def _fetch_real_kids_lens_candidates(limit: int = 300) -> list[dict]:
     dump the whole real catalogue. This endpoint's real response has 6
     `<TABLE>` blocks in one document, which `tap.parse_votable` used to
     mishandle (a real bug, now fixed -- see `tests/test_tap.py`'s own
-    multi-table regression tests and `docs/DEFERRED.txt`); this helper
+    multi-table regression tests and `docs/LIMITATIONS.md`); this helper
     now uses that fixed shared parser directly instead of the plain-regex
     workaround an earlier round of this session used before the fix
     landed.
@@ -320,7 +320,7 @@ def _fetch_real_kids_lens_candidates(limit: int = 300) -> list[dict]:
 
 @pytest.mark.live
 class TestEvaluateMultiSurveyCoverageRealLive:
-    """The population-scale real study `DEFERRED.txt` records for this
+    """The population-scale real study `docs/LIMITATIONS.md` records for this
     item, run live this session against real KiDS DR4 strong-lens
     candidates (564 real entries, fetched live) cross-matched against
     real DES/Pan-STARRS connectors."""

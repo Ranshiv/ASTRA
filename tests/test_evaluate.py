@@ -1,6 +1,6 @@
 """`evaluate.py`'s injection-recovery harness -- previously untested despite
 producing the numbers behind every "method A beats method B" claim in
-docs/DEFERRED.txt (e.g. the n=54 PCA-vs-deep-learning comparison). See the
+docs/LIMITATIONS.md (e.g. the n=54 PCA-vs-deep-learning comparison). See the
 P0 research plan's Tier 0.12 and Step 1d.
 """
 
@@ -114,3 +114,61 @@ def test_comparison_best_is_none_when_every_method_is_degenerate():
         evaluate.MethodScore("a", float("nan"), float("nan"), float("nan"), float("nan")),
     ])
     assert comparison.best() is None
+
+
+class TestCompareCadenceRepresentations:
+    """`compare_cadence_representations`: two `compare_on_sequences` runs
+    (regular-masked "time" mode vs. time-delta-modelled "irregular" mode)
+    on the same stored curves -- the missing evidence the "gaps are
+    masked, not modelled" limitation named."""
+
+    @staticmethod
+    def _write_curves(tmp_path, n_curves=15, n_points=200):
+        from astra import store
+        from astra.surveys.base import LightCurve, SourceRef
+
+        rng = np.random.default_rng(3)
+        for i in range(n_curves):
+            time = np.sort(rng.uniform(0, 300, n_points))
+            value = rng.normal(0.0, 1.0, n_points)
+            err = np.full(n_points, 0.05)
+            curve = LightCurve(
+                source=SourceRef(survey="ZTF", object_id=f"c{i}", ra_deg=0.0, dec_deg=0.0),
+                release="dr1", band="g", value_kind="mag",
+                time=time, value=value, value_err=err, time_system="JD_UTC")
+            store.write_curve(curve, tmp_path)
+
+    def test_reports_both_modes_and_a_cadence_shift_summary(self, tmp_path):
+        pytest.importorskip("torch", reason="PyTorch not installed")
+        self._write_curves(tmp_path)
+
+        result = evaluate.compare_cadence_representations(
+            length=32, root=tmp_path, fraction=0.2, epochs=2, seed=1)
+
+        assert result["modes"]["time"]["ready"] is True
+        assert result["modes"]["irregular"]["ready"] is True
+        assert result["comparable"] is True
+        summary = result["cadence_shift_summary"]
+        assert summary["time_mode_best_method"] is not None
+        assert summary["irregular_mode_neural_ode_average_precision"] is not None
+
+    def test_same_seed_injects_the_same_anomalies_in_both_modes(self, tmp_path):
+        pytest.importorskip("torch", reason="PyTorch not installed")
+        self._write_curves(tmp_path)
+
+        result = evaluate.compare_cadence_representations(
+            length=32, root=tmp_path, fraction=0.2, epochs=2, seed=1)
+        time_injected = result["modes"]["time"]["injection"]["injected"]
+        irregular_injected = result["modes"]["irregular"]["injection"]["injected"]
+        assert time_injected == irregular_injected
+
+    def test_too_few_curves_reports_not_ready(self, tmp_path):
+        self._write_curves(tmp_path, n_curves=3)
+        result = evaluate.compare_cadence_representations(length=32, root=tmp_path)
+        assert result["modes"]["time"]["ready"] is False
+        assert result["comparable"] is False
+
+    def test_empty_store_reports_not_ready(self, tmp_path):
+        result = evaluate.compare_cadence_representations(
+            length=32, root=tmp_path / "empty")
+        assert result["comparable"] is False

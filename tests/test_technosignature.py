@@ -150,3 +150,141 @@ class TestFindHits:
         plane = tech.dedrift_bruteforce(spectrum, np.array([0.0]))
         hits = tech.find_hits(plane, spectrum, np.array([0.0]))
         assert hits == []
+
+
+class TestReadSigprocFilterbank:
+    """SIGPROC's header format is a fixed, published byte layout, so this
+    reader is verified against a file THIS test constructs in that exact
+    documented format -- not a real telescope-produced file (see module
+    docstring for that stated gap)."""
+
+    @staticmethod
+    def _write_string(buf: bytearray, text: str) -> None:
+        encoded = text.encode("ascii")
+        buf.extend(len(encoded).to_bytes(4, "little", signed=True))
+        buf.extend(encoded)
+
+    def _write_filterbank(self, tmp_path, *, nbits=32, nchans=8, n_time=5,
+                          tsamp=1.0, fch1=1400.0, foff=-1.0, nifs=1,
+                          extra_int=None, extra_string=None, bad_keyword=False,
+                          truncate_data=False):
+        import struct as _struct
+
+        buf = bytearray()
+        self._write_string(buf, "HEADER_START")
+        self._write_string(buf, "nchans")
+        buf.extend(_struct.pack("<i", nchans))
+        self._write_string(buf, "nbits")
+        buf.extend(_struct.pack("<i", nbits))
+        self._write_string(buf, "nifs")
+        buf.extend(_struct.pack("<i", nifs))
+        self._write_string(buf, "tsamp")
+        buf.extend(_struct.pack("<d", tsamp))
+        self._write_string(buf, "fch1")
+        buf.extend(_struct.pack("<d", fch1))
+        self._write_string(buf, "foff")
+        buf.extend(_struct.pack("<d", foff))
+        self._write_string(buf, "source_name")
+        self._write_string(buf, "TEST-SRC")
+        if extra_int is not None:
+            self._write_string(buf, "telescope_id")
+            buf.extend(_struct.pack("<i", extra_int))
+        if extra_string is not None:
+            self._write_string(buf, "rawdatafile")
+            self._write_string(buf, extra_string)
+        if bad_keyword:
+            self._write_string(buf, "not_a_real_sigproc_keyword")
+        self._write_string(buf, "HEADER_END")
+
+        dtype = {8: np.dtype("<u1"), 16: np.dtype("<u2"), 32: np.dtype("<f4")}[nbits]
+        rng = np.random.default_rng(0)
+        data = rng.uniform(0.0, 100.0, size=(n_time, nchans)).astype(dtype)
+        if truncate_data:
+            data_bytes = data.tobytes()[:-1]
+        else:
+            data_bytes = data.tobytes()
+
+        path = tmp_path / "test.fil"
+        path.write_bytes(bytes(buf) + data_bytes)
+        return path, data
+
+    def test_round_trips_a_valid_file(self, tmp_path):
+        path, data = self._write_filterbank(tmp_path, nbits=32, nchans=8, n_time=5,
+                                            tsamp=2.0, fch1=1400.0, foff=-1.0)
+        spectrum = tech.read_sigproc_filterbank(path)
+
+        assert spectrum.power.shape == (5, 8)
+        np.testing.assert_allclose(spectrum.power, data.astype(np.float64))
+        np.testing.assert_allclose(spectrum.time_s, np.arange(5.0) * 2.0)
+        # fch1/foff are in MHz, converted to Hz; foff negative -> descending.
+        expected_freq_hz = (1400.0 + np.arange(8.0) * -1.0) * 1.0e6
+        np.testing.assert_allclose(spectrum.freq_hz, expected_freq_hz)
+
+    def test_handles_8bit_and_16bit_samples(self, tmp_path):
+        for nbits in (8, 16):
+            path, data = self._write_filterbank(tmp_path, nbits=nbits, nchans=4, n_time=3)
+            spectrum = tech.read_sigproc_filterbank(path)
+            np.testing.assert_allclose(spectrum.power, data.astype(np.float64))
+
+    def test_extra_recognised_keywords_are_skipped_correctly(self, tmp_path):
+        # A telescope_id (int) and rawdatafile (string) keyword between the
+        # required fields and HEADER_END must not desync the byte offset.
+        path, data = self._write_filterbank(
+            tmp_path, extra_int=6, extra_string="/data/obs001.fil")
+        spectrum = tech.read_sigproc_filterbank(path)
+        np.testing.assert_allclose(spectrum.power, data.astype(np.float64))
+
+    def test_unsupported_keyword_raises(self, tmp_path):
+        path, _ = self._write_filterbank(tmp_path, bad_keyword=True)
+        with pytest.raises(tech.SigprocFormatError):
+            tech.read_sigproc_filterbank(path)
+
+    def test_unsupported_nbits_raises(self, tmp_path):
+        # nbits=4 is a real SIGPROC value (packed 4-bit) this reader does
+        # not support -- must refuse, not silently misinterpret the bytes.
+        path, _ = self._write_filterbank(tmp_path, nbits=8)
+        # Patch the header's nbits value in place without touching data.
+        raw = bytearray(path.read_bytes())
+        needle = b"nbits"
+        idx = raw.index(needle) + len(needle)
+        import struct as _struct
+        _struct.pack_into("<i", raw, idx, 4)
+        path.write_bytes(bytes(raw))
+        with pytest.raises(tech.SigprocFormatError):
+            tech.read_sigproc_filterbank(path)
+
+    def test_nifs_other_than_one_raises(self, tmp_path):
+        path, _ = self._write_filterbank(tmp_path, nifs=2)
+        with pytest.raises(tech.SigprocFormatError):
+            tech.read_sigproc_filterbank(path)
+
+    def test_missing_header_start_raises(self, tmp_path):
+        path = tmp_path / "bad.fil"
+        buf = bytearray()
+        self._write_string(buf, "NOT_HEADER_START")
+        path.write_bytes(bytes(buf))
+        with pytest.raises(tech.SigprocFormatError):
+            tech.read_sigproc_filterbank(path)
+
+    def test_truncated_data_block_raises(self, tmp_path):
+        path, _ = self._write_filterbank(tmp_path, truncate_data=True)
+        with pytest.raises(tech.SigprocFormatError):
+            tech.read_sigproc_filterbank(path)
+
+    def test_missing_required_keyword_raises(self, tmp_path):
+        buf = bytearray()
+        self._write_string(buf, "HEADER_START")
+        self._write_string(buf, "nchans")
+        buf.extend((4).to_bytes(4, "little", signed=True))
+        self._write_string(buf, "HEADER_END")
+        path = tmp_path / "incomplete.fil"
+        path.write_bytes(bytes(buf))
+        with pytest.raises(tech.SigprocFormatError):
+            tech.read_sigproc_filterbank(path)
+
+    def test_result_is_a_valid_dynamic_spectrum_usable_by_search(self, tmp_path):
+        path, _ = self._write_filterbank(tmp_path, nbits=32, nchans=16, n_time=8)
+        spectrum = tech.read_sigproc_filterbank(path)
+        # Must be usable end-to-end by the real search path, not just parse.
+        result = tech.search(spectrum, max_drift_hz_s=1.0)
+        assert "hits" in result

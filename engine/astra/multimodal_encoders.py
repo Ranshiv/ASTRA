@@ -8,7 +8,7 @@ head lives in `multimodal_moco.py`. Fusing scale INTO the embedding is what
 makes "brightness-preservation error" well-defined: `tensors.py`'s
 MAD-normalised light-curve representation (and the analogous
 background-subtracted image/spectrum inputs here) discards absolute
-brightness by design (`docs/DEFERRED.txt`'s `[KNOWN] Sequence representation
+brightness by design (`docs/LIMITATIONS.md`'s `[KNOWN] Sequence representation
 discards absolute brightness` entry) -- "a model that needs it must consume
 both." A frozen probe trained on the fused embedding (`multimodal_eval.py`)
 is how that claim gets checked, not assumed.

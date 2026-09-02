@@ -69,7 +69,7 @@ RESAMPLE_MODES = ("time", "season", "phase", "irregular")
 # this many native-cadence spacings keeps the model's LEARNED cadence-shift
 # behaviour bounded, at the cost of not distinguishing a 30x gap from a 300x
 # one -- both already reflect "a whole observing season was missed," which is
-# the information plan section 4 / docs/DEFERRED.txt's "gaps are masked, not
+# the information plan section 4 / docs/LIMITATIONS.md's "gaps are masked, not
 # modelled" KNOWN limitation asks this mode to expose in the first place.
 IRREGULAR_MAX_GAP_FACTOR = SEASON_GAP_FACTOR
 
@@ -295,7 +295,7 @@ def resample_irregular(curve: LightCurve, length: int = DEFAULT_LENGTH,
     interpolated, when a curve has more than `length` of them) and reports
     each kept point's real gap since the previous kept one, scaled by the
     curve's own median native spacing and capped at `max_gap_factor` -- the
-    representation `multiband_hier`'s docstring and docs/DEFERRED.txt's
+    representation `multiband_hier`'s docstring and docs/LIMITATIONS.md's
     "gaps are masked, not modelled" entry both point at: a model consuming
     this can learn from the SIZE of a gap instead of only being told a grid
     point was fabricated.

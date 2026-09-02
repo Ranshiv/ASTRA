@@ -770,7 +770,7 @@ def join_gaia_columns(matrix: FeatureMatrix, radius_arcsec: float | None = None,
     extra rows would change the object population being scored, and any
     resulting "improvement" would be a population artefact rather than the
     effect of the added information -- the exact trap documented for
-    ztf_tess in docs/DEFERRED.txt (404 ZTF against 3 TESS describes two
+    ztf_tess in docs/LIMITATIONS.md (404 ZTF against 3 TESS describes two
     different populations, not one compared fairly). Joining by position
     keeps `len(result) == len(matrix)` and the identical set of objects;
     only the feature width changes.

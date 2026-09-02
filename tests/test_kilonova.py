@@ -80,6 +80,66 @@ class TestThermalizationEfficiency:
         assert eps < 1e-3
 
 
+class TestBarnes2016Coefficients:
+    def test_exact_grid_point_matches_table_exactly(self):
+        # Barnes et al. 2016 Table 1's own row for (Mej, vej) = (5e-3, 0.2c).
+        coeffs = kn.barnes2016_coefficients(5e-3, 0.2)
+        assert coeffs["a"] == pytest.approx(1.90)
+        assert coeffs["b"] == pytest.approx(0.28)
+        assert coeffs["d"] == pytest.approx(1.21)
+        assert coeffs["extrapolated"] is False
+
+    def test_fiducial_module_constants_match_the_mej_1e2_vej_01c_table_row(self):
+        # THERMALIZATION_A/B/D were identified this session as being
+        # EXACTLY Table 1's (Mej=1e-2, vej=0.1c) row, not an independent
+        # invented default -- this pins that finding as a regression check.
+        coeffs = kn.barnes2016_coefficients(1e-2, 0.1)
+        assert coeffs["a"] == pytest.approx(kn.THERMALIZATION_A)
+        assert coeffs["b"] == pytest.approx(kn.THERMALIZATION_B)
+        assert coeffs["d"] == pytest.approx(kn.THERMALIZATION_D)
+
+    def test_interior_point_interpolates_between_neighbors(self):
+        # A point midway in log-mass and velocity between two known rows
+        # must land strictly between their coefficient values.
+        lo = kn.barnes2016_coefficients(1e-3, 0.1)
+        hi = kn.barnes2016_coefficients(5e-3, 0.1)
+        mid = kn.barnes2016_coefficients((1e-3 * 5e-3) ** 0.5, 0.1)  # log-midpoint
+        assert min(lo["a"], hi["a"]) < mid["a"] < max(lo["a"], hi["a"])
+
+    def test_outside_grid_is_clamped_and_flagged(self):
+        coeffs = kn.barnes2016_coefficients(1e-4, 0.5)
+        assert coeffs["extrapolated"] is True
+        # Clamped to the most extreme corner (highest a/b/d in the table).
+        assert coeffs["a"] == pytest.approx(8.16)
+
+    def test_non_positive_inputs_raise(self):
+        with pytest.raises(kn.KilonovaError):
+            kn.barnes2016_coefficients(0.0, 0.2)
+        with pytest.raises(kn.KilonovaError):
+            kn.barnes2016_coefficients(5e-3, -0.1)
+
+
+class TestThermalizationEfficiencyWithBarnesTable:
+    def test_omitting_both_kwargs_matches_prior_fiducial_behavior(self):
+        times = np.array([0.0, 1.0, 100.0, 1e4])
+        default = kn.thermalization_efficiency(times)
+        via_fiducial_row = kn.thermalization_efficiency(times, m_ej_msun=1e-2, v_ej_c=0.1)
+        assert np.allclose(default, via_fiducial_row)
+
+    def test_requires_both_kwargs_together(self):
+        with pytest.raises(kn.KilonovaError):
+            kn.thermalization_efficiency(np.array([1.0]), m_ej_msun=1e-2)
+        with pytest.raises(kn.KilonovaError):
+            kn.thermalization_efficiency(np.array([1.0]), v_ej_c=0.1)
+
+    def test_still_starts_near_072_at_t_zero_for_any_table_entry(self):
+        # eps_th(0) = 0.36*2 = 0.72 regardless of (a, b, d) -- the x -> 0
+        # limit substitution must hold for every table-derived coefficient
+        # set, not just the fiducial one.
+        eps = kn.thermalization_efficiency(np.array([0.0]), m_ej_msun=5e-2, v_ej_c=0.3)[0]
+        assert eps == pytest.approx(0.72, abs=1e-6)
+
+
 class TestBolometricLuminosity:
     def test_rejects_negative_time(self):
         params = kn.KilonovaParams(m_ej=0.01, v_ej=0.1, kappa=1.0)

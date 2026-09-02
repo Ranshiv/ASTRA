@@ -51,7 +51,7 @@ def test_evaluate_synthetic_dual_reviewer_kappa_rejects_bad_inputs():
 
 def test_active_review_eval_is_not_wired_into_rpc():
     """active_review.py (the reweighting logic itself) was deliberately
-    promoted into rpc.py's `review.next` (docs/DEFERRED.txt, roadmap item 36)
+    promoted into rpc.py's `review.next` (docs/LIMITATIONS.md, roadmap item 36)
     -- see test_active_review.py's wired-in test. This evaluation-study
     module (`active_review_eval.py`, the synthetic integration/kappa-
     mechanism checks) was not, and stays research-only."""

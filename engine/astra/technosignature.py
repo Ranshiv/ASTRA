@@ -38,22 +38,40 @@ fine for the array sizes this module is validated at). A future
 Taylor-tree implementation must ship its own bit-exact-agreement test
 before replacing this note.
 
-[GAP] No real Breakthrough Listen data path. `h5py` is already a core
-dependency (`gw.py` uses it for GW posterior-sample files), so BL's HDF5
-filterbank format is reachable without a new dependency in principle --
-but the exact BL HDF5 `/data` layout and header-attribute schema has not
-been verified against a real file this session, so this is a stated
-live-contract gap, the same class as the Chandra `packageset` gap
-already recorded in `docs/DEFERRED.txt`, not a shipped capability.
-SIGPROC `.fil` filterbank is not readable at all. Also: linear drift
-only (no acceleration term), incoherent summation only, single-dish only
-(no interferometric coincidence), and no signal classification -- a
+[GAP] No real Breakthrough Listen HDF5 data path. `h5py` is already a
+core dependency (`gw.py` uses it for GW posterior-sample files), so BL's
+HDF5 filterbank format is reachable without a new dependency in
+principle -- but the exact BL HDF5 `/data` layout and header-attribute
+schema has not been verified against a real file this session, so this
+remains a stated live-contract gap, the same class as the Chandra
+`packageset` gap already recorded in `docs/LIMITATIONS.md`, not a shipped
+capability.
+
+`read_sigproc_filterbank` DOES read SIGPROC `.fil` filterbank files --
+unlike the HDF5 case above, SIGPROC's binary layout is a fixed, published
+format (Lorimer's SIGPROC; the same string-length-prefixed
+keyword/value header block PRESTO, `blimpy`, and every SIGPROC-family
+pipeline parse), not a live-contract unknown, so this is implemented
+directly rather than deferred. Verified this session against a
+self-constructed file written in the documented format (`tests/
+test_technosignature.py`'s `TestReadSigprocFilterbank`), NOT against a
+real telescope-produced `.fil` -- the header layout itself is fixed and
+public, but a real file could still carry keywords, `nifs`>1 (multiple
+IFs/polarizations), or vendor quirks this reader does not handle; both
+are refused explicitly (`SigprocFormatError`) rather than silently
+misread. Only `nbits` in `{8, 16, 32}` (unsigned int8/uint16/float32
+samples, SIGPROC's own three common cases) are supported; any other
+bit depth is refused the same way. Also: linear drift only (no
+acceleration term), incoherent summation only, single-dish only (no
+interferometric coincidence), and no signal classification -- a
 surviving hit is an unexplained narrowband detection, nothing more.
 """
 
 from __future__ import annotations
 
+import struct
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -290,9 +308,130 @@ def synthesize_waterfall(*, n_time: int = 16, n_freq: int = 1024, f0_hz: float =
                                             "start_channel": start_channel}}
 
 
+class SigprocFormatError(TechnosignatureError):
+    """A `.fil` file did not match SIGPROC's published header/data layout."""
+
+
+# SIGPROC header keywords this reader understands, by their documented
+# value type. Any OTHER keyword encountered is refused explicitly
+# (`SigprocFormatError`), never silently skipped -- an unrecognised
+# keyword means either a real file uses one this reader does not know
+# about, or the header is corrupt, and either way silently guessing the
+# byte layout of an unknown value would desync every field that follows.
+_SIGPROC_INT_KEYS = frozenset({
+    "telescope_id", "machine_id", "data_type", "barycentric", "pulsarcentric",
+    "nbits", "nchans", "nifs", "nbeams", "ibeam", "nsamples", "scan_number",
+})
+_SIGPROC_DOUBLE_KEYS = frozenset({
+    "az_start", "za_start", "src_raj", "src_dej", "tstart", "tsamp",
+    "fch1", "foff", "refdm", "period",
+})
+_SIGPROC_STRING_KEYS = frozenset({"rawdatafile", "source_name"})
+_SIGPROC_NBITS_DTYPE: dict[int, np.dtype] = {
+    8: np.dtype("<u1"), 16: np.dtype("<u2"), 32: np.dtype("<f4"),
+}
+
+
+def read_sigproc_filterbank(path: str | Path) -> DynamicSpectrum:
+    """Read a SIGPROC `.fil` filterbank into a `DynamicSpectrum`.
+
+    SIGPROC's header is a sequence of length-prefixed ASCII strings
+    (`int32` little-endian byte count, then that many raw bytes, never
+    null-terminated) starting with `"HEADER_START"` and ending with
+    `"HEADER_END"`; every other string names a keyword, immediately
+    followed by its typed value (`int32`, `float64`, or another
+    length-prefixed string, per `_SIGPROC_INT_KEYS`/`_SIGPROC_DOUBLE_KEYS`/
+    `_SIGPROC_STRING_KEYS`). Raw sample data follows `HEADER_END`
+    immediately, row-major in time (`nifs=1` only -- see module docstring).
+
+    `fch1`/`foff` are in MHz (SIGPROC's own convention) and converted to Hz
+    here; `foff` is commonly NEGATIVE (descending-frequency channels),
+    which `DynamicSpectrum` already supports directly (see its own
+    docstring on signed `channel_width_hz`), so no reordering is done.
+    """
+    path = Path(path)
+    raw = path.read_bytes()
+    offset = 0
+
+    def read_string() -> str:
+        nonlocal offset
+        if offset + 4 > len(raw):
+            raise SigprocFormatError(f"{path}: truncated header (expected a string length)")
+        (length,) = struct.unpack_from("<i", raw, offset)
+        offset += 4
+        if length < 0 or offset + length > len(raw):
+            raise SigprocFormatError(f"{path}: truncated header (bad string length {length})")
+        text = raw[offset:offset + length].decode("ascii", errors="strict")
+        offset += length
+        return text
+
+    if read_string() != "HEADER_START":
+        raise SigprocFormatError(f"{path}: not a SIGPROC filterbank (missing HEADER_START)")
+
+    header: dict[str, Any] = {}
+    while True:
+        key = read_string()
+        if key == "HEADER_END":
+            break
+        if key in _SIGPROC_INT_KEYS:
+            if offset + 4 > len(raw):
+                raise SigprocFormatError(f"{path}: truncated header (int value for {key!r})")
+            (value,) = struct.unpack_from("<i", raw, offset)
+            offset += 4
+        elif key in _SIGPROC_DOUBLE_KEYS:
+            if offset + 8 > len(raw):
+                raise SigprocFormatError(f"{path}: truncated header (double value for {key!r})")
+            (value,) = struct.unpack_from("<d", raw, offset)
+            offset += 8
+        elif key in _SIGPROC_STRING_KEYS:
+            value = read_string()
+        else:
+            raise SigprocFormatError(f"{path}: unsupported SIGPROC header keyword {key!r}")
+        header[key] = value
+
+    missing = [key for key in ("tsamp", "fch1", "foff", "nchans", "nbits") if key not in header]
+    if missing:
+        raise SigprocFormatError(f"{path}: missing required header keyword(s): {missing}")
+
+    nifs = int(header.get("nifs", 1))
+    if nifs != 1:
+        raise SigprocFormatError(f"{path}: only nifs=1 is supported, got nifs={nifs}")
+
+    nbits = int(header["nbits"])
+    dtype = _SIGPROC_NBITS_DTYPE.get(nbits)
+    if dtype is None:
+        raise SigprocFormatError(
+            f"{path}: unsupported nbits={nbits} (only 8/16/32 are supported)")
+
+    nchans = int(header["nchans"])
+    if nchans < 2:
+        raise SigprocFormatError(f"{path}: nchans must be at least 2, got {nchans}")
+
+    data_bytes = raw[offset:]
+    row_bytes = nchans * dtype.itemsize
+    if row_bytes == 0 or len(data_bytes) % row_bytes != 0:
+        raise SigprocFormatError(
+            f"{path}: data block ({len(data_bytes)} bytes) is not a whole "
+            f"number of {row_bytes}-byte time samples")
+    n_time = len(data_bytes) // row_bytes
+    if n_time < 2:
+        raise SigprocFormatError(f"{path}: need at least two time samples, got {n_time}")
+
+    samples = np.frombuffer(data_bytes, dtype=dtype, count=n_time * nchans)
+    power = samples.reshape(n_time, nchans).astype(np.float64)
+
+    tsamp_s = float(header["tsamp"])
+    fch1_mhz = float(header["fch1"])
+    foff_mhz = float(header["foff"])
+    time_s = np.arange(n_time, dtype=np.float64) * tsamp_s
+    freq_hz = (fch1_mhz + np.arange(nchans, dtype=np.float64) * foff_mhz) * 1.0e6
+
+    return DynamicSpectrum(time_s=time_s, freq_hz=freq_hz, power=power)
+
+
 __all__ = [
-    "TechnosignatureError", "DynamicSpectrum", "TechnosignatureHit",
+    "TechnosignatureError", "SigprocFormatError", "DynamicSpectrum", "TechnosignatureHit",
     "DEFAULT_MAX_DRIFT_HZ_S", "DEFAULT_SNR_THRESHOLD",
     "drift_rate_grid", "dedrift_bruteforce", "find_hits", "search",
-    "cadence_filter", "synthesize_waterfall",
+    "cadence_filter", "synthesize_waterfall", "read_sigproc_filterbank",
 ]

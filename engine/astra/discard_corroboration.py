@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import timeframe
 from .discard_pile import DiscardRecord
 from .surveys.base import LightCurve
 
@@ -123,6 +124,7 @@ def _window_deviation(curve: LightCurve, time_start: float, time_end: float,
 
 
 def corroborate(record: DiscardRecord, other_curves: list[LightCurve], *,
+                record_curve: LightCurve | None = None,
                 significance_sigma: float = DEFAULT_SIGNIFICANCE_SIGMA,
                 pad_days: float = DEFAULT_PAD_DAYS,
                 min_supporting_surveys: int = 1) -> CorroborationResult:
@@ -135,10 +137,40 @@ def corroborate(record: DiscardRecord, other_curves: list[LightCurve], *,
     not filtered out defensively here: the caller owns that grouping
     decision, matching `crossmatch.group_sources`'s own "the caller resolves
     the anchor" discipline.
+
+    Time-system reconciliation: `record.time_start`/`time_end` are in
+    whatever time system the survey `record.survey` was extracted from
+    natively uses (e.g. ZTF's HJD_UTC), while `other_curves` may be in a
+    DIFFERENT native time system (e.g. TESS's BJD_TDB) -- comparing them
+    directly, as this function previously did, silently mixes two clocks
+    that disagree by up to about a minute (`timeframe.py`'s own
+    TDB-vs-UTC + heliocentric-vs-barycentric terms), not epsilon. Passing
+    `record_curve` -- the curve `record` was itself extracted from, so its
+    `time_system`/`source.ra_deg`/`source.dec_deg` are known -- converts
+    both `record`'s window boundaries and every `other_curves` entry to the
+    common `timeframe.TARGET_SYSTEM` (BJD_TDB) via `timeframe.to_bjd_tdb`/
+    `timeframe.align` before comparison, reusing that module's conversion
+    unchanged rather than a second implementation. `record_curve` is
+    optional (default `None`, preserving the prior unconverted comparison)
+    because not every caller has retained the originating curve -- but any
+    caller that HAS it should pass it; the window-day-scale `pad_days`
+    tolerance usually absorbs the sub-minute offset, so this was rarely
+    visible as a wrong verdict, but "usually absorbed by padding" is not
+    the same claim as "reconciled."
     """
+    aligned_curves = other_curves
+    time_start, time_end = record.time_start, record.time_end
+    if record_curve is not None:
+        aligned_curves = [timeframe.align(curve) for curve in other_curves]
+        converted_bounds = timeframe.to_bjd_tdb(
+            np.array([record.time_start, record.time_end]), record_curve.time_system,
+            record_curve.source.ra_deg, record_curve.source.dec_deg,
+            record_curve.source.survey)
+        time_start, time_end = float(converted_bounds[0]), float(converted_bounds[1])
+
     components: list[SurveySupport] = []
-    for curve in other_curves:
-        n_in, z_score = _window_deviation(curve, record.time_start, record.time_end, pad_days)
+    for curve in aligned_curves:
+        n_in, z_score = _window_deviation(curve, time_start, time_end, pad_days)
         supports = bool(z_score is not None and abs(z_score) >= significance_sigma)
         components.append(SurveySupport(
             survey=curve.source.survey, band=curve.band,

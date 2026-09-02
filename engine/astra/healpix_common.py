@@ -31,7 +31,7 @@ shared fixtures, which is the correctness bar the project's own plan sets
 before a migration; the migration itself is a low-risk mechanical follow-up
 deliberately left undone here to avoid unnecessary churn in two modules
 that already work, matching this codebase's general preference for proven
-convergence over defensive rewriting (see `docs/DEFERRED.txt`'s repeated
+convergence over defensive rewriting (see `docs/LIMITATIONS.md`'s repeated
 "measured but not adopted" pattern for calibrated-but-unadopted work).
 `association.py`'s own `_healpix_probability` DOES switch over, since it is
 the shape most directly reused by the new cross-event correlation code.

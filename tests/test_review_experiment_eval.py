@@ -12,6 +12,42 @@ def _vote(candidate_key, reviewer_id, label, arm, *, confidence=None):
            "arm": arm, "self_reported_confidence": confidence}
 
 
+class TestStoppingRuleGate:
+    def test_default_threshold_matches_preregistered_plan(self):
+        from astra.review_experiment import PREREGISTERED_ANALYSIS_PLAN
+        truth = {"c1": True}
+        votes = [_vote("c1", "r1", "interesting", "score_shown")]
+        result = rxe.anchoring_effect_size(votes, truth)
+        assert result["min_votes_per_arm"] == PREREGISTERED_ANALYSIS_PLAN["minimum_votes_per_arm"]
+
+    def test_not_ready_below_threshold_and_verdict_forced_none(self):
+        truth = {f"c{i}": True for i in range(5)}
+        votes = [_vote(f"c{i}", "r1", "interesting", arm)
+                for i in range(5) for arm in rxe.ARMS]
+        result = rxe.anchoring_effect_size(votes, truth, min_votes_per_arm=30)
+        assert result["ready"] is False
+        assert set(result["underpowered_arms"]) == set(rxe.ARMS)
+        assert result["anchoring_signature_detected"] is None
+
+    def test_ready_once_every_arm_meets_the_threshold(self):
+        truth = {f"c{i}": True for i in range(5)}
+        votes = [_vote(f"c{i % 5}", f"r{i}", "interesting", arm)
+                for i in range(5) for arm in rxe.ARMS]
+        result = rxe.anchoring_effect_size(votes, truth, min_votes_per_arm=5)
+        assert result["ready"] is True
+        assert result["underpowered_arms"] == []
+
+    def test_partially_underpowered_names_only_the_short_arms(self):
+        truth = {"c1": True}
+        votes = ([_vote("c1", f"r{i}", "interesting", "score_shown") for i in range(5)]
+                + [_vote("c1", "r_x", "interesting", "score_blinded")])
+        result = rxe.anchoring_effect_size(votes, truth, min_votes_per_arm=5)
+        assert result["ready"] is False
+        assert "score_shown" not in result["underpowered_arms"]
+        assert "score_blinded" in result["underpowered_arms"]
+        assert "score_shuffled" in result["underpowered_arms"]
+
+
 class TestAnchoringEffectSize:
     def test_per_arm_accuracy_against_truth(self):
         truth = {"c1": True, "c2": False, "c3": True, "c4": False}
@@ -67,7 +103,8 @@ class TestAnchoringEffectSize:
             votes.append(_vote(candidate, "r2", correct_label, "score_blinded"))
             votes.append(_vote(candidate, "r3", correct_label, "score_shuffled"))
 
-        result = rxe.anchoring_effect_size(votes, truth)
+        result = rxe.anchoring_effect_size(votes, truth, min_votes_per_arm=1)
+        assert result["ready"] is True
         assert result["anchoring_signature_detected"] is True
 
     def test_none_when_an_arm_has_no_usable_votes(self):

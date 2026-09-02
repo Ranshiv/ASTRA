@@ -37,7 +37,7 @@ SAMPLING_TOLERANCE = 0.01  # fractional
 # all hand-set judgement calls (plan section 17 always described them that
 # way). The six FEATURE_INDICATOR_NAMES below are now calibrated against a
 # synthetic injection-recovery study (artifact.calibrate_from_injection) --
-# see docs/DEFERRED.txt for the measured result. The remaining four are
+# see docs/LIMITATIONS.md for the measured result. The remaining four are
 # structural/categorical (cross-survey resolution and period agreement, not
 # a statistical threshold on one curve's own features) and are not
 # calibrated by that study; they stay hand-set, documented as such.
@@ -232,7 +232,7 @@ def assess(feature_values: dict[str, float],
 # ---------------------------------------------------------------------------
 # Calibration: synthetic injection-recovery study for the six feature-based
 # indicators above (plan section 17's weights were hand-set judgement calls
-# until this was written; see docs/DEFERRED.txt Phase 7).
+# until this was written; see docs/LIMITATIONS.md Phase 7).
 #
 # No external labelled dataset fits this: SNAD's ZTF DR3 "Dataset of
 # artefacts" (arXiv:2504.08053) publishes 28x28 / 63x63 FITS image cutouts
@@ -355,20 +355,41 @@ def _synthetic_real(rng: np.random.Generator, index: int,
                     hard: bool = False):
     """A genuine variable: no defect, by construction label 0.
 
-    `hard` draws an awkward but entirely real object -- sparsely sampled, close
-    to its noise floor, or carrying a few genuine large excursions. Those are
-    the objects on which an indicator can fire without a defect being present,
-    so they are the only way a false-positive rate gets measured rather than
-    assumed. Calibrating against clean variables alone is what made the first
-    calibration return weights of 0.95-1.0: nothing in the population could
-    ever contradict an indicator.
+    `hard` draws an awkward but entirely real object -- sparsely sampled,
+    close to its noise floor, carrying a few genuine large excursions,
+    coincidentally periodic at a sampling-alias period, intrinsically
+    non-variable, or undergoing a real persistent brightness change. Those
+    are the objects on which an indicator can fire without a defect being
+    present, so they are the only way a false-positive rate gets measured
+    rather than assumed. Calibrating against clean variables alone is what
+    made the first calibration return weights of 0.95-1.0: nothing in the
+    population could ever contradict an indicator.
+
+    UPDATE: the original three flavours (sparse/near_noise/outliers) left
+    five of the six calibrated indicators pinned at `MAX_CALIBRATED_WEIGHT`
+    (measured: only `sparse_sampling` calibrated below it, at 0.549) --
+    `MAX_CALIBRATED_WEIGHT` is a hard ceiling on the REPORTED weight, so a
+    5/6 pin means those five indicators' real synthetic precision never
+    dropped below 0.85 in the first place, not that the ceiling merely
+    hid a lower number. `coincidental_period`, `quiescent`, and
+    `real_outburst` below are the missing false-positive-generating cases
+    for `sampling_period`, `consistent_with_constant`, and `step_change`/
+    `extreme_outliers` respectively -- each astrophysically real, not a
+    construction shortcut: real short-period pulsators/eclipsing binaries
+    genuinely do cluster near 1-day-ish periods; a real, intrinsically
+    steady field star genuinely can look consistent with a constant
+    source; a real eruptive variable or eclipse egress genuinely produces
+    a persistent step. `near_noise` and `outliers` are also tuned harder
+    (wider amplitude/excursion ranges) so `low_significance` gets a
+    comparable share of real false positives to `sparse_sampling`.
     """
     n_points = int(rng.integers(60, 300))
     baseline = float(rng.uniform(120.0, 500.0))
     # Kept away from every SAMPLING_ARTIFACT_PERIODS_DAYS value so a real
     # object never coincidentally trips sampling_period; that indicator's
     # false-positive rate should be measured on sparse/short baselines, not
-    # manufactured by construction here.
+    # manufactured by construction here -- EXCEPT in the `coincidental_period`
+    # flavour below, whose entire point is to construct exactly that case.
     period = float(rng.uniform(2.0, 90.0))
     while any(abs(period - p) / p < 0.05 for p in SAMPLING_ARTIFACT_PERIODS_DAYS):
         period = float(rng.uniform(2.0, 90.0))
@@ -380,7 +401,10 @@ def _synthetic_real(rng: np.random.Generator, index: int,
             rng, n_points, baseline, period, amplitude, error)
         return _make_curve(f"real{index}", time, value, value_err)
 
-    flavour = str(rng.choice(("sparse", "near_noise", "outliers")))
+    flavour = str(rng.choice((
+        "sparse", "near_noise", "outliers",
+        "coincidental_period", "quiescent", "real_outburst",
+    )))
     if flavour == "sparse":
         # A real variable a survey simply did not visit often.
         n_points = int(rng.integers(12, 34))
@@ -390,11 +414,11 @@ def _synthetic_real(rng: np.random.Generator, index: int,
 
     elif flavour == "near_noise":
         # Genuine low-amplitude variability, only just above the error bars.
-        amplitude = error * float(rng.uniform(1.2, 2.5))
+        amplitude = error * float(rng.uniform(1.0, 2.9))
         time, value, value_err = _baseline_signal(
             rng, n_points, baseline, period, amplitude, error)
 
-    else:  # outliers
+    elif flavour == "outliers":
         # Real flares/dips on top of real variability. Astrophysical, not
         # instrumental, but they look exactly like the extreme_outliers case.
         time, value, value_err = _baseline_signal(
@@ -402,7 +426,35 @@ def _synthetic_real(rng: np.random.Generator, index: int,
         n_excursions = int(rng.integers(2, 6))
         where = rng.choice(n_points, size=min(n_excursions, n_points),
                            replace=False)
-        value[where] -= error * rng.uniform(8.0, 18.0, size=len(where))
+        value[where] -= error * rng.uniform(10.0, 24.0, size=len(where))
+
+    elif flavour == "coincidental_period":
+        # A real periodic star (short-period pulsator/EB) whose real period
+        # happens to sit near a sampling alias -- the astrophysical reason
+        # real surveys report a bump in detections near these periods too.
+        alias_period = float(rng.choice(SAMPLING_ARTIFACT_PERIODS_DAYS))
+        real_period = alias_period * (1.0 + rng.uniform(-0.01, 0.01))
+        time, value, value_err = _baseline_signal(
+            rng, n_points, baseline, real_period, amplitude, error)
+
+    elif flavour == "quiescent":
+        # A real, intrinsically near-constant field star: no injected
+        # periodic signal at all, scatter fully explained by the errors.
+        time = np.sort(rng.uniform(0.0, baseline, size=n_points))
+        residual_amplitude = error * float(rng.uniform(0.0, 0.8))
+        value = 18.0 + rng.normal(0.0, error, size=n_points) + residual_amplitude
+        value_err = np.full(n_points, error)
+
+    else:  # real_outburst
+        # A real, persistent brightness change -- an eruptive variable, an
+        # eclipse egress, or a YSO dimming event -- not a scattered handful
+        # of outliers but a genuine sustained SHIFT over the back portion
+        # of the baseline.
+        time, value, value_err = _baseline_signal(
+            rng, n_points, baseline, period, amplitude, error)
+        shift_start = int(n_points * rng.uniform(0.5, 0.75))
+        value[shift_start:] += error * float(rng.uniform(10.0, 20.0)) * (
+            1 if rng.random() < 0.5 else -1)
 
     return _make_curve(f"real{index}", time, value, value_err)
 

@@ -82,6 +82,11 @@ class NightSchedule:
     exposure_hours: float
     observations: list[ScheduledObservation] = field(default_factory=list)
     unscheduled_candidate_ids: list[str] = field(default_factory=list)
+    # Count of local-search slew-reducing swaps that were REJECTED because
+    # they would have placed a candidate outside its own true visibility
+    # window -- a measured count, not an assumption the swap pass is always
+    # safe (see `_local_search_reduce_slew`'s docstring).
+    window_violations_avoided: int = 0
 
     @property
     def total_exposure_hours(self) -> float:
@@ -104,6 +109,7 @@ class NightSchedule:
             "total_exposure_hours": self.total_exposure_hours,
             "total_slew_deg": round(self.total_slew_deg, 4),
             "total_entropy_captured_bits": round(self.total_entropy_captured_bits, 6),
+            "window_violations_avoided": self.window_violations_avoided,
         }
 
 
@@ -177,6 +183,19 @@ def build_night_schedule(candidates: list[dict[str, Any]], *, start_utc: str,
         scored.append((priority, entropy, item, plan_result))
     scored.sort(key=lambda row: row[0], reverse=True)
 
+    # Each candidate's own clamped-to-night feasibility windows, keyed by
+    # id, so the local-search swap pass below can verify a swap keeps both
+    # candidates inside their TRUE visibility windows rather than only
+    # their slot's already-scheduled time (see `_local_search_reduce_slew`).
+    windows_by_candidate_id: dict[str, list[tuple[datetime, datetime]]] = {}
+    for _, _, item, plan_result in scored:
+        clamped = []
+        for window in _windows_as_datetimes(plan_result):
+            window = (max(window[0], night_start), min(window[1], night_end))
+            if window[0] < window[1]:
+                clamped.append(window)
+        windows_by_candidate_id[str(item["candidate_id"])] = clamped
+
     timeline: list[ScheduledObservation] = []  # kept sorted by start_utc
     unscheduled: list[str] = []
     exposure_delta = timedelta(hours=float(exposure_hours))
@@ -215,12 +234,14 @@ def build_night_schedule(candidates: list[dict[str, Any]], *, start_utc: str,
         if not placed:
             unscheduled.append(str(item["candidate_id"]))
 
-    _local_search_reduce_slew(timeline, passes=local_search_passes)
+    window_violations = _local_search_reduce_slew(
+        timeline, passes=local_search_passes, windows_by_candidate_id=windows_by_candidate_id)
     _recompute_slew(timeline)
 
     return NightSchedule(start_utc=night_start.isoformat(), duration_hours=float(duration_hours),
                          exposure_hours=float(exposure_hours), observations=timeline,
-                         unscheduled_candidate_ids=unscheduled)
+                         unscheduled_candidate_ids=unscheduled,
+                         window_violations_avoided=window_violations)
 
 
 def _total_slew(timeline: list[ScheduledObservation]) -> float:
@@ -232,22 +253,34 @@ def _total_slew(timeline: list[ScheduledObservation]) -> float:
     return total
 
 
-def _local_search_reduce_slew(timeline: list[ScheduledObservation], *, passes: int) -> None:
-    """Adjacent-pair slot swaps that reduce total slew distance, accepted
-    only when both candidates remain within their OWN start time's already-
-    computed feasibility (same slot length for every observation, so a
-    swap only exchanges which candidate occupies which already-scheduled
-    time -- this module never re-checks `followup.plan` visibility here,
-    since both slots were already proven feasible for SOME candidate at
-    insertion time, and a swap keeps each observation's own duration and
-    position in the sequence, only reassigning identity+coordinates.
-    NOTE this means a swap could, in principle, place a candidate outside
-    its true visibility window if two candidates' feasible windows differ
-    -- `evaluate_robustness`/schedule_eval.py's own diagnostics report this
-    as a measured limitation rather than assuming it away).
+def _within_any_window(start: datetime, end: datetime,
+                       windows: list[tuple[datetime, datetime]]) -> bool:
+    return any(w_start <= start and end <= w_end for w_start, w_end in windows)
+
+
+def _local_search_reduce_slew(timeline: list[ScheduledObservation], *, passes: int,
+                              windows_by_candidate_id: dict[str, list[tuple[datetime, datetime]]]
+                              | None = None) -> int:
+    """Adjacent-pair slot swaps that reduce total slew distance.
+
+    A swap exchanges which candidate occupies which already-scheduled slot
+    (same slot length for every observation), so it is well-defined
+    without touching `followup.plan` -- but a candidate's own feasibility
+    window can differ from the slot's, so a slew-reducing swap is only
+    ACCEPTED when both candidates' new slot times fall within their own
+    true visibility windows (`windows_by_candidate_id`, built by
+    `build_night_schedule` from each candidate's own clamped `followup.
+    plan` windows). A swap that would violate either candidate's window is
+    rejected and counted, not silently applied -- `window_violations_
+    avoided` on `NightSchedule` reports the count rather than assuming a
+    swap is always safe (previously an acknowledged, unmeasured gap).
+    When `windows_by_candidate_id` is omitted, the check is skipped
+    entirely (no windows to check against), preserving prior behavior for
+    any direct caller that does not have per-candidate windows to pass.
     """
+    violations_avoided = 0
     if len(timeline) < 3:
-        return
+        return violations_avoided
     for _ in range(max(0, passes)):
         improved = False
         for index in range(len(timeline) - 1):
@@ -256,11 +289,24 @@ def _local_search_reduce_slew(timeline: list[ScheduledObservation], *, passes: i
             swapped = list(timeline)
             swapped[index], swapped[index + 1] = _swap_positions(first, second)
             after = _total_slew(swapped)
-            if after < before - 1e-9:
-                timeline[index], timeline[index + 1] = swapped[index], swapped[index + 1]
-                improved = True
+            if not (after < before - 1e-9):
+                continue
+            new_first, new_second = swapped[index], swapped[index + 1]
+            if windows_by_candidate_id is not None:
+                first_windows = windows_by_candidate_id.get(new_first.candidate_id, [])
+                second_windows = windows_by_candidate_id.get(new_second.candidate_id, [])
+                first_ok = _within_any_window(_parse_utc(new_first.start_utc),
+                                              _parse_utc(new_first.end_utc), first_windows)
+                second_ok = _within_any_window(_parse_utc(new_second.start_utc),
+                                               _parse_utc(new_second.end_utc), second_windows)
+                if not (first_ok and second_ok):
+                    violations_avoided += 1
+                    continue
+            timeline[index], timeline[index + 1] = new_first, new_second
+            improved = True
         if not improved:
             break
+    return violations_avoided
 
 
 def _swap_positions(first: ScheduledObservation, second: ScheduledObservation

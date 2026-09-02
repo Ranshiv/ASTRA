@@ -59,7 +59,7 @@ def _handle_schedule_build_night(params: dict[str, Any]) -> dict[str, Any]:
     priority plus a slew-reducing local search, over `followup.plan`'s real
     visibility windows for each candidate. Never submits anything to a
     facility -- see `schedule.py`'s own module docstring for this
-    module's stated scope, and `docs/DEFERRED.txt` for why live
+    module's stated scope, and `docs/LIMITATIONS.md` for why live
     submission is not implemented.
     """
     from .. import schedule as sch
@@ -105,6 +105,47 @@ def _handle_schedule_replan(params: dict[str, Any]) -> dict[str, Any]:
     return result.to_dict()
 
 
+def _handle_schedule_evaluate_policies(params: dict[str, Any]) -> dict[str, Any]:
+    """Head-to-head resolution-vs-time-budget study across scheduling
+    policies (`schedule_eval.evaluate_scheduling_policies`). Minutes, not
+    seconds, at the default `n_runs`/`n_candidates` -- not meant to be
+    called synchronously; submit it via `job.submit(method=
+    "schedule.evaluate_policies", ...)` and poll `job.status`, the same
+    pattern `deep.compare`/`deep.sweep` already use for long-running
+    studies. Registering it here (rather than leaving it reachable only
+    from a Python REPL) is what makes that submission possible at all,
+    since `job.submit` only accepts a method already present in HANDLERS.
+    """
+    from .. import schedule_eval as sched_eval
+
+    kwargs: dict[str, Any] = {}
+    for key, caster in (("n_candidates", int), ("real_fraction", float),
+                        ("n_nights", int), ("n_runs", int), ("seed", int)):
+        if key in params:
+            kwargs[key] = caster(params[key])
+    if "hour_budgets" in params:
+        kwargs["hour_budgets"] = tuple(float(v) for v in params["hour_budgets"])
+    return sched_eval.evaluate_scheduling_policies(**kwargs)
+
+
+def _handle_schedule_evaluate_robustness(params: dict[str, Any]) -> dict[str, Any]:
+    """Noise-robustness study for the information-gain scheduling policy
+    (`schedule_eval.evaluate_robustness`). Same "submit via `job.submit`,
+    do not call synchronously" contract as `schedule.evaluate_policies`
+    above."""
+    from .. import schedule_eval as sched_eval
+
+    kwargs: dict[str, Any] = {}
+    for key, caster in (("n_candidates", int), ("real_fraction", float),
+                        ("n_nights", int), ("early_hour_budget", float),
+                        ("n_runs", int), ("seed", int)):
+        if key in params:
+            kwargs[key] = caster(params[key])
+    if "noise_levels" in params:
+        kwargs["noise_levels"] = tuple(float(v) for v in params["noise_levels"])
+    return sched_eval.evaluate_robustness(**kwargs)
+
+
 def _handle_discard_scan(params: dict[str, Any]) -> dict[str, Any]:
     """Scan one real ZTF source for coherent discarded-epoch runs (Direction
     2, "anomalies in the discard pile"): epochs the survey's own
@@ -114,7 +155,7 @@ def _handle_discard_scan(params: dict[str, Any]) -> dict[str, Any]:
     (`discard_corroboration.py`) and pixel-level adjudication
     (`discard_adjudication.py`) are pure functions over already-fetched
     data and are not yet wired to a real acquisition path over RPC -- see
-    docs/DEFERRED.txt.
+    docs/LIMITATIONS.md.
     """
     from .. import discard_pile
     from ..surveys.base import SourceRef
@@ -251,6 +292,8 @@ HANDLERS: dict[str, Handler] = {
     "followup.history": _handle_followup_history,
     "schedule.build_night": _handle_schedule_build_night,
     "schedule.replan": _handle_schedule_replan,
+    "schedule.evaluate_policies": _handle_schedule_evaluate_policies,
+    "schedule.evaluate_robustness": _handle_schedule_evaluate_robustness,
     "discard.scan": _handle_discard_scan,
     "literature.status": _handle_literature_status,
     "literature.search": _handle_literature_search,

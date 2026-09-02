@@ -2,7 +2,7 @@
 
 `data.lsst.cloud/api/tap` (the Rubin Science Platform's own TAP service)
 requires a real data-rights account token; ASTRA does not have one, and
-`docs/DEFERRED.txt` explicitly documents the resulting decision made while
+`docs/LIMITATIONS.md` explicitly documents the resulting decision made while
 planning this module: building a direct-TAP connector before a real token
 exists would be speculative effort with no way to validate it against the
 live service. `surveys/alerce.py` already delivers real, credential-free

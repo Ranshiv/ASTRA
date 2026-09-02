@@ -26,7 +26,7 @@ manifold-matched, fully finite) so a reported difference cannot be an
 artefact of the two arms silently comparing different objects -- the same
 "different populations" trap `featurematrix.join_gaia_columns`'s own
 docstring already warns about (citing the ztf_gaia entry in
-docs/DEFERRED.txt).
+docs/LIMITATIONS.md).
 """
 
 from __future__ import annotations

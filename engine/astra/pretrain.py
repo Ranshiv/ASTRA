@@ -9,7 +9,7 @@ sequences from `tensors.py`:
 2. Time-order corruption detection -- non-adjacent patches are swapped and a
    head trained to detect whether a sequence's patch order was corrupted.
 
-Deliberately NOT the contrastive objective `docs/DEFERRED.txt` marks
+Deliberately NOT the contrastive objective `docs/LIMITATIONS.md` marks
 ``[BLOCKED] Multimodal encoder (section 14) and contrastive learning``: that
 approach needs large in-batch negative counts (1024-4096) that do not fit in
 this machine's ~2.2 GB usable VRAM. Both objectives here are per-sample --

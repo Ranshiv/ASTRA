@@ -63,10 +63,18 @@ No cadence-log data structure is built here: `significance.
 evaluate_selection` already accepts `cadence_days` as a stratification
 dimension, so cadence's effect on completeness is captured by running
 injection-recovery stratified by `cadence_days` upstream of this module,
-not by a bespoke cadence log. `SurveyFootprint` is deliberately a single
-effective sky area plus time baseline, not a patchy-coverage HEALPix map
--- `healpix_common.py` is where a future full-coverage-map version would
-hang; not attempted here.
+not by a bespoke cadence log. `SurveyFootprint` remains, by default, a
+single effective sky area plus time baseline -- `SurveyFootprint.
+from_healpix_coverage` is the opt-in patchy-coverage alternative
+`healpix_common.py` was named as the hook for: it takes a real set of
+covered HEALPix pixel indices, derives `area_deg2` from their actual
+pixel area (via `astropy_healpix`, not an assumed circle/rectangle), and
+adds a `covers(ra_deg, dec_deg)` membership check reusing
+`healpix_common._target_pixel` unchanged -- a stratum can then also
+gate on genuine coverage, not just an aggregate area number. This does
+NOT change the meaning of `SurveyFootprint(survey, area_deg2,
+baseline_days)`'s existing three-argument constructor or any function
+built on `exposure_deg2_days`; it is a second, additive way to build one.
 
 Like every other opt-in research module in this codebase, NOT wired into
 `rpc.py`, `scoring.WEIGHTS`, or `evidence.py`.
@@ -101,22 +109,69 @@ def _require_emcee():
 
 @dataclass(frozen=True)
 class SurveyFootprint:
-    """A single effective sky area and time baseline for one survey --
-    not a patchy-coverage sky map (see module docstring)."""
+    """A single effective sky area and time baseline for one survey.
+
+    Optionally also a real patchy-coverage HEALPix map (`nside`/`order`/
+    `covered_pixel_indices`), built via `from_healpix_coverage` rather than
+    the plain constructor -- see module docstring."""
 
     survey: str
     area_deg2: float
     baseline_days: float
+    nside: int | None = None
+    order: str = "nested"
+    covered_pixel_indices: frozenset[int] | None = None
 
     def __post_init__(self) -> None:
         if self.area_deg2 <= 0:
             raise PopulationRateError(f"area_deg2 must be positive, got {self.area_deg2}")
         if self.baseline_days <= 0:
             raise PopulationRateError(f"baseline_days must be positive, got {self.baseline_days}")
+        if self.covered_pixel_indices is not None and self.nside is None:
+            raise PopulationRateError("nside is required when covered_pixel_indices is given")
 
     @property
     def exposure_deg2_days(self) -> float:
         return self.area_deg2 * self.baseline_days
+
+    @property
+    def has_coverage_map(self) -> bool:
+        return self.covered_pixel_indices is not None
+
+    def covers(self, ra_deg: float, dec_deg: float) -> bool:
+        """Whether this survey's real coverage map includes `(ra_deg,
+        dec_deg)`. Reuses `healpix_common._target_pixel` unchanged -- the
+        same pixel-membership primitive `gw.py`/`association.py`/`frb.py`
+        already share. Requires `from_healpix_coverage`; a footprint built
+        from the plain constructor has no map to check against."""
+        if self.covered_pixel_indices is None or self.nside is None:
+            raise PopulationRateError(
+                "this SurveyFootprint has no coverage map; build it via "
+                "SurveyFootprint.from_healpix_coverage")
+        from .healpix_common import _target_pixel
+        pixel = _target_pixel(ra_deg, dec_deg, self.nside, self.order)
+        return pixel in self.covered_pixel_indices
+
+    @classmethod
+    def from_healpix_coverage(cls, survey: str, baseline_days: float, *,
+                              covered_pixel_indices: set[int] | frozenset[int],
+                              nside: int, order: str = "nested") -> "SurveyFootprint":
+        """Build a footprint from a real set of covered HEALPix pixel
+        indices. `area_deg2` is DERIVED from the actual pixel area at this
+        `nside` (`astropy_healpix`'s own per-pixel solid angle), not an
+        assumed circle/rectangle -- so `exposure_deg2_days` reflects the
+        real observed footprint, not a caller-guessed number."""
+        if not covered_pixel_indices:
+            raise PopulationRateError("covered_pixel_indices must be non-empty")
+        import astropy.units as u
+        from astropy_healpix import HEALPix
+
+        healpix = HEALPix(nside=nside, order=order)
+        pixel_area_deg2 = float(healpix.pixel_area.to(u.deg ** 2).value)
+        area_deg2 = pixel_area_deg2 * len(covered_pixel_indices)
+        return cls(survey=survey, area_deg2=area_deg2, baseline_days=baseline_days,
+                   nside=nside, order=order,
+                   covered_pixel_indices=frozenset(covered_pixel_indices))
 
 
 @dataclass(frozen=True)

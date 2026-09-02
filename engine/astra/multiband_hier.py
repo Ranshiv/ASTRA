@@ -5,7 +5,7 @@ astropy's `LombScargleMultiband(method="fast")` -- independent per-band
 periodograms combined by weight, deliberately NOT the genuine joint
 (`"flexible"`) fit, which that module's own docstring measured at ~39s/object
 against ~2.4s for "fast" at real ZTF scale. This module is the different,
-opt-in thing `docs/DEFERRED.txt` calls "full hierarchical heteroscedastic
+opt-in thing `docs/LIMITATIONS.md` calls "full hierarchical heteroscedastic
 multi-band modelling": one shared latent period across bands, but each
 band gets its OWN amplitude and its OWN per-point measurement errors feed
 the noise model directly (heteroscedastic), rather than a single SNR

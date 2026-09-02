@@ -8,7 +8,7 @@ activation is kept and concatenated back into the matching up-sampling
 stage, and a sinusoidal timestep embedding is broadcast into every block --
 the standard DDPM (Ho et al. 2020, "Denoising Diffusion Probabilistic
 Models") architecture, at the smallest scale that still has a real skip
-path, since this project's own house rule (`docs/DEFERRED.txt`'s repeated
+path, since this project's own house rule (`docs/LIMITATIONS.md`'s repeated
 "don't assume newer/bigger is automatically better, measure it") argues
 against building more capacity than the data/hardware need.
 

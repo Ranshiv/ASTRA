@@ -8,7 +8,7 @@ its query methods accept a `survey` parameter supporting both "ztf" and
 "lsst" — i.e. it already brokers real LSST alerts, with no data-rights
 credential wall. That distinguishes this connector from the direct Rubin/LSST
 TAP endpoint (https://data.lsst.cloud/api/tap), which does require one; see
-docs/DEFERRED.txt for the full history of that blocker.
+docs/LIMITATIONS.md for the full history of that blocker.
 
 Unlike the metadata-only opt-in connectors (sdss.py, panstarrs.py, chandra.py,
 swift.py, xmm.py, des.py, hubble.py, jwst.py), ALeRCE serves real per-object

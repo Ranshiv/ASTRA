@@ -1,7 +1,13 @@
 import { useState } from "react";
 
 import { Badge, Button, Field, Note } from "@/components/ui";
-import { engine, type Candidate, type VoteTally } from "@/lib/engine";
+import { engine, type Candidate, type ExperimentArmResolution, type VoteTally } from "@/lib/engine";
+
+const ARM_LABEL: Record<ExperimentArmResolution["arm"], string> = {
+  score_shown: "score shown",
+  score_blinded: "score hidden",
+  score_shuffled: "decoy score shown",
+};
 
 const LABELS = ["interesting", "artifact", "known_object", "uncertain", "needs_follow_up"] as const;
 
@@ -20,6 +26,27 @@ export function CandidateNotesPanel({
   const [voteBusy, setVoteBusy] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
   const [promotion, setPromotion] = useState<string | null>(null);
+  // Reviewer human-factors experiment (Direction 6, "the review UI as a
+  // controlled experiment"): resolved once a reviewer ID is entered, and
+  // gates what the community-vote flow below actually displays.
+  const [arm, setArm] = useState<ExperimentArmResolution | null>(null);
+  const [armError, setArmError] = useState<string | null>(null);
+
+  async function resolveArm(id: string) {
+    setArmError(null);
+    if (!id.trim()) {
+      setArm(null);
+      return;
+    }
+    try {
+      const resolution = await engine.experimentArm(
+        candidate.candidate_id, id, { [candidate.candidate_id]: candidate.score.total });
+      setArm(resolution);
+    } catch (err) {
+      setArmError(String(err));
+      setArm(null);
+    }
+  }
 
   async function loadVotes() {
     setVoteError(null);
@@ -35,7 +62,12 @@ export function CandidateNotesPanel({
     setVoteBusy(true);
     setVoteError(null);
     try {
-      await engine.castLabelVote(candidate.candidate_id, reviewerId, value, "", projectId);
+      // Arm-gated: casts through review.experiment.vote so the arm
+      // resolved above (and the score actually displayed) is recorded
+      // alongside the vote, not the plain, non-experimental vote path.
+      await engine.castExperimentalVote(
+        candidate.candidate_id, reviewerId, value,
+        { [candidate.candidate_id]: candidate.score.total }, "", projectId);
       await loadVotes();
     } catch (err) {
       setVoteError(String(err));
@@ -132,12 +164,32 @@ export function CandidateNotesPanel({
           Community votes (multiple independent reviewers)
         </p>
         <div className="flex flex-wrap items-end gap-2">
-          <Field label="Reviewer ID" value={reviewerId} onChange={setReviewerId}
+          <Field label="Reviewer ID" value={reviewerId}
+                onChange={(value) => { setReviewerId(value); void resolveArm(value); }}
                 width="w-32" placeholder="e.g. your name or handle" />
           <Button disabled={voteBusy} onClick={() => void loadVotes()}>
             {tally ? "Refresh votes" : "Load votes"}
           </Button>
         </div>
+        {armError && <Note tone="bad">{armError}</Note>}
+        {arm && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <Badge tone="muted">{ARM_LABEL[arm.arm]}</Badge>
+            {arm.arm === "score_shown" && arm.displayed_score !== null && (
+              <span className="text-xs text-[var(--color-muted)]">
+                score: {arm.displayed_score.toFixed(3)}
+              </span>
+            )}
+            {arm.arm === "score_shuffled" && arm.displayed_score !== null && (
+              <span className="text-xs text-[var(--color-warn)]">
+                score: {arm.displayed_score.toFixed(3)} (decoy, another candidate)
+              </span>
+            )}
+            {arm.arm === "score_blinded" && (
+              <span className="text-xs text-[var(--color-muted)]">score withheld for this vote</span>
+            )}
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {LABELS.map((item) => (
             <button

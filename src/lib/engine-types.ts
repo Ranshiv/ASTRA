@@ -562,6 +562,28 @@ export interface VotePromotion {
   agreement_fraction: number | null;
 }
 
+/** review.experiment.arm/vote — the reviewer human-factors experiment
+ * (Direction 6, "the review UI as a controlled experiment"): which of the
+ * three arms (score_shown/score_blinded/score_shuffled) a reviewer sees
+ * for a candidate, resolved deterministically from (reviewer_id,
+ * candidate_id) so the same pair always gets the same arm. */
+export type ExperimentArm = "score_shown" | "score_blinded" | "score_shuffled";
+
+export interface ExperimentArmResolution {
+  arm: ExperimentArm;
+  displayed_score: number | null;
+  decoy_candidate_id: string | null;
+}
+
+export interface ExperimentVote extends ExperimentArmResolution {
+  vote_id: string;
+  candidate_key: string;
+  reviewer_id: string;
+  label: string;
+  note: string;
+  recorded_utc: string;
+}
+
 export interface ReadinessStatus {
   gaia_epoch: { status: string; expected_release: string; enabled: boolean; code_ready: boolean; reason: string };
   multimodal: { status: string; free_vram_mb?: number; required_min_free_vram_mb: number; enabled: boolean };

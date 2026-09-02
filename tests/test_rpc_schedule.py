@@ -52,3 +52,39 @@ def test_build_night_rejects_missing_candidates_param():
         "start_utc": START,
     }})
     assert response["ok"] is False
+
+
+class TestScheduleEvaluateRpc:
+    def test_evaluate_policies_direct_call(self):
+        response = rpc.dispatch({"id": 1, "method": "schedule.evaluate_policies", "params": {
+            "n_candidates": 6, "n_nights": 2, "n_runs": 1,
+            "hour_budgets": [8.0], "seed": 0,
+        }})
+        assert response["ok"] is True
+        assert "by_policy" in response["result"]
+
+    def test_evaluate_robustness_direct_call(self):
+        response = rpc.dispatch({"id": 1, "method": "schedule.evaluate_robustness", "params": {
+            "n_candidates": 6, "n_nights": 2, "n_runs": 1,
+            "noise_levels": [0.0, 0.3], "seed": 0,
+        }})
+        assert response["ok"] is True
+
+    def test_evaluate_policies_is_job_submittable(self):
+        submit = rpc.dispatch({"id": 1, "method": "job.submit", "params": {
+            "method": "schedule.evaluate_policies",
+            "params": {"n_candidates": 6, "n_nights": 2, "n_runs": 1, "hour_budgets": [8.0]},
+        }})
+        assert submit["ok"] is True
+        job_id = submit["result"]["job_id"]
+
+        import time as _time
+        deadline = _time.monotonic() + 10
+        status = None
+        while _time.monotonic() < deadline:
+            status = rpc.dispatch({"id": 2, "method": "job.status",
+                                   "params": {"job_id": job_id}})["result"]
+            if status["status"] in {"completed", "failed"}:
+                break
+            _time.sleep(0.05)
+        assert status is not None and status["status"] == "completed"

@@ -77,6 +77,34 @@ def _handle_review_evaluate(params: dict[str, Any]) -> dict[str, Any]:
                            _workspace_root(params.get("project_id")))
 
 
+def _handle_review_experiment_arm(params: dict[str, Any]) -> dict[str, Any]:
+    """Resolve a reviewer's arm and what they should see for one candidate,
+    WITHOUT casting a vote -- what a review UI needs to render arm-gated
+    content (hide the score in `score_blinded`, show a decoy in
+    `score_shuffled`) before the reviewer makes a decision.
+    `review_experiment.assign_arm`/`displayed_score_for` are the same
+    deterministic functions `cast_experimental_vote` itself uses, so a
+    later vote for the same (reviewer, candidate) pair is guaranteed to
+    resolve to the identical arm this call reports.
+    """
+    from .. import review_experiment
+
+    candidate_id = str(params["candidate_id"])
+    reviewer_id = str(params["reviewer_id"])
+    score_lookup = {str(k): float(v) for k, v in params.get("score_lookup", {}).items()}
+    arm = review_experiment.assign_arm(reviewer_id, candidate_id)
+    real_score = score_lookup.get(candidate_id)
+    decoy_id = None
+    decoy_score = None
+    if arm == "score_shuffled":
+        decoy_id = review_experiment.pick_decoy_candidate_id(
+            reviewer_id, candidate_id, list(score_lookup.keys()))
+        if decoy_id is not None:
+            decoy_score = score_lookup.get(decoy_id)
+    displayed = review_experiment.displayed_score_for(arm, real_score, decoy_score)
+    return {"arm": arm, "displayed_score": displayed, "decoy_candidate_id": decoy_id}
+
+
 def _handle_review_experiment_vote(params: dict[str, Any]) -> dict[str, Any]:
     """Cast one vote under the reviewer human-factors experiment (Direction
     6, "the review UI as a controlled experiment"): resolves the caller's
@@ -149,6 +177,7 @@ HANDLERS: dict[str, Handler] = {
     "selection.evaluate": _handle_selection_evaluate,
     "review.next": _handle_review_next,
     "candidates.evaluate": _handle_review_evaluate,
+    "review.experiment.arm": _handle_review_experiment_arm,
     "review.experiment.vote": _handle_review_experiment_vote,
     "review.experiment.preregister": _handle_review_experiment_preregister,
     "corroborate.equivalence": _handle_corroborate_equivalence,

@@ -28,7 +28,7 @@ module added alongside it (gw.py, frb.py, tess_psf.py).
 Genuinely open, not attempted here: real ZTF difference-image acquisition
 (`products.py`'s `CutoutRequest` only supports `product_kind="science"`
 today, and this module does not guess the IBE difference/reference-image
-path contract -- see `docs/DEFERRED.txt`) and per-epoch WCS-to-pixel
+path contract -- see `docs/LIMITATIONS.md`) and per-epoch WCS-to-pixel
 projection of reference-catalog positions. This module operates on
 already-projected pixel positions and an already-assembled image/error
 cube, exactly like `tess_psf.fit_cadence`/`build_scene_model` do.

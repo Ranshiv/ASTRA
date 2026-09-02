@@ -12,7 +12,7 @@
 #                       study harness, which is intentionally never wired
 #                       into the runtime path.
 #   dormant / blocked / synthetic-only - not distinguished by this
-#                       heuristic pass; cross-reference docs/DEFERRED.txt's
+#                       heuristic pass; cross-reference docs/LIMITATIONS.md's
 #                       existing [PARTIAL]/[KNOWN] entries for that detail
 #                       on any specific module before treating it as fully
 #                       characterized here.
@@ -21,9 +21,9 @@
 # rpc.py's source text -- a fast, mechanical first pass, not a manual
 # per-module review. "production-wired" means "rpc.py's dispatch table
 # imports or names this module", not "this module is scientifically
-# validated" -- cross-reference docs/DEFERRED.txt and this file's
+# validated" -- cross-reference docs/LIMITATIONS.md and this file's
 # "benchmarked" entries for validation status specifically. Reconcile
-# against docs/DEFERRED.txt's 50 [PARTIAL] / 13 [KNOWN] entries before
+# against docs/LIMITATIONS.md's 50 [PARTIAL] / 13 [KNOWN] entries before
 # treating any single module's status here as final.
 
 schema_version: 1

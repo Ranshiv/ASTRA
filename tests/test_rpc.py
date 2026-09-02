@@ -204,7 +204,7 @@ def test_review_next_uses_candidate_uncertainty(monkeypatch):
 
 
 def test_review_next_active_mode_excludes_labelled_candidates(monkeypatch, isolated_root):
-    """docs/DEFERRED.txt roadmap item 36: active_review.py's label-reweighted
+    """docs/LIMITATIONS.md roadmap item 36: active_review.py's label-reweighted
     selection, deliberately promoted into `review.next`'s `active` flag."""
     rows = [
         {"candidate_id": "a", "score": {"model_agreement": 1},
@@ -406,7 +406,7 @@ class TestAcquireSurveyOptions:
     """B2: the acquire.cone RPC method must forward an optional
     survey_options dict (per-survey connector kwargs, e.g. an HLSP author
     choice for TESS) to acquire.acquire(), and pass None when the caller
-    omits it -- reproducing today's call exactly. See docs/DEFERRED.txt
+    omits it -- reproducing today's call exactly. See docs/LIMITATIONS.md
     Phase 8."""
 
     def _capture_acquire_call(self, monkeypatch):
@@ -653,6 +653,43 @@ class TestServeDoesNotBlockJobPollingBehindASlowHandler:
         replies = [json.loads(text_line) for text_line in stdout.getvalue().splitlines()]
         assert {r["id"] for r in replies} == {1, 2}
         assert next(r for r in replies if r["id"] == 1)["result"] == {"slow": "done"}
+
+
+class TestJobSubmitAcceptsAnyRegisteredMethod:
+    """`job.submit` used to check only crossmatch_deep.py's own local
+    HANDLERS dict (crossmatch/timeframe/deep, five methods), so submitting
+    any other module's method -- e.g. `schedule.evaluate_policies` -- as a
+    background job failed with a "not a registered science handler" error
+    despite being a perfectly valid RPC method. It now checks the full
+    composed `rpc.HANDLERS` registry."""
+
+    def test_submits_a_non_crossmatch_deep_method(self, monkeypatch):
+        called = threading.Event()
+
+        def _fake_handler(_params):
+            called.set()
+            return {"ok": True}
+
+        monkeypatch.setitem(rpc.HANDLERS, "schedule.evaluate_policies", _fake_handler)
+        reply = rpc.dispatch({"id": 1, "method": "job.submit",
+                              "params": {"method": "schedule.evaluate_policies",
+                                        "params": {}}})
+        assert reply["ok"] is True
+        job_id = reply["result"]["job_id"]
+        assert called.wait(timeout=5)
+        status = rpc.dispatch({"id": 2, "method": "job.status",
+                              "params": {"job_id": job_id}})
+        assert status["ok"] is True
+
+    def test_still_rejects_a_job_dot_prefixed_method(self):
+        reply = rpc.dispatch({"id": 1, "method": "job.submit",
+                              "params": {"method": "job.submit", "params": {}}})
+        assert reply["ok"] is False
+
+    def test_still_rejects_an_unregistered_method(self):
+        reply = rpc.dispatch({"id": 1, "method": "job.submit",
+                              "params": {"method": "not.a.real.method", "params": {}}})
+        assert reply["ok"] is False
 
 
 class TestManifestListDoesNotCrashOnIdentityParams:

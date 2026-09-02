@@ -179,14 +179,29 @@ def _handle_deep_sweep(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_job_submit(params: dict[str, Any]) -> dict[str, Any]:
+    """Submit any registered RPC method as a background job.
+
+    Previously checked only THIS module's own local `HANDLERS` dict
+    (crossmatch/timeframe/deep, five methods), so submitting any other
+    module's slow method (e.g. `schedule.evaluate_policies`, which this
+    session added specifically to be job-submittable) would fail with "not
+    a registered science handler" despite being a perfectly valid RPC
+    method -- a real gap, not by design. Looks up the full composed
+    registry (`rpc.HANDLERS`) instead, imported lazily here (not at module
+    top level) to avoid the circular import `rpc.py` -> this module ->
+    `rpc.py` would otherwise create; by the time a job is actually
+    submitted, `astra.rpc` has already finished importing.
+    """
+    from .. import rpc as rpc_mod
+
     method = str(params["method"])
-    if method.startswith("job.") or method not in HANDLERS:
+    if method.startswith("job.") or method not in rpc_mod.HANDLERS:
         raise ValueError("job method must name a registered science handler")
     request_params = params.get("params") or {}
     return jobs.submit(
         method,
         request_params,
-        HANDLERS[method],
+        rpc_mod.HANDLERS[method],
         project_id=params.get("project_id") or request_params.get("project_id"),
         idempotency_key=params.get("idempotency_key") or request_params.get("idempotency_key"),
     )

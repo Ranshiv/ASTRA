@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import review
+from .review_experiment import PREREGISTERED_ANALYSIS_PLAN
 
 ARMS = ("score_shown", "score_blinded", "score_shuffled")
 
@@ -52,11 +53,25 @@ def _usable_votes(votes: list[dict], truth: dict[str, bool]) -> list[dict]:
     return usable
 
 
-def anchoring_effect_size(votes: list[dict], truth: dict[str, bool]) -> dict[str, Any]:
+def anchoring_effect_size(votes: list[dict], truth: dict[str, bool], *,
+                          min_votes_per_arm: int | None = None) -> dict[str, Any]:
     """Per-arm accuracy against truth, plus within-arm cross-reviewer
     agreement -- the two numbers together are what separate anchoring from
     real signal (see this module's docstring).
+
+    Enforces the preregistered stopping rule
+    (`review_experiment.PREREGISTERED_ANALYSIS_PLAN["stopping_rule"]`):
+    when any arm has fewer than `min_votes_per_arm` votes (default
+    `PREREGISTERED_ANALYSIS_PLAN["minimum_votes_per_arm"]`, 30), `ready` is
+    `False`, `underpowered_arms` names which ones, and
+    `anchoring_signature_detected` is forced to `None` rather than reported
+    on an interim look -- exactly what the preregistration's own stopping
+    rule says an interim analysis must not do. Per-arm accuracy/agreement
+    are still returned even when not `ready`, so a caller can watch
+    enrollment progress without being handed a premature verdict.
     """
+    threshold = (PREREGISTERED_ANALYSIS_PLAN["minimum_votes_per_arm"]
+                if min_votes_per_arm is None else min_votes_per_arm)
     usable = _usable_votes(votes, truth)
     per_arm: dict[str, dict[str, Any]] = {}
 
@@ -92,19 +107,25 @@ def anchoring_effect_size(votes: list[dict], truth: dict[str, bool]) -> dict[str
                                          if cross_reviewer_agreement is not None else None),
         }
 
+    underpowered_arms = [arm for arm in ARMS if per_arm[arm]["n_votes"] < threshold]
+    ready = not underpowered_arms
+
     shown = per_arm["score_shown"]["accuracy"]
     blinded = per_arm["score_blinded"]["accuracy"]
     shuffled = per_arm["score_shuffled"]["accuracy"]
     # A real anchoring signature: shuffled tracks blinded (both saw a number
     # unrelated to ground truth, or no number) while shown diverges from
-    # both -- computed only when all three arms have a usable accuracy.
+    # both -- computed only when all three arms have a usable accuracy AND
+    # the stopping rule's own vote-count threshold is met (see docstring).
     anchoring_signature_detected = None
-    if None not in (shown, blinded, shuffled):
+    if ready and None not in (shown, blinded, shuffled):
         anchoring_signature_detected = bool(
             abs(shuffled - blinded) < abs(shown - blinded)
             and abs(shuffled - blinded) < abs(shown - shuffled))
 
-    return {"by_arm": per_arm, "anchoring_signature_detected": anchoring_signature_detected}
+    return {"by_arm": per_arm, "anchoring_signature_detected": anchoring_signature_detected,
+           "ready": ready, "min_votes_per_arm": threshold,
+           "underpowered_arms": underpowered_arms}
 
 
 def calibration_curve(votes: list[dict], truth: dict[str, bool], *,
