@@ -99,7 +99,15 @@ class KeplerConnector(SurveyConnector):
             return
         try:
             quarter = int(row["sequence_number"])
-        except (TypeError, ValueError):
+        # Real bug found live: a masked/missing sequence_number cell
+        # (astropy masked columns are common in MAST search results)
+        # raises numpy.ma.MaskError on conversion, not TypeError or
+        # ValueError -- an uncaught MaskError here crashed the whole
+        # cone_search() for every target in the batch over one target's
+        # missing quarter number, not just this one row. Same gap
+        # tess.py's _row_float/_record_sector had (this connector's own
+        # docstring says it follows tess.py's exact shape).
+        except (TypeError, ValueError, np.ma.MaskError):
             return
         quarters = source.extra.setdefault("quarters", [])
         if quarter not in quarters:

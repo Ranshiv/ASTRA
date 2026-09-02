@@ -134,6 +134,30 @@ class BenchmarkRunResult:
                "results": [r.to_dict() for r in self.results]}
 
 
+def scope_to_manifest(matrix: FeatureMatrix, object_ids: set[str] | list[str]
+                      ) -> tuple[FeatureMatrix, int]:
+    """Filter a feature matrix down to the rows a dataset manifest actually
+    covers before it is scored.
+
+    `featurematrix.build(survey=...)` scans every stored curve for that
+    survey, not only the curves one acquisition's cone matched -- so a
+    matrix built after several acquisitions can carry far more rows than
+    the manifest whose `dataset_manifest_hash` a `ResultRecord` cites. That
+    hash then certifies the *query*, not the rows actually scored (see
+    docs/RESULTS.md's "Reading these numbers correctly" and
+    docs/LIMITATIONS.md). Calling this before `run_cross_survey_anomaly`
+    makes the hash true of the scored rows too.
+
+    Returns the scoped matrix and the number of out-of-manifest rows
+    dropped, so a caller can report it rather than silently rescoping.
+    """
+    wanted = {str(o) for o in object_ids}
+    rows = [i for i, identity in enumerate(matrix.identities)
+            if str(identity.get("object_id")) in wanted]
+    dropped = len(matrix) - len(rows)
+    return matrix.subset(rows), dropped
+
+
 def run_cross_survey_anomaly(
     matrix: FeatureMatrix, spec: BenchmarkSpec, split: Split, *,
     experiment_id: str, dataset_manifest_hash: str, injection_fraction: float = 0.1,
@@ -195,4 +219,5 @@ def run_cross_survey_anomaly(
                               results=results)
 
 
-__all__ = ["BenchmarkRunResult", "run_cross_survey_anomaly", "BASELINE_NAMES"]
+__all__ = ["BenchmarkRunResult", "run_cross_survey_anomaly", "scope_to_manifest",
+          "BASELINE_NAMES"]

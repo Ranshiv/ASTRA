@@ -132,19 +132,25 @@ class EnsembleResult:
     contamination: float = DEFAULT_CONTAMINATION
     skipped_rows: int = 0
 
-    def ranked(self, top: int = 50) -> list[dict]:
-        """Highest-scoring candidates first, with the evidence attached."""
+    def ranked(self, top: int = 50, reference: np.ndarray | None = None) -> list[dict]:
+        """Highest-scoring candidates first, with the evidence attached.
+
+        ``reference`` is an optional external population (e.g. a persisted,
+        cross-run calibration reference) to calibrate ``consensus_calibrated``
+        against; absent one, calibration falls back to this batch, matching
+        ``calibrate_scores``'s own default.
+        """
         if self.consensus.size == 0:
             return []
 
+        calibrated = calibrate_scores(self.consensus, reference=reference)
         order = np.argsort(-self.consensus)[:top]
         results = []
         for rank, index in enumerate(order, start=1):
             entry = {
                 "rank": rank,
                 "consensus_score": float(self.consensus[index]),
-                "consensus_calibrated": float(
-                    calibrate_scores(self.consensus)[index]),
+                "consensus_calibrated": float(calibrated[index]),
                 "model_agreement": int(self.agreement[index]),
                 **self.identities[index],
             }
@@ -153,13 +159,13 @@ class EnsembleResult:
             results.append(entry)
         return results
 
-    def to_dict(self) -> dict:
+    def to_dict(self, reference: np.ndarray | None = None) -> dict:
         return {
             "rows_scored": len(self.identities),
             "rows_skipped": self.skipped_rows,
             "contamination": self.contamination,
             "detectors": [d.to_dict() for d in self.detectors.values()],
-            "calibration": calibration_report(self.consensus),
+            "calibration": calibration_report(self.consensus, reference=reference),
         }
 
 
@@ -368,4 +374,52 @@ def save_ranking(result: EnsembleResult, name: str, top: int = 200,
 
     payload = {"summary": result.to_dict(), "candidates": result.ranked(top)}
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return path
+
+
+DEFAULT_CALIBRATION_CAP = 20_000
+
+
+def _calibration_reference_path(name: str, root: Path | None) -> Path:
+    root = root or config.PATHS.projects
+    return root / "calibration" / f"{name}.json"
+
+
+def load_calibration_reference(name: str, root: Path | None = None) -> np.ndarray:
+    """Load the persisted, cross-run consensus-score reference for ``name``.
+
+    Absent a prior run (or a corrupt/missing file), returns an empty array so
+    callers naturally fall back to batch-relative calibration via
+    ``calibrate_scores``'s own default.
+    """
+    path = _calibration_reference_path(name, root)
+    if not path.exists():
+        return np.empty(0)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        scores = np.asarray(payload.get("scores", []), dtype=float)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return np.empty(0)
+    return scores[np.isfinite(scores)]
+
+
+def update_calibration_reference(name: str, root: Path | None, scores: np.ndarray,
+                                 cap: int = DEFAULT_CALIBRATION_CAP) -> Path:
+    """Fold this run's consensus scores into the persisted reference for ``name``.
+
+    Bounded by ``cap`` via FIFO eviction (oldest scores drop first), so the
+    reference stays a recent, representative sample instead of growing
+    unbounded or going stale by never evicting.
+    """
+    path = _calibration_reference_path(name, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = load_calibration_reference(name, root)
+    new_scores = np.asarray(scores, dtype=float)
+    new_scores = new_scores[np.isfinite(new_scores)]
+    combined = np.concatenate([existing, new_scores])
+    if combined.size > cap:
+        combined = combined[-cap:]
+
+    path.write_text(json.dumps({"scores": combined.tolist()}), encoding="utf-8")
     return path

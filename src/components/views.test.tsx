@@ -6,6 +6,7 @@
  * an empty table that looks like a failure.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { invoke } from "@/test/setup";
@@ -217,6 +218,47 @@ describe("ReportsView", () => {
       await screen.findByText(/look like a result without being one/i),
     ).toBeInTheDocument();
   });
+
+  it("says no benchmark has run yet before one is submitted", async () => {
+    respond();
+    render(<ReportsView />);
+
+    expect(await screen.findByText(/No benchmark run yet/i)).toBeInTheDocument();
+  });
+
+  it("runs a benchmark and shows the scored-row provenance and results", async () => {
+    respond({
+      engine_manifests: [{
+        dataset_id: "core-demo-2026", created_utc: "2026-08-27T00:00:00Z",
+        surveys: ["ZTF"], objects: 154, content_hash: "abc123",
+      }],
+      engine_features_list: [{ name: "core-demo-2026-ztf", path: "x", rows: 467, mb: 1.2 }],
+      engine_research_benchmark_run: {
+        benchmark_id: "cross-survey-anomaly-demo",
+        split_id: "core-demo-2026_object_split",
+        experiment_id: "EXP-0001",
+        matrix_rows_scored: 62,
+        dropped_out_of_manifest_rows: 405,
+        results: [{
+          experiment_id: "EXP-0001", benchmark_id: "cross-survey-anomaly-demo",
+          split_id: "core-demo-2026_object_split", dataset_manifest_hash: "abc123",
+          metric: "average_precision", value: 0.948, sample_count: 62,
+          confidence_interval: [0.9, 0.98], seed: 0, synthetic: true,
+          artifact_refs: [], notes: "method=astra_ensemble; real feature data, synthetic injected anomaly labels (fraction=0.1)",
+        }],
+      },
+    });
+    render(<ReportsView />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Run benchmark/i }));
+
+    expect(await screen.findByText(/62 rows scored/i)).toBeInTheDocument();
+    // Both the status line and the results-panel badge report the drop
+    // count, so more than one element legitimately matches.
+    expect((await screen.findAllByText(/405 out-of-manifest rows dropped/i)).length).toBeGreaterThan(0);
+    expect(await screen.findByText("astra_ensemble")).toBeInTheDocument();
+    expect(await screen.findByText(/synthetic label/i)).toBeInTheDocument();
+  });
 });
 
 describe("ProjectWorkspace", () => {
@@ -228,7 +270,25 @@ describe("ProjectWorkspace", () => {
     };
     respond({ engine_projects: [project] });
     const onSelect = vi.fn();
-    render(<ProjectWorkspace activeProject={project as never} surveys={[]} onSelect={onSelect} />);
+    // The form remounts on `activeProject`'s identity (via a `key` in
+    // ProjectWorkspace), the same way App.tsx really drives it: `onSelect`
+    // updates the parent's state, which flows back down as a new prop. A
+    // harness that owns `activeProject` and forwards `onSelect` into it
+    // exercises that loop; passing a fixed prop with a bare mock would not.
+    function Harness() {
+      const [activeProject, setActiveProject] = useState<typeof project | null>(project);
+      return (
+        <ProjectWorkspace
+          activeProject={activeProject as never}
+          surveys={[]}
+          onSelect={(next) => {
+            onSelect(next);
+            setActiveProject(next as typeof project | null);
+          }}
+        />
+      );
+    }
+    render(<Harness />);
 
     expect(await screen.findByRole("textbox", { name: "Name" })).toHaveValue("Existing");
     fireEvent.click(screen.getByRole("button", { name: /New project/i }));

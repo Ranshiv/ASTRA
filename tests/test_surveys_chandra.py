@@ -6,81 +6,7 @@ import pytest
 
 from astra import netclient
 from astra.surveys.base import ConeQuery, SourceRef
-from astra.surveys.chandra import ChandraConnector, parse_rows, query_band_fluxes
-
-VALID_ROWS = [
-    {"name": "2CXO J120021.5+223321", "ra": 180.122, "dec": 22.411,
-     "obsid": 12345, "instrument": "ACIS-S", "flux_aper_b": 1.2e-14},
-    {"src_id": 987654, "ra_deg": 180.130, "dec_deg": 22.420},
-]
-
-
-class _FakeResponse:
-    def __init__(self, payload: object) -> None:
-        self._payload = payload
-
-    def json(self) -> object:
-        return self._payload
-
-
-class TestParseRows:
-    def test_keeps_only_dict_rows(self):
-        assert parse_rows(["not-a-dict", {"a": 1}]) == [{"a": 1}]
-
-    def test_non_list_payload_yields_no_rows(self):
-        assert parse_rows({"error": "bad request"}) == []
-
-    def test_respects_limit(self):
-        assert len(parse_rows(VALID_ROWS, limit=1)) == 1
-
-
-class TestChandraConnector:
-    def test_capabilities_declare_no_light_curve(self):
-        connector = ChandraConnector()
-        assert "light_curve" not in connector.capabilities
-        assert connector.enabled_by_default is False
-
-    def test_cone_search_parses_valid_rows(self, monkeypatch, cone: ConeQuery):
-        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(VALID_ROWS))
-        sources = ChandraConnector().cone_search(cone, limit=10)
-        assert len(sources) == 2
-        assert sources[0].survey == "Chandra"
-        assert sources[0].object_id == "2CXO J120021.5+223321"
-        assert sources[0].ra_deg == pytest.approx(180.122)
-        assert sources[0].extra["instrument"] == "ACIS-S"
-        # second row falls back to src_id / ra_deg / dec_deg.
-        assert sources[1].object_id == "987654"
-        assert sources[1].ra_deg == pytest.approx(180.130)
-
-    def test_cone_search_skips_rows_missing_position(self, monkeypatch, cone: ConeQuery):
-        payload = [{"name": "x"}]
-        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(payload))
-        assert ChandraConnector().cone_search(cone) == []
-
-    def test_cone_search_handles_non_json_response(self, monkeypatch, cone: ConeQuery):
-        class _Broken:
-            def json(self):
-                raise ValueError("not json")
-
-        monkeypatch.setattr(netclient, "get", lambda *a, **k: _Broken())
-        assert ChandraConnector().cone_search(cone) == []
-
-    def test_cone_search_clamps_limit(self, monkeypatch, cone: ConeQuery):
-        captured: dict = {}
-
-        def fake_get(url, params, timeout, provider):
-            captured["params"] = params
-            captured["provider"] = provider
-            return _FakeResponse(VALID_ROWS)
-
-        monkeypatch.setattr(netclient, "get", fake_get)
-        ChandraConnector().cone_search(cone, limit=10_000)
-        assert captured["params"]["limit"] == 200
-        assert captured["provider"] == "chandra"
-
-    def test_fetch_light_curves_returns_empty(self):
-        source = SourceRef(survey="Chandra", object_id="1", ra_deg=0.0, dec_deg=0.0)
-        assert ChandraConnector().fetch_light_curves(source) == []
+from astra.surveys.chandra import ChandraConnector, query_band_fluxes
 
 
 def _votable(fields: list[str], rows: list[list[str]]) -> str:
@@ -100,10 +26,57 @@ class _VotableResponse:
         self.headers = {"Content-Type": "application/x-votable+xml"}
 
 
+# `cone_search` now reads the same VizieR IX/70 (CSC 2.1) shape as
+# `query_band_fluxes` -- see chandra.py's module docstring for why this
+# connector moved off its previous (dead-parameter) CONE_URL entirely.
 CSC_FIELDS = ["2CXO", "RAICRS", "DEICRS", "Fluxb", "Fluxs", "Fluxm", "Fluxh",
              "HRhm", "HRhs", "HRms"]
 CSC_ROW = ["2CXO J120000.0+200000", "180.0", "20.0", "1.5e-14", "5.0e-15", "6.0e-15",
           "4.0e-15", "-0.2", "-0.1", "0.05"]
+
+
+class TestChandraConnector:
+    def test_capabilities_declare_no_light_curve(self):
+        connector = ChandraConnector()
+        assert "light_curve" not in connector.capabilities
+        assert connector.enabled_by_default is False
+
+    def test_cone_search_parses_valid_rows(self, monkeypatch, cone: ConeQuery):
+        monkeypatch.setattr(netclient, "get",
+                           lambda *a, **k: _VotableResponse(_votable(CSC_FIELDS, [CSC_ROW])))
+        sources = ChandraConnector().cone_search(cone, limit=10)
+        assert len(sources) == 1
+        assert sources[0].survey == "Chandra"
+        assert sources[0].object_id == "2CXO J120000.0+200000"
+        assert sources[0].ra_deg == pytest.approx(180.0)
+        assert sources[0].extra["flux_hard"] == pytest.approx(4.0e-15)
+        assert sources[0].extra["hr_hard_soft"] == pytest.approx(-0.1)
+
+    def test_cone_search_skips_rows_missing_position(self, monkeypatch, cone: ConeQuery):
+        fields = ["2CXO", "Fluxb"]
+        row = ["2CXO J120000.0+200000", "1.5e-14"]
+        monkeypatch.setattr(netclient, "get",
+                           lambda *a, **k: _VotableResponse(_votable(fields, [row])))
+        assert ChandraConnector().cone_search(cone) == []
+
+    def test_cone_search_uses_the_vizier_provider(self, monkeypatch, cone: ConeQuery):
+        captured: dict = {}
+
+        def fake_get(url, params, timeout, provider):
+            captured["provider"] = provider
+            captured["params"] = params
+            return _VotableResponse(_votable(CSC_FIELDS, []))
+
+        monkeypatch.setattr(netclient, "get", fake_get)
+        ChandraConnector().cone_search(cone, limit=10_000)
+        assert captured["provider"] == "vizier"
+        assert captured["params"]["-source"] == "IX/70"
+        # limit clamps the same way it always did, just as `-out.max` now.
+        assert captured["params"]["-out.max"] == 200
+
+    def test_fetch_light_curves_returns_empty(self):
+        source = SourceRef(survey="Chandra", object_id="1", ra_deg=0.0, dec_deg=0.0)
+        assert ChandraConnector().fetch_light_curves(source) == []
 
 
 class TestQueryBandFluxes:
@@ -141,7 +114,7 @@ class TestQueryBandFluxesLive:
     Source Catalog 2.1, Evans et al. 2024) is real and returns real
     per-band fluxes and hardness ratios -- see chandra.py's module
     docstring for the full finding, including why this targets VizieR
-    rather than this connector's own (undocumented-parameter) CONE_URL.
+    rather than this connector's previous (dead-parameter) CONE_URL.
 
     Queries M87 (RA=187.7059, Dec=12.3911), not an arbitrary position:
     unlike VLASS/eROSITA (genuinely all-sky surveys), Chandra is a
@@ -156,3 +129,16 @@ class TestQueryBandFluxesLive:
         results = query_band_fluxes(187.7059, 12.3911, 60.0)
         assert len(results) > 0
         assert all(r["object_id"].startswith("2CXO") for r in results)
+
+
+@pytest.mark.live
+class TestConeSearchLive:
+    """Confirmed live: `cone_search` itself, not just `query_band_fluxes`,
+    now returns real CSC 2.1 rows from the same VizieR fetch -- the whole
+    point of rerouting it off the dead `CONE_URL` this session."""
+
+    def test_returns_real_sources(self):
+        sources = ChandraConnector().cone_search(
+            ConeQuery(ra_deg=187.7059, dec_deg=12.3911, radius_arcsec=60.0), limit=20)
+        assert len(sources) > 0
+        assert all(s.object_id.startswith("2CXO") for s in sources)

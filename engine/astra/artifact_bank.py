@@ -101,13 +101,12 @@ def extract_camera_ccd(tpf_path: str | Path) -> tuple[int | None, int | None]:
     primary FITS header, independent of `tess_pixels.find_sectors` (which
     only keeps `sector` from the live TESScut lookup, dropping camera/ccd
     even though the same lookup response carries them). SPOC TPF primary
-    headers document `CAMERA`/`CCD` integer keywords; this has NOT yet
-    been confirmed against a live downloaded file this session (no live
-    network access at implementation time) -- treat the keyword names as
-    an unverified assumption until checked live (see the module's live
-    smoke test), the same "verify before trusting" discipline every prior
-    connector-column addition in this codebase follows. A missing or
-    malformed value degrades to `None`, never a fabricated number.
+    headers document `CAMERA`/`CCD` integer keywords -- confirmed live
+    against a real MAST TESScut TPF (TIC 125736995, sector 42: header
+    `CAMERA=4`, `CCD=4`, matching this function's parsed output exactly),
+    closing the "unverified assumption" gap this docstring used to flag. A
+    missing or malformed value still degrades to `None`, never a
+    fabricated number.
     """
     from astropy.io import fits
 

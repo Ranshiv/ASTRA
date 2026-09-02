@@ -1,0 +1,14 @@
+{
+  "status_code": 200,
+  "headers": {
+    "Server": "nginx",
+    "Date": "Tue, 01 Sep 2026 23:43:07 GMT",
+    "Content-Type": "text/csv",
+    "Transfer-Encoding": "chunked",
+    "Connection": "keep-alive",
+    "Set-Cookie": "<redacted>"
+  },
+  "url": "https://irsa.ipac.caltech.edu/cgi-bin/ZTF/nph_light_curves?ID=1604212200001446&FORMAT=CSV&BAD_CATFLAGS_MASK=32768",
+  "content_hex": "6f69642c65787069642c686a642c6d6a642c6d61672c6d61676572722c636174666c6167732c66696c746572636f64652c72612c6465632c6368692c73686172702c66696c65667261636461792c6669656c642c63636469642c7169642c6c696d69746d61672c6d61677a702c6d61677a70726d732c636c72636f6566662c636c72636f756e632c65787074696d652c6169726d6173732c70726f6772616d69640a",
+  "checksum": "d35b7925f47f608072ad81c389b36e208216ae1a595ed8ba811c945cf77d7a34"
+}

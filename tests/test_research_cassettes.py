@@ -96,3 +96,125 @@ def test_netclient_get_replay_miss_raises(tmp_path, monkeypatch):
 
     with pytest.raises(cassettes.CassetteMissError):
         netclient.get("https://example.com/nope", {}, timeout=5, provider="irsa")
+
+
+class _FakeDownloadResponse:
+    """Mirrors TestStreamingDownload.Response in test_netclient.py."""
+
+    def __init__(self, chunks, declared=None, url="https://example.com/product"):
+        self.chunks = list(chunks)
+        self.headers = ({"Content-Length": str(declared)} if declared is not None else {})
+        self.status_code = 200
+        self.url = url
+        self.closed = False
+
+    def raise_for_status(self):
+        return None
+
+    def iter_content(self, chunk_size=1):
+        yield from self.chunks
+
+    def close(self):
+        self.closed = True
+
+
+def test_netclient_download_record_mode_writes_cassette(tmp_path, monkeypatch):
+    from astra import netclient
+
+    monkeypatch.setenv("ASTRA_CASSETTE_MODE", "record")
+    monkeypatch.setattr(cassettes, "_cassette_dir", lambda root=None: tmp_path)
+
+    response = _FakeDownloadResponse([b"abc", b"def"], declared=6)
+
+    class Session:
+        def get(self, *args, **kwargs):
+            return response
+
+    monkeypatch.setattr(netclient, "session", lambda: Session())
+    target = tmp_path / "out" / "product.fits"
+
+    result = netclient.download("https://example.com/product", target,
+                                params={"a": "1"}, timeout=1, provider="test")
+
+    assert result.bytes_written == 6
+    assert target.read_bytes() == b"abcdef"
+
+    key = cassettes.identity("test", "DOWNLOAD", "https://example.com/product", {"a": "1"})
+    loaded = cassettes.load(key, root=tmp_path)
+    assert loaded.content == b"abcdef"
+
+
+def test_netclient_download_replay_mode_never_touches_the_network(tmp_path, monkeypatch):
+    from astra import netclient
+
+    monkeypatch.setenv("ASTRA_CASSETTE_MODE", "replay")
+    monkeypatch.setattr(cassettes, "_cassette_dir", lambda root=None: tmp_path)
+
+    key = cassettes.identity("test", "DOWNLOAD", "https://example.com/product", {"a": "1"})
+    cassettes.save(key, cassettes.RecordedResponse(
+        status_code=200, headers={}, content=b"cassette-body",
+        url="https://example.com/product"), root=tmp_path)
+
+    def _boom(*_a, **_kw):
+        raise AssertionError("replay mode must not open a network session")
+    monkeypatch.setattr(netclient, "session", _boom)
+
+    target = tmp_path / "replayed.fits"
+    result = netclient.download("https://example.com/product", target,
+                                params={"a": "1"}, timeout=1, provider="test")
+
+    assert target.read_bytes() == b"cassette-body"
+    assert result.sha256 == __import__("hashlib").sha256(b"cassette-body").hexdigest()
+
+
+def test_netclient_download_replay_miss_raises(tmp_path, monkeypatch):
+    from astra import netclient
+
+    monkeypatch.setenv("ASTRA_CASSETTE_MODE", "replay")
+    monkeypatch.setattr(cassettes, "_cassette_dir", lambda root=None: tmp_path)
+
+    target = tmp_path / "nope.fits"
+    with pytest.raises(cassettes.CassetteMissError):
+        netclient.download("https://example.com/nope", target, timeout=1, provider="test")
+    assert not target.exists()
+
+
+def test_netclient_download_replay_enforces_max_bytes(tmp_path, monkeypatch):
+    from astra import netclient
+
+    monkeypatch.setenv("ASTRA_CASSETTE_MODE", "replay")
+    monkeypatch.setattr(cassettes, "_cassette_dir", lambda root=None: tmp_path)
+
+    key = cassettes.identity("test", "DOWNLOAD", "https://example.com/big", {})
+    cassettes.save(key, cassettes.RecordedResponse(
+        status_code=200, headers={}, content=b"0123456789",
+        url="https://example.com/big"), root=tmp_path)
+
+    target = tmp_path / "big.fits"
+    with pytest.raises(netclient.DownloadTooLargeError):
+        netclient.download("https://example.com/big", target, timeout=1,
+                           provider="test", max_bytes=5)
+    assert not target.exists()
+
+
+def test_netclient_download_off_mode_is_unaffected_by_cassettes(tmp_path, monkeypatch):
+    """Default mode must behave exactly as before this layer existed --
+    no cassette read or write at all."""
+    from astra import netclient
+
+    monkeypatch.delenv("ASTRA_CASSETTE_MODE", raising=False)
+    monkeypatch.setattr(cassettes, "_cassette_dir", lambda root=None: tmp_path)
+
+    response = _FakeDownloadResponse([b"xyz"], declared=3)
+
+    class Session:
+        def get(self, *args, **kwargs):
+            return response
+
+    monkeypatch.setattr(netclient, "session", lambda: Session())
+    target = tmp_path / "plain.fits"
+
+    netclient.download("https://example.com/plain", target, timeout=1, provider="test")
+
+    assert target.read_bytes() == b"xyz"
+    assert list((tmp_path).glob("*.json")) == []  # no cassette written

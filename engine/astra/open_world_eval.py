@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .research import stats as research_stats
+
 DEFAULT_SEEDS: tuple[int, ...] = (17, 29, 43)
 
 
@@ -126,16 +128,11 @@ def held_out_recovery(scores: np.ndarray, labels: np.ndarray) -> dict:
 
 
 def _summary(values: list[float]) -> dict | None:
-    finite = np.asarray([v for v in values if np.isfinite(v)], dtype=float)
-    if not len(finite):
-        return None
-    return {
-        "mean": round(float(np.mean(finite)), 4),
-        "std": round(float(np.std(finite, ddof=1)), 4) if len(finite) > 1 else 0.0,
-        "ci95": [round(float(np.quantile(finite, 0.025)), 4),
-                 round(float(np.quantile(finite, 0.975)), 4)],
-        "n": len(finite),
-    }
+    """Delegates to `research.stats.summary` -- see that module's docstring
+    for why this shape (mean/std/ci95 over repeated seeds, not object-group
+    bootstrap) is the right one here. Was this module's own local
+    reimplementation; migrated per docs/LIMITATIONS.md's tracked debt."""
+    return research_stats.summary(values)
 
 
 def evaluate_open_world_generalization(design_values: np.ndarray, design_identities: list[dict],

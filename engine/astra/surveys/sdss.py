@@ -101,7 +101,7 @@ class SDSSConnector(SurveyConnector):
     name = "SDSS"
     capabilities = ("catalogue", "spectrum_metadata")
     resolution_arcsec = 1.0
-    enabled_by_default = False
+    enabled_by_default = True
 
     def __init__(self, release: str = DEFAULT_RELEASE) -> None:
         self.release = release
@@ -121,8 +121,9 @@ class SDSSConnector(SurveyConnector):
             SQL_URL.format(release=self.release),
             {"cmd": sql, "format": "csv"}, timeout=60, provider="sdss",
         )
+        rows = parse_csv(response.text, top)
         sources: list[SourceRef] = []
-        for row in parse_csv(response.text, top):
+        for row in rows:
             try:
                 ra_deg, dec_deg = float(row["ra"]), float(row["dec"])
             except (KeyError, TypeError, ValueError):
@@ -144,6 +145,12 @@ class SDSSConnector(SurveyConnector):
                        "photometric_match": photometric_match,
                        "spectrum_ready": bool(row.get("plate"))},
             ))
+        if rows and not sources:
+            import logging
+            logging.getLogger(__name__).warning(
+                "SDSS: SkyServer returned %d row(s) but none parsed as a "
+                "source -- ra/dec/bestObjID/specObjID may no longer match "
+                "SpecObjAll's real columns.", len(rows))
         return sources
 
     def fetch_light_curves(self, source: SourceRef) -> list[LightCurve]:

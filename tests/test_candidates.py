@@ -211,6 +211,139 @@ class TestLabelling:
         assert candidates.label_summary(tmp_path)["total"] == 0
 
 
+class TestFollowupTracking:
+    def test_requesting_followup_creates_a_history_entry(self, tmp_path):
+        entry = candidates.request_followup("ASTRA-000001", "Palomar 200-inch",
+                                            "worth a spectrum", root=tmp_path)
+
+        assert entry["status"] == "requested"
+        history = candidates.followup_history("ASTRA-000001", tmp_path)
+        assert len(history) == 1
+        assert history[0]["request_id"] == entry["request_id"]
+        assert history[0]["facility_name"] == "Palomar 200-inch"
+
+    def test_a_candidate_can_accumulate_multiple_requests(self, tmp_path):
+        """Unlike a label (one row per candidate), follow-up requests are
+        append-only -- the same candidate can be requested more than once
+        over its lifetime."""
+        candidates.request_followup("ASTRA-000001", "Facility A", root=tmp_path)
+        candidates.request_followup("ASTRA-000001", "Facility B", root=tmp_path)
+
+        history = candidates.followup_history("ASTRA-000001", tmp_path)
+        assert len(history) == 2
+        assert {row["facility_name"] for row in history} == {"Facility A", "Facility B"}
+
+    def test_recording_a_result_updates_the_matching_request(self, tmp_path):
+        entry = candidates.request_followup("ASTRA-000001", root=tmp_path)
+        candidates.record_followup_result(entry["request_id"], "observed",
+                                          "clean detection", root=tmp_path)
+
+        history = candidates.followup_history("ASTRA-000001", tmp_path)
+        assert history[0]["status"] == "observed"
+        assert history[0]["result_note"] == "clean detection"
+        assert history[0]["result_utc"] is not None
+
+    def test_unknown_result_status_is_rejected(self, tmp_path):
+        entry = candidates.request_followup("ASTRA-000001", root=tmp_path)
+        with pytest.raises(ValueError, match="unknown follow-up result"):
+            candidates.record_followup_result(entry["request_id"], "beautiful",
+                                               root=tmp_path)
+
+    def test_result_for_unknown_request_raises(self, tmp_path):
+        with pytest.raises(KeyError):
+            candidates.record_followup_result("followup_nope", "observed", root=tmp_path)
+
+    def test_history_for_unrequested_candidate_is_empty(self, tmp_path):
+        assert candidates.followup_history("ASTRA-999999", tmp_path) == []
+
+
+class TestLabelVoting:
+    def test_casting_and_reading_a_vote(self, tmp_path):
+        entry = candidates.cast_label_vote("ASTRA-000001", "alice", "interesting",
+                                           "looks real", root=tmp_path)
+
+        assert entry["reviewer_id"] == "alice"
+        votes = candidates.label_votes("ASTRA-000001", tmp_path)
+        assert len(votes) == 1
+        assert votes[0]["vote_id"] == entry["vote_id"]
+
+    def test_multiple_reviewers_accumulate_rather_than_overwrite(self, tmp_path):
+        """Unlike a label (one row per candidate, last write wins), votes
+        are append-only -- each reviewer's vote survives another's."""
+        candidates.cast_label_vote("ASTRA-000001", "alice", "interesting", root=tmp_path)
+        candidates.cast_label_vote("ASTRA-000001", "bob", "artifact", root=tmp_path)
+
+        votes = candidates.label_votes("ASTRA-000001", tmp_path)
+        assert len(votes) == 2
+        assert {v["reviewer_id"] for v in votes} == {"alice", "bob"}
+
+    def test_unknown_label_is_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="unknown label"):
+            candidates.cast_label_vote("ASTRA-000001", "alice", "beautiful", root=tmp_path)
+
+    def test_empty_reviewer_id_is_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="reviewer_id"):
+            candidates.cast_label_vote("ASTRA-000001", "  ", "interesting", root=tmp_path)
+
+    def test_tally_reports_majority_and_agreement(self, tmp_path):
+        candidates.cast_label_vote("ASTRA-000001", "alice", "interesting", root=tmp_path)
+        candidates.cast_label_vote("ASTRA-000001", "bob", "interesting", root=tmp_path)
+        candidates.cast_label_vote("ASTRA-000001", "carol", "artifact", root=tmp_path)
+
+        tally = candidates.label_vote_tally("ASTRA-000001", tmp_path)
+
+        assert tally["total"] == 3
+        assert tally["by_label"]["interesting"] == 2
+        assert tally["majority_label"] == "interesting"
+        assert tally["agreement_fraction"] == pytest.approx(2 / 3)
+
+    def test_tally_with_no_votes_reports_none_not_zero(self, tmp_path):
+        tally = candidates.label_vote_tally("ASTRA-999999", tmp_path)
+
+        assert tally["total"] == 0
+        assert tally["majority_label"] is None
+        assert tally["agreement_fraction"] is None
+
+    def test_promotion_below_vote_count_reports_gate_reason(self, tmp_path):
+        candidates.cast_label_vote("ASTRA-000001", "alice", "interesting", root=tmp_path)
+
+        result = candidates.promote_vote_consensus("ASTRA-000001", root=tmp_path)
+
+        assert result["promoted"] is False
+        assert result["reason"] == "insufficient votes or agreement"
+        assert result["votes"] == 1
+        assert candidates.load_labels(tmp_path) == {}
+
+    def test_promotion_below_agreement_reports_gate_reason(self, tmp_path):
+        for reviewer, label in [("a", "interesting"), ("b", "artifact"), ("c", "uncertain")]:
+            candidates.cast_label_vote("ASTRA-000001", reviewer, label, root=tmp_path)
+
+        result = candidates.promote_vote_consensus("ASTRA-000001", root=tmp_path)
+
+        assert result["promoted"] is False
+        assert result["agreement_fraction"] == pytest.approx(1 / 3)
+
+    def test_promotion_at_threshold_updates_the_authoritative_label(self, tmp_path):
+        for reviewer in ("a", "b", "c"):
+            candidates.cast_label_vote("ASTRA-000001", reviewer, "interesting", root=tmp_path)
+
+        result = candidates.promote_vote_consensus("ASTRA-000001", root=tmp_path)
+
+        assert result["promoted"] is True
+        assert result["label"] == "interesting"
+        assert candidates.load_labels(tmp_path)["ASTRA-000001"]["label"] == "interesting"
+
+    def test_a_second_promotion_call_is_safe(self, tmp_path):
+        for reviewer in ("a", "b", "c"):
+            candidates.cast_label_vote("ASTRA-000001", reviewer, "interesting", root=tmp_path)
+        candidates.promote_vote_consensus("ASTRA-000001", root=tmp_path)
+
+        result = candidates.promote_vote_consensus("ASTRA-000001", root=tmp_path)
+
+        assert result["promoted"] is True
+        assert candidates.load_labels(tmp_path)["ASTRA-000001"]["label"] == "interesting"
+
+
 class TestTimeline:
     def test_timeline_is_bounded_and_marks_blended_surveys(self, tmp_path, monkeypatch):
         candidate = candidates.build_candidate(

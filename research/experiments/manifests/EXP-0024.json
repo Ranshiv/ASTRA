@@ -1,0 +1,76 @@
+{
+  "schema_version": 2,
+  "kind": "artifact_rejection_benchmark",
+  "provenance": {
+    "experiment_id": "EXP-0024",
+    "created_utc": "2026-09-02T02:21:13+00:00",
+    "code_version": "c79b3ef6bb505786",
+    "feature_version": 2,
+    "preprocessing_version": 2,
+    "code_revision": "2a8a9acfc44d6c98aeca0a88bf3e57e8b716e406",
+    "feature_schema_hash": "eb1da88160a9899e",
+    "preprocessing_schema_hash": "bee9fd02c6f93367",
+    "dataset_hash": null,
+    "dataset_id": null,
+    "model_version": "hard_negative_classifier",
+    "seed": 42,
+    "hardware": {
+      "device": "cuda",
+      "reason": "CUDA device available (2572 MB free).",
+      "torch_available": true,
+      "cuda_available": true,
+      "gpu": {
+        "name": "NVIDIA GeForce GTX 1650",
+        "total_vram_mb": 4096,
+        "free_vram_mb": 2572,
+        "compute_capability": "7.5",
+        "driver_version": "592.82"
+      }
+    },
+    "environment": {
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "numpy": "2.5.2",
+      "scipy": "1.18.0",
+      "sklearn": "1.9.0",
+      "astropy": "8.0.1",
+      "astroquery": "0.4.11",
+      "lightkurve": "2.6.0",
+      "pyarrow": "25.0.1",
+      "torch": "2.13.0+cu126"
+    },
+    "benchmark_id": "artifact-rejection-p0-v2",
+    "split_id": "artifact-rejection-p0-v2_camera_loco",
+    "manifest_content_hash": "585b841c337ac53f0e8a7e04c5cd64d09e0b4e599fa04f1875039492d820f270",
+    "label_set_hash": null,
+    "result_artifact_paths": [
+      "research/results/metrics.jsonl"
+    ]
+  },
+  "configuration": {
+    "n_tpfs": 6,
+    "n_patches": 38,
+    "tpf_product_ids": [
+      "046b42da9701e96a404b513930e273858de2740969fe421ae9d4c15ab9ba07a7",
+      "1dcec8604fcf7d3027c7cd1e43408cd71c170362498dec0f2806a4f1db71133d",
+      "63a8b8017ff6660a273ebaf35c61f89ce82a3d7e4fe12115f1764fad2af09620",
+      "6fed25a5e0a3a493e5d12327315eeeaaf69f833f0bba40ac8e2024e66e9662ca",
+      "927ca97e4f991ce72b6046e8c3da760c711f1fec32c9b4f2ffa30975fe956bf0",
+      "9e2dd3961c372136cec22d5dbde542528402175ac35beec0834afd49be4b367a"
+    ],
+    "group_axes": [
+      "camera",
+      "ccd",
+      "night"
+    ]
+  },
+  "results": {
+    "camera": 0.6411,
+    "ccd": 0.7974,
+    "night": 0.7091
+  },
+  "runtime_seconds": 0.0,
+  "notes": "",
+  "record_hash": "60a2edd41082f746c33299f08bedb8c38ecf1d2566d508aeb73d967bf66760d3"
+}

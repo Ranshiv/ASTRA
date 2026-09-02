@@ -12,6 +12,16 @@ const DOT_TONE: Record<Tone, string> = {
   neutral: "bg-[var(--color-muted)]",
 };
 
+// The dot conveys tone by colour alone, which colourblind and screen-reader
+// users can't distinguish; this text label rides along with it so the tone
+// is always readable, not just visible.
+const TONE_LABEL: Record<Tone, string> = {
+  ok: "OK",
+  warn: "Warning",
+  bad: "Critical",
+  neutral: "",
+};
+
 function Tile({
   icon: Icon,
   label,
@@ -30,7 +40,10 @@ function Tile({
       <div className="flex items-center gap-2 text-[var(--color-muted)]">
         <Icon size={14} strokeWidth={2} />
         <span className="text-xs">{label}</span>
-        <span className={`ml-auto h-1.5 w-1.5 rounded-full ${DOT_TONE[tone]}`} />
+        <span className="ml-auto flex items-center gap-1.5">
+          {TONE_LABEL[tone] && <span className="sr-only">{TONE_LABEL[tone]}</span>}
+          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${DOT_TONE[tone]}`} />
+        </span>
       </div>
       <p className="mt-1.5 truncate text-sm font-medium text-[var(--color-text)]" title={value}>
         {value}
@@ -62,7 +75,7 @@ export function StatusStrip({
         <div>
           <p className="text-sm text-[var(--color-bad)]">Scientific engine unavailable</p>
           <p className="mt-1 font-mono text-xs text-[var(--color-muted)]">{error}</p>
-          {onRetry && <button type="button" onClick={onRetry} className="mt-3 min-h-9 rounded border border-[var(--color-bad)]/50 px-3 py-1.5 text-xs text-[var(--color-bad)] hover:bg-[var(--color-bad)]/10">Retry connection</button>}
+          {onRetry && <button type="button" onClick={onRetry} className="mt-3 min-h-9 rounded border border-[var(--color-bad)]/50 px-3 py-1.5 text-xs text-[var(--color-bad)] hover:bg-[var(--color-bad)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]">Retry connection</button>}
         </div>
       </div>
     );

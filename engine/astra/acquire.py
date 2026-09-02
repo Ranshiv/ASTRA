@@ -204,7 +204,15 @@ def acquire(
     manifest_root = None
     if project_id:
         project.require_active(project_id)
-        manifest_root = project.manifest_dir(project_id)
+        # `manifest_mod.save`/`manifest_path` append "manifests" onto
+        # whatever root they're given themselves -- passing
+        # `project.manifest_dir()` (which is ALREADY that "manifests"
+        # subdirectory) doubled it into
+        # `Projects/<id>/manifests/manifests/<dataset_id>.json`, a path
+        # `manifest.load()` never looked at (it's handed the plain project
+        # directory and appends "manifests" itself, once). The project root
+        # is the correct thing to pass here.
+        manifest_root = project.project_dir(project_id)
 
     record = manifest_mod.Manifest.create(dataset_id)
     result = AcquisitionResult(dataset_id=dataset_id, query=query, project_id=project_id)

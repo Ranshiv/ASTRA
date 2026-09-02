@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/astra_icon.svg" />
+    <title>ASTRA — Astronomical Survey &amp; Transient Research Analyzer</title>
+    <meta
+      name="description"
+      content="ASTRA finds unusual astronomical objects by combining observations from independent surveys, decides whether an anomaly is real or an artifact, and ranks what to look at next. Free Windows desktop app."
+    />
+    <style>
+      /* Tokens copied verbatim from src/index.css so the site and the app
+         read as one product. Same three-state theming order as the app's
+         own index.html: dark default on bare :root, a prefers-color-scheme
+         override, then an explicit [data-theme] block that always wins. */
+      :root {
+        --color-void: #0f131b;
+        --color-panel: #161b26;
+        --color-panel-2: #1e2431;
+        --color-edge: #2a3140;
+        --color-muted: #8a93a6;
+        --color-text: #e6e3dc;
+        --color-accent: #e8563f;
+        --color-ok: #4ade80;
+        --color-warn: #fbbf24;
+        --color-bad: #ff6b8a;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme="dark"]) {
+          --color-void: #f5f3ee;
+          --color-panel: #ffffff;
+          --color-panel-2: #ebe7de;
+          --color-edge: #dcd6c9;
+          --color-muted: #656d7e;
+          --color-text: #2a3140;
+          --color-accent: #be3520;
+          --color-ok: #157a3c;
+          --color-warn: #9a6100;
+          --color-bad: #b3123f;
+        }
+      }
+      :root[data-theme="light"] {
+        --color-void: #f5f3ee;
+        --color-panel: #ffffff;
+        --color-panel-2: #ebe7de;
+        --color-edge: #dcd6c9;
+        --color-muted: #656d7e;
+        --color-text: #2a3140;
+        --color-accent: #be3520;
+        --color-ok: #157a3c;
+        --color-warn: #9a6100;
+        --color-bad: #b3123f;
+      }
+      :root[data-theme="dark"] {
+        --color-void: #0f131b;
+        --color-panel: #161b26;
+        --color-panel-2: #1e2431;
+        --color-edge: #2a3140;
+        --color-muted: #8a93a6;
+        --color-text: #e6e3dc;
+        --color-accent: #e8563f;
+        --color-ok: #4ade80;
+        --color-warn: #fbbf24;
+        --color-bad: #ff6b8a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        background: var(--color-void);
+        color: var(--color-text);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        line-height: 1.55;
+      }
+      .mono {
+        font-family:
+          ui-monospace, "Cascadia Code", "Consolas", "SFMono-Regular", Menlo,
+          monospace;
+      }
+      main {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 1.5rem 4rem;
+      }
+
+      /* ---------- Nav ---------- */
+      nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1.5rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .brand img {
+        width: 28px;
+        height: 28px;
+      }
+      nav a {
+        color: var(--color-muted);
+        text-decoration: none;
+        font-size: 0.9rem;
+        margin-left: 1.25rem;
+      }
+      nav a:hover {
+        color: var(--color-text);
+      }
+
+      /* ---------- Hero ---------- */
+      .hero {
+        text-align: center;
+        padding: 2.5rem 0 3rem;
+      }
+      .hero img {
+        width: 84px;
+        height: 84px;
+        margin-bottom: 1.25rem;
+      }
+      .hero h1 {
+        font-size: 2.4rem;
+        margin: 0 0 0.75rem;
+        letter-spacing: -0.01em;
+      }
+      .hero p.lede {
+        color: var(--color-muted);
+        font-size: 1.1rem;
+        max-width: 640px;
+        margin: 0 auto 2rem;
+      }
+      .hero .tag {
+        display: inline-block;
+        border: 1px solid var(--color-edge);
+        border-radius: 999px;
+        padding: 0.2rem 0.75rem;
+        font-size: 0.78rem;
+        color: var(--color-muted);
+        margin-bottom: 1.25rem;
+      }
+      .surveys {
+        color: var(--color-muted);
+        font-size: 0.85rem;
+        margin-top: 1rem;
+      }
+      .surveys b {
+        color: var(--color-text);
+        font-weight: 600;
+      }
+
+      /* ---------- Download panel ---------- */
+      .download-panel {
+        border: 1px solid var(--color-edge);
+        background: var(--color-panel);
+        border-radius: 0.75rem;
+        padding: 1.75rem;
+        margin: 0 0 2.5rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--color-accent);
+        color: #fff;
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.85rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .btn.secondary {
+        background: transparent;
+        color: var(--color-text);
+        border: 1px solid var(--color-edge);
+      }
+      .btn[aria-disabled="true"] {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      .dl-meta {
+        margin-top: 1rem;
+        font-size: 0.85rem;
+        color: var(--color-muted);
+      }
+      .dl-meta div {
+        margin-top: 0.35rem;
+      }
+      .checksum {
+        margin-top: 0.9rem;
+        background: var(--color-panel-2);
+        border: 1px solid var(--color-edge);
+        border-radius: 0.4rem;
+        padding: 0.6rem 0.8rem;
+        font-size: 0.8rem;
+        overflow-x: auto;
+        white-space: pre;
+      }
+      .status-line {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        color: var(--color-muted);
+        margin-bottom: 1rem;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--color-muted);
+        flex: none;
+      }
+      .dot.ok {
+        background: var(--color-ok);
+      }
+      .dot.warn {
+        background: var(--color-warn);
+      }
+
+      /* ---------- Sections ---------- */
+      section {
+        margin-bottom: 3rem;
+      }
+      section h2 {
+        font-size: 1.3rem;
+        margin-bottom: 0.5rem;
+      }
+      section > p.section-lede {
+        color: var(--color-muted);
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+        max-width: 640px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      .card {
+        border: 1px solid var(--color-edge);
+        background: var(--color-panel);
+        border-radius: 0.6rem;
+        padding: 1.1rem 1.25rem;
+      }
+      .card h3 {
+        margin: 0 0 0.4rem;
+        font-size: 1rem;
+      }
+      .card p {
+        margin: 0;
+        color: var(--color-muted);
+        font-size: 0.9rem;
+      }
+
+      .caveats {
+        border: 1px solid var(--color-edge);
+        border-left: 3px solid var(--color-warn);
+        background: var(--color-panel);
+        border-radius: 0.4rem;
+        padding: 1.1rem 1.25rem;
+      }
+      .caveats ul {
+        margin: 0.5rem 0 0;
+        padding-left: 1.1rem;
+        color: var(--color-muted);
+        font-size: 0.9rem;
+      }
+      .caveats li {
+        margin-bottom: 0.5rem;
+      }
+      .caveats a {
+        color: var(--color-accent);
+      }
+
+      pre.cmds {
+        background: var(--color-panel);
+        border: 1px solid var(--color-edge);
+        border-radius: 0.5rem;
+        padding: 1rem 1.25rem;
+        font-size: 0.85rem;
+        overflow-x: auto;
+      }
+      pre.cmds .c {
+        color: var(--color-muted);
+      }
+
+      footer {
+        border-top: 1px solid var(--color-edge);
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1.75rem 1.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.25rem;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--color-muted);
+        font-size: 0.85rem;
+      }
+      footer a {
+        color: var(--color-muted);
+        text-decoration: none;
+      }
+      footer a:hover {
+        color: var(--color-text);
+      }
+      .footer-links a {
+        margin-left: 1rem;
+      }
+
+      @media (max-width: 640px) {
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .hero h1 {
+          font-size: 1.9rem;
+        }
+        nav a {
+          margin-left: 0.75rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="brand">
+        <img src="/astra_icon.svg" alt="" />
+        <span>ASTRA</span>
+      </div>
+      <div>
+        <a href="#download">Download</a>
+        <a href="#build">Build from source</a>
+        <a href="https://github.com/Ranshiv/ASTRA">GitHub</a>
+      </div>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <img src="/astra_icon.svg" alt="ASTRA" />
+        <div class="tag">Windows desktop · free · open source</div>
+        <h1>Astronomical Survey &amp; Transient Research Analyzer</h1>
+        <p class="lede">
+          Finds unusual astronomical objects by combining observations from
+          independent surveys, decides whether an anomaly is real or an
+          artifact, explains why it was flagged, and ranks what to look at
+          next.
+        </p>
+        <p class="surveys">
+          Five surveys enabled by default: <b>ZTF</b>, <b>Gaia</b>,
+          <b>TESS</b>, <b>SDSS</b>, <b>Pan-STARRS</b> — plus 20 opt-in
+          connectors including X-ray, infrared and UV instruments.
+        </p>
+      </section>
+
+      <section id="download" class="download-panel">
+        <div id="status" class="status-line">
+          <span class="dot" id="status-dot"></span>
+          <span id="status-text">Checking for the latest release…</span>
+        </div>
+        <a id="download-btn" class="btn" href="https://github.com/Ranshiv/ASTRA/releases" aria-disabled="true">
+          Download for Windows
+        </a>
+        <div class="dl-meta" id="dl-meta"></div>
+        <div class="checksum mono" id="checksum" hidden></div>
+      </section>
+
+      <section>
+        <h2>What it does</h2>
+        <p class="section-lede">
+          The premise: one survey calling an object odd is a claim. Two
+          instruments with different detectors, cadences and systematics
+          agreeing is evidence.
+        </p>
+        <div class="cards">
+          <div class="card">
+            <h3>Cross-survey corroboration</h3>
+            <p>
+              Matches candidates across independent surveys so a signal has
+              to survive more than one instrument's quirks to count.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Artifact adjudication</h3>
+            <p>
+              Weighs whether an anomaly is astrophysical or a detector,
+              blending, or pipeline artifact before it reaches a ranked list.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Explained flags</h3>
+            <p>
+              Every flagged object comes with the evidence and reasoning
+              behind the score, not just a number.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Ranked follow-up</h3>
+            <p>
+              Surfaces what a researcher should look at next, out of
+              thousands of candidates from a run.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>What it is not</h2>
+        <div class="caveats">
+          <p style="margin: 0; color: var(--color-text)">
+            These aren't disclaimers — they change how output should be read.
+          </p>
+          <ul>
+            <li>
+              <b>Scores are per-run, not absolute.</b> Detector scores are
+              min-max normalised within a batch; rankings from different runs
+              aren't directly comparable.
+            </li>
+            <li>
+              <b>TESS doesn't resolve individual stars.</b> 21-arcsec pixels
+              mean a TESS match corroborates a neighbourhood, not an object.
+            </li>
+            <li>
+              <b>Injection recovery measures what was injected</b>, not
+              sensitivity to phenomena nobody thought to test for.
+            </li>
+          </ul>
+          <p style="margin: 0.75rem 0 0">
+            Full status, including every known gap and limitation, is tracked
+            in
+            <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/DEFERRED.txt">docs/DEFERRED.txt</a>.
+          </p>
+        </div>
+      </section>
+
+      <section id="build">
+        <h2>Build from source</h2>
+        <p class="section-lede">
+          The installer excludes PyTorch and CuPy to stay small. Deep-model
+          training (<code class="mono">deep.train</code>,
+          <code class="mono">deep.sweep</code>) and GPU acceleration need a
+          development checkout.
+        </p>
+        <pre class="cmds mono"><span class="c"># Windows 11, Node.js LTS, Rust, Python 3.12, VS Build Tools</span>
+npm install
+uv pip install -e engine          <span class="c"># add [gpu] for PyTorch and CuPy</span>
+npm run app                       <span class="c"># Tauri dev: Vite + the Rust shell</span></pre>
+      </section>
+    </main>
+
+    <footer>
+      <span>ASTRA — see <a href="https://github.com/Ranshiv/ASTRA/blob/master/CITATION.cff">CITATION.cff</a> for citing this work.</span>
+      <span class="footer-links">
+        <a href="https://github.com/Ranshiv/ASTRA">GitHub</a>
+        <a href="https://github.com/Ranshiv/ASTRA/blob/master/README.md">Documentation</a>
+        <a href="https://github.com/Ranshiv/ASTRA/issues">Issues</a>
+      </span>
+    </footer>
+
+    <script>
+      (function () {
+        const REPO = "Ranshiv/ASTRA";
+        const dot = document.getElementById("status-dot");
+        const text = document.getElementById("status-text");
+        const btn = document.getElementById("download-btn");
+        const meta = document.getElementById("dl-meta");
+        const checksumEl = document.getElementById("checksum");
+
+        function bytesToMiB(n) {
+          return (n / (1024 * 1024)).toFixed(1) + " MiB";
+        }
+
+        function fallback(message) {
+          dot.className = "dot warn";
+          text.textContent = message;
+          btn.textContent = "See all releases on GitHub";
+          btn.href = "https://github.com/" + REPO + "/releases";
+          btn.removeAttribute("aria-disabled");
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
+
+        fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
+          headers: { Accept: "application/vnd.github+json" },
+          signal: controller.signal,
+        })
+          .then((res) => {
+            clearTimeout(timeout);
+            if (res.status === 404) {
+              fallback("No Windows build published yet — build from source below.");
+              return null;
+            }
+            if (!res.ok) {
+              fallback("Couldn't reach GitHub — see releases directly.");
+              return null;
+            }
+            return res.json();
+          })
+          .then((release) => {
+            if (!release) return;
+            const assets = release.assets || [];
+            const exe = assets.find((a) => a.name.toLowerCase().endsWith(".exe"));
+            if (!exe) {
+              fallback("No Windows build published yet — build from source below.");
+              return;
+            }
+            const checksumAsset = assets.find((a) =>
+              /checksum/i.test(a.name) && /\.(sha256|json)$/i.test(a.name)
+            );
+
+            dot.className = "dot ok";
+            text.textContent = "Latest release " + (release.tag_name || "");
+            btn.textContent = "Download for Windows";
+            btn.href = exe.browser_download_url;
+            btn.removeAttribute("aria-disabled");
+
+            const published = release.published_at
+              ? new Date(release.published_at).toLocaleDateString(undefined, {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              : null;
+
+            const lines = [];
+            lines.push(exe.name + " · " + bytesToMiB(exe.size));
+            if (published) lines.push("Published " + published);
+            meta.innerHTML = lines.map((l) => "<div>" + l + "</div>").join("");
+
+            if (checksumAsset) {
+              checksumEl.hidden = false;
+              checksumEl.textContent =
+                "# Verify after downloading (PowerShell)\n" +
+                "Get-FileHash .\\" + exe.name + " -Algorithm SHA256\n" +
+                "# compare against " + checksumAsset.name + ":\n" +
+                "# " + checksumAsset.browser_download_url;
+            }
+          })
+          .catch(() => {
+            clearTimeout(timeout);
+            fallback("Couldn't reach GitHub — see releases directly.");
+          });
+      })();
+    </script>
+  </body>
+</html>

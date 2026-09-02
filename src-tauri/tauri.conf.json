@@ -13,14 +13,14 @@
     "windows": [
       {
         "title": "ASTRA — Astronomical Survey & Transient Research Analyzer",
-        "width": 1400,
+        "width": 1470,
         "height": 900,
         "minWidth": 1024,
         "minHeight": 700,
         "resizable": true,
         "decorations": false,
         "visible": false,
-        "backgroundColor": "#06070d"
+        "backgroundColor": "#0f131b"
       }
     ],
     "security": {

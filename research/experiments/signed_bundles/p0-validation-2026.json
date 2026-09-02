@@ -1,0 +1,20 @@
+{
+  "dataset_id": "p0-validation-2026",
+  "manifest_content_hash": "007e64fc710458241af1ec2461e3301a501055c548cc7932f1b9ddd9fb13a786",
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "numpy": "2.5.2",
+    "astropy": "8.0.1",
+    "astroquery": "0.4.11",
+    "lightkurve": "2.6.0",
+    "pyarrow": "25.0.1"
+  },
+  "experiment_record_refs": [
+    "EXP-0023"
+  ],
+  "bundle_hash": "aab88256c7d6dbc7bf63157a9a2c0202681cefc627d3c3506aaf16a35b408cd2",
+  "signature_hex": "02543d8bbb026fe4f17598a0c70ad4a1326c61e229c6d0f294beb95c627b2d752c487cec5fef98f803c1d30eccf03467e07bf55dea0715dc093f3ea7277d2f09",
+  "public_key_hex": "eac136644fc2a41e45d2c22b3eed8d7fdd491aa1480de2d960c8c0ea6741505c"
+}

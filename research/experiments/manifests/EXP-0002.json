@@ -1,0 +1,431 @@
+{
+  "schema_version": 1,
+  "kind": "ablation_suite_repeated",
+  "provenance": {
+    "experiment_id": "EXP-0002",
+    "created_utc": "2026-08-18T05:31:31+00:00",
+    "code_version": "81ecacc141ccb77c",
+    "feature_version": 1,
+    "preprocessing_version": 1,
+    "code_revision": null,
+    "feature_schema_hash": "41e70ea044b3be41",
+    "preprocessing_schema_hash": "9b9604d2384d68d9",
+    "dataset_hash": null,
+    "dataset_id": null,
+    "model_version": null,
+    "seed": 17,
+    "hardware": {
+      "device": "cuda",
+      "reason": "CUDA device available (2561 MB free).",
+      "torch_available": true,
+      "cuda_available": true,
+      "gpu": {
+        "name": "NVIDIA GeForce GTX 1650",
+        "total_vram_mb": 4096,
+        "free_vram_mb": 2561,
+        "compute_capability": "7.5",
+        "driver_version": "592.82"
+      }
+    },
+    "environment": {
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "numpy": "2.5.2",
+      "scipy": "1.18.0",
+      "sklearn": "1.9.0",
+      "astropy": "8.0.1",
+      "astroquery": "0.4.11",
+      "lightkurve": "2.6.0",
+      "pyarrow": "25.0.1",
+      "torch": "2.13.0+cu126"
+    },
+    "benchmark_id": null,
+    "split_id": null,
+    "manifest_content_hash": null,
+    "label_set_hash": null,
+    "result_artifact_paths": []
+  },
+  "configuration": {
+    "fraction": 0.1,
+    "seeds": [
+      17,
+      29,
+      43,
+      59,
+      71
+    ],
+    "interval": "empirical seed percentile"
+  },
+  "results": {
+    "seeds": [
+      17,
+      29,
+      43,
+      59,
+      71
+    ],
+    "survey_groups": {
+      "metric": "roc_auc",
+      "rows": [
+        {
+          "name": "all_three",
+          "runs": 5,
+          "comparable_runs": 0,
+          "scored_runs": 0,
+          "roc_auc": null,
+          "average_precision": null,
+          "unscored_notes": [
+            "survey sizes differ too much to compare ({'ztf': 404, 'tess': 3}); the groups would describe different object populations"
+          ]
+        },
+        {
+          "name": "gaia_only",
+          "runs": 5,
+          "comparable_runs": 0,
+          "scored_runs": 0,
+          "roc_auc": null,
+          "average_precision": null,
+          "unscored_notes": [
+            "Gaia has no light curves of its own (catalogue connector); it can only join as columns onto another survey's sequences, not stand alone"
+          ]
+        },
+        {
+          "name": "gaia_tess",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 0,
+          "roc_auc": null,
+          "average_precision": null,
+          "unscored_notes": [
+            "only 3 rows; need 10; gaia join matched 0/3 objects (0%)"
+          ]
+        },
+        {
+          "name": "tess_only",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 0,
+          "roc_auc": null,
+          "average_precision": null,
+          "unscored_notes": [
+            "only 3 rows; need 10"
+          ]
+        },
+        {
+          "name": "ztf_gaia",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.7566,
+            "std": 0.0481,
+            "ci95": [
+              0.6933,
+              0.8037
+            ]
+          },
+          "average_precision": {
+            "mean": 0.2744,
+            "ci95": [
+              0.2373,
+              0.2962
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "ztf_only",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.7952,
+            "std": 0.0533,
+            "ci95": [
+              0.7457,
+              0.8546
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3948,
+            "ci95": [
+              0.3773,
+              0.4056
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "ztf_tess",
+          "runs": 5,
+          "comparable_runs": 0,
+          "scored_runs": 0,
+          "roc_auc": null,
+          "average_precision": null,
+          "unscored_notes": [
+            "survey sizes differ too much to compare ({'ztf': 404, 'tess': 3}); the groups would describe different object populations"
+          ]
+        }
+      ],
+      "interval": "empirical 2.5th\u201397.5th percentile across independent seeds"
+    },
+    "feature_groups": {
+      "metric": "roc_auc",
+      "rows": [
+        {
+          "name": "all_features",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.8062,
+            "std": 0.0606,
+            "ci95": [
+              0.7229,
+              0.8769
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3879,
+            "ci95": [
+              0.2776,
+              0.4591
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "without_coverage",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.8094,
+            "std": 0.0623,
+            "ci95": [
+              0.7229,
+              0.8802
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3889,
+            "ci95": [
+              0.267,
+              0.4587
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "without_differences",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.8021,
+            "std": 0.0591,
+            "ci95": [
+              0.7209,
+              0.87
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3938,
+            "ci95": [
+              0.2887,
+              0.4753
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "without_extremes",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.7839,
+            "std": 0.0663,
+            "ci95": [
+              0.6966,
+              0.8647
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3886,
+            "ci95": [
+              0.3036,
+              0.4505
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "without_scatter",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.8037,
+            "std": 0.055,
+            "ci95": [
+              0.7216,
+              0.8551
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3794,
+            "ci95": [
+              0.2852,
+              0.4461
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "without_shape",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.798,
+            "std": 0.0614,
+            "ci95": [
+              0.71,
+              0.8642
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3399,
+            "ci95": [
+              0.2335,
+              0.4345
+            ]
+          },
+          "unscored_notes": []
+        }
+      ],
+      "interval": "empirical 2.5th\u201397.5th percentile across independent seeds"
+    },
+    "detectors": {
+      "metric": "roc_auc",
+      "rows": [
+        {
+          "name": "ensemble",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.8062,
+            "std": 0.0606,
+            "ci95": [
+              0.7229,
+              0.8769
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3879,
+            "ci95": [
+              0.2776,
+              0.4591
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "isolation_forest",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.8249,
+            "std": 0.0734,
+            "ci95": [
+              0.712,
+              0.8834
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3871,
+            "ci95": [
+              0.2756,
+              0.4685
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "lof",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.8032,
+            "std": 0.0659,
+            "ci95": [
+              0.7013,
+              0.8534
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3691,
+            "ci95": [
+              0.267,
+              0.4218
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "one_class_svm",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.6367,
+            "std": 0.0506,
+            "ci95": [
+              0.6072,
+              0.7163
+            ]
+          },
+          "average_precision": {
+            "mean": 0.232,
+            "ci95": [
+              0.1803,
+              0.3189
+            ]
+          },
+          "unscored_notes": []
+        },
+        {
+          "name": "pca_reconstruction",
+          "runs": 5,
+          "comparable_runs": 5,
+          "scored_runs": 5,
+          "roc_auc": {
+            "mean": 0.7458,
+            "std": 0.0292,
+            "ci95": [
+              0.7147,
+              0.7868
+            ]
+          },
+          "average_precision": {
+            "mean": 0.3479,
+            "ci95": [
+              0.2746,
+              0.4381
+            ]
+          },
+          "unscored_notes": []
+        }
+      ],
+      "interval": "empirical 2.5th\u201397.5th percentile across independent seeds"
+    }
+  },
+  "runtime_seconds": 48.298,
+  "notes": "Repeated-seed injection-recovery with uncertainty intervals; only comparable survey groups are scored.",
+  "record_hash": "feed4a68669cbae90448a508ee2c5a9e8b99f3748815a706220aecdf83533ae8"
+}

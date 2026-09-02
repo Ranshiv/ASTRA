@@ -3,6 +3,8 @@ acquisition, and the SDSS-specific spectral feature adapter."""
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 
@@ -60,7 +62,7 @@ class TestSDSSConnector:
     def test_capabilities_declare_no_light_curve(self):
         connector = SDSSConnector()
         assert "light_curve" not in connector.capabilities
-        assert connector.enabled_by_default is False
+        assert connector.enabled_by_default is True
 
     def test_cone_search_queries_specobjall_not_photoobj(self, monkeypatch, cone: ConeQuery):
         captured: dict = {}
@@ -110,6 +112,29 @@ class TestSDSSConnector:
     def test_fetch_light_curves_returns_empty(self):
         source = SourceRef(survey="SDSS", object_id="1", ra_deg=0.0, dec_deg=0.0)
         assert SDSSConnector().fetch_light_curves(source) == []
+
+    def test_all_rows_failing_to_parse_logs_a_schema_drift_warning(self, monkeypatch, cone, caplog):
+        # Every row lacks ra/dec, so every row hits cone_search's except
+        # clause -- indistinguishable from a genuinely empty cone unless
+        # this is logged (see sdss.py's cone_search).
+        payload = "bestObjID,specObjID,plate,mjd,fiberID,run2d,class\n1,2,751,52251,131,26,STAR\n"
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(payload))
+
+        with caplog.at_level(logging.WARNING):
+            sources = SDSSConnector().cone_search(cone)
+
+        assert sources == []
+        assert any("none parsed as a source" in record.message for record in caplog.records)
+
+    def test_a_genuinely_empty_cone_logs_nothing(self, monkeypatch, cone, caplog):
+        payload = "bestObjID,specObjID,ra,dec,plate,mjd,fiberID,run2d,class\n"
+        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(payload))
+
+        with caplog.at_level(logging.WARNING):
+            sources = SDSSConnector().cone_search(cone)
+
+        assert sources == []
+        assert not any("none parsed as a source" in record.message for record in caplog.records)
 
 
 class TestSpectrumUrl:

@@ -474,3 +474,86 @@ class TestEnsemble:
         matrix.values[0, 0] = np.nan
 
         assert anomaly.detect(matrix).to_dict()["rows_skipped"] == 1
+
+
+class TestCalibrationReferencePersistence:
+    """Cross-run comparability (docs/DEFERRED.txt) needs a reference that
+    survives past a single `detect` call. These test the persistence layer
+    directly; TestCrossRunCalibration below tests it end-to-end through
+    EnsembleResult."""
+
+    def test_missing_reference_loads_as_empty(self, tmp_path):
+        loaded = anomaly.load_calibration_reference("nope", tmp_path)
+        assert loaded.size == 0
+
+    def test_round_trip(self, tmp_path):
+        anomaly.update_calibration_reference("run1", tmp_path, np.array([0.1, 0.5, 0.9]))
+        loaded = anomaly.load_calibration_reference("run1", tmp_path)
+
+        np.testing.assert_allclose(np.sort(loaded), [0.1, 0.5, 0.9])
+
+    def test_successive_updates_accumulate(self, tmp_path):
+        anomaly.update_calibration_reference("run1", tmp_path, np.array([0.1, 0.2]))
+        anomaly.update_calibration_reference("run1", tmp_path, np.array([0.3, 0.4]))
+        loaded = anomaly.load_calibration_reference("run1", tmp_path)
+
+        np.testing.assert_allclose(np.sort(loaded), [0.1, 0.2, 0.3, 0.4])
+
+    def test_cap_evicts_oldest_first(self, tmp_path):
+        anomaly.update_calibration_reference("run1", tmp_path, np.array([1.0, 2.0]), cap=3)
+        anomaly.update_calibration_reference("run1", tmp_path, np.array([3.0, 4.0]), cap=3)
+        loaded = anomaly.load_calibration_reference("run1", tmp_path)
+
+        # Oldest (1.0) evicted first; the three most recent survive, in order.
+        np.testing.assert_allclose(loaded, [2.0, 3.0, 4.0])
+
+    def test_different_names_do_not_share_a_reference(self, tmp_path):
+        anomaly.update_calibration_reference("a", tmp_path, np.array([1.0]))
+        anomaly.update_calibration_reference("b", tmp_path, np.array([2.0]))
+
+        np.testing.assert_allclose(anomaly.load_calibration_reference("a", tmp_path), [1.0])
+        np.testing.assert_allclose(anomaly.load_calibration_reference("b", tmp_path), [2.0])
+
+
+class TestCrossRunCalibration:
+    """The actual comparability claim: two 'runs' whose raw consensus scores
+    live on different scales should land on comparable calibrated values once
+    both are calibrated against the same persisted reference."""
+
+    def test_calibrated_scores_are_comparable_across_runs(self, tmp_path):
+        rng = np.random.default_rng(0)
+        # Same underlying distribution, but run 2's raw scores are shifted
+        # and rescaled -- the kind of run-to-run drift the raw, batch-relative
+        # min-max score cannot see past.
+        base = rng.uniform(0.0, 1.0, size=500)
+        run1 = anomaly.EnsembleResult(identities=[{} for _ in base], consensus=base,
+                                      agreement=np.zeros(len(base), dtype=int))
+        run2_raw = base * 3.0 + 10.0
+        run2 = anomaly.EnsembleResult(identities=[{} for _ in base], consensus=run2_raw,
+                                      agreement=np.zeros(len(base), dtype=int))
+
+        name = "cross-run-test"
+        ref = anomaly.load_calibration_reference(name, tmp_path)
+        ref = ref if ref.size else None
+        calibrated1 = run1.ranked(top=len(base), reference=ref)
+        anomaly.update_calibration_reference(name, tmp_path, run1.consensus)
+
+        ref = anomaly.load_calibration_reference(name, tmp_path)
+        calibrated2 = run2.ranked(top=len(base), reference=ref)
+
+        by_id1 = {r["rank"]: r["consensus_calibrated"] for r in calibrated1}
+        by_id2 = {r["rank"]: r["consensus_calibrated"] for r in calibrated2}
+        # Same rank position (i.e. same position in the shared underlying
+        # distribution) should land on a near-identical calibrated value,
+        # even though raw consensus scores differ by an order of magnitude.
+        for rank in list(by_id1)[:10]:
+            assert by_id1[rank] == pytest.approx(by_id2[rank], abs=0.05)
+
+    def test_first_run_falls_back_to_batch_relative(self, tmp_path):
+        result = anomaly.detect(synthetic_matrix())
+        reference = anomaly.load_calibration_reference("first-run", tmp_path)
+        reference = reference if reference.size else None
+
+        assert reference is None
+        report = result.to_dict(reference=reference)["calibration"]
+        assert report["reference_external"] is False

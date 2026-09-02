@@ -34,6 +34,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .research import stats as research_stats
+
 from .crossmatch import match_catalogs
 from .surveys.base import SourceRef
 
@@ -132,15 +134,11 @@ def photo_z_nmad(z_true, z_pred) -> float:
 
 
 def _summary(values: list[float]) -> dict | None:
-    finite = np.asarray([v for v in values if np.isfinite(v)], dtype=np.float64)
-    if not len(finite):
-        return None
-    return {
-        "mean": round(float(np.mean(finite)), 4),
-        "std": round(float(np.std(finite, ddof=1)), 4) if len(finite) > 1 else 0.0,
-        "ci95": [round(float(np.quantile(finite, 0.025)), 4),
-                round(float(np.quantile(finite, 0.975)), 4)],
-    }
+    """Delegates to `research.stats.summary` -- see that module's docstring
+    for why this shape (mean/std/ci95 over repeated seeds, not object-group
+    bootstrap) is the right one here. Was this module's own local
+    reimplementation; migrated per docs/LIMITATIONS.md's tracked debt."""
+    return research_stats.summary(values)
 
 
 def evaluate_photo_z(calibration_sample: list[dict], *, k: int = 10,

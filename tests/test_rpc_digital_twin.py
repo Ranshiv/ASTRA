@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from astra import rpc, store
+from astra.rpc_handlers import common as rpc_common
 from astra.surveys.base import LightCurve, SourceRef
 
 
@@ -125,7 +126,11 @@ class TestEvaluateTransfer:
         assert "error" in response["result"]
 
     def test_missing_torch_is_refused_with_a_clear_message(self, isolated_root, monkeypatch):
-        monkeypatch.setattr(rpc, "_require_torch",
+        # `_require_torch` lives in rpc_handlers/common.py (shared by every
+        # domain that can attempt a PyTorch-backed operation); the handler
+        # calls it as `common._require_torch()`, so patching it there is what
+        # actually takes effect, not an attribute of the top `rpc` module.
+        monkeypatch.setattr(rpc_common, "_require_torch",
                             lambda: (_ for _ in ()).throw(
                                 RuntimeError("PyTorch not installed")))
         response = rpc.dispatch({"id": 1, "method": "digital_twin.evaluate_transfer",

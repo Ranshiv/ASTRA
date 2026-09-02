@@ -20,13 +20,13 @@ def _write_fixture(path, chunks):
 
 
 class TestGaiaEpochIngest:
-    def test_ingests_a_fixture_and_reports_counts(self, tmp_path):
-        fixture = tmp_path / "fixture.json"
+    def test_ingests_a_fixture_and_reports_counts(self, isolated_root):
+        fixture = isolated_root.root / "fixture.json"
         _write_fixture(fixture, [
             [{"source_id": "1", "time": 2459000.0, "g_flux": 100.0, "g_flux_error": 2.0}],
             [{"source_id": "2", "time": 2459001.0, "g_flux": "bad", "g_flux_error": 2.0}],
         ])
-        checkpoint = tmp_path / "checkpoint.json"
+        checkpoint = isolated_root.root / "checkpoint.json"
 
         response = rpc.dispatch({"id": 1, "method": "gaia.epoch_ingest", "params": {
             "fixture_path": str(fixture), "checkpoint": str(checkpoint), "batch_size": 10,
@@ -40,11 +40,11 @@ class TestGaiaEpochIngest:
         assert result["rejection_histogram"] == {"invalid_value": 1}
         assert checkpoint.exists()
 
-    def test_works_with_no_progress_context_like_a_direct_dispatch_call(self, tmp_path):
+    def test_works_with_no_progress_context_like_a_direct_dispatch_call(self, isolated_root):
         """dispatch() calls handler(params) only -- progress must default safely."""
-        fixture = tmp_path / "fixture.json"
+        fixture = isolated_root.root / "fixture.json"
         _write_fixture(fixture, [[{"source_id": "1", "time": 1.0, "g_flux": 1.0, "g_flux_error": 1.0}]])
-        checkpoint = tmp_path / "checkpoint.json"
+        checkpoint = isolated_root.root / "checkpoint.json"
 
         response = rpc.dispatch({"id": 1, "method": "gaia.epoch_ingest", "params": {
             "fixture_path": str(fixture), "checkpoint": str(checkpoint),
@@ -54,20 +54,20 @@ class TestGaiaEpochIngest:
 
 
 class TestGaiaEpochStatus:
-    def test_reports_not_exists_for_a_missing_checkpoint(self, tmp_path):
+    def test_reports_not_exists_for_a_missing_checkpoint(self, isolated_root):
         response = rpc.dispatch({"id": 1, "method": "gaia.epoch_status", "params": {
-            "checkpoint": str(tmp_path / "missing.json"),
+            "checkpoint": str(isolated_root.root / "missing.json"),
         }})
 
         assert response["ok"] is True
         assert response["result"] == {"exists": False}
 
-    def test_reports_state_after_an_ingest(self, tmp_path):
-        fixture = tmp_path / "fixture.json"
+    def test_reports_state_after_an_ingest(self, isolated_root):
+        fixture = isolated_root.root / "fixture.json"
         _write_fixture(fixture, [
             [{"source_id": "1", "time": 2459000.0, "g_flux": 100.0, "g_flux_error": 2.0}],
         ])
-        checkpoint = tmp_path / "checkpoint.json"
+        checkpoint = isolated_root.root / "checkpoint.json"
         rpc.dispatch({"id": 1, "method": "gaia.epoch_ingest", "params": {
             "fixture_path": str(fixture), "checkpoint": str(checkpoint),
         }})

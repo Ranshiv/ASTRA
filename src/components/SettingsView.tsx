@@ -9,7 +9,7 @@ import { Database, HardDrive, KeyRound, Trash2 } from "lucide-react";
 import { useState, type MouseEvent } from "react";
 
 import { engine } from "@/lib/engine";
-import { Badge, Button, Empty, Field, KeyValue, Note, Panel, Table, num, useAction, useAsync } from "@/components/ui";
+import { Badge, Button, Empty, Field, KeyValue, Note, Panel, StatTile, Table, num, useAction, useAsync } from "@/components/ui";
 
 export function SettingsView() {
   const catalog = useAsync(() => engine.catalogStatus());
@@ -179,40 +179,45 @@ export function SettingsView() {
           <div>
             <h3 className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Datasets</h3>
             {dataset ? (
-              <KeyValue
-                rows={[
-                  ["Used", `${num(dataset.used_gb, 3)} GB`],
-                  ["Cap", `${num(dataset.cap_gb, 1)} GB`],
-                  ["Available", `${num(dataset.available_gb, 3)} GB`],
-                  ["Usage", `${num(dataset.usage_fraction * 100, 1)}%`],
-                ]}
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <StatTile label="Used" value={`${num(dataset.used_gb, 3)} GB`} />
+                <StatTile label="Cap" value={`${num(dataset.cap_gb, 1)} GB`} />
+                <StatTile label="Available" value={`${num(dataset.available_gb, 3)} GB`} />
+                <StatTile
+                  label="Usage"
+                  value={`${num(dataset.usage_fraction * 100, 1)}%`}
+                  tone={dataset.usage_fraction > 0.8 ? "warn" : "neutral"}
+                />
+              </div>
             ) : (
               <Empty>{usage.error ?? "Reading dataset usage…"}</Empty>
             )}
             {usage.data && Object.keys(usage.data.surveys).length > 0 && (
-              <Table head={["Survey", "Curves", "Size"]}>
-                {Object.entries(usage.data.surveys).map(([survey, stats]) => (
-                  <tr key={survey} className="border-b border-[var(--color-edge)]/50">
-                    <td className="px-2 py-1.5 font-mono">{survey}</td>
-                    <td className="px-2 py-1.5">{stats.curves.toLocaleString()}</td>
-                    <td className="px-2 py-1.5">{num(stats.gb, 4)} GB</td>
-                  </tr>
-                ))}
-              </Table>
+              <div className="mt-3">
+                <Table head={["Survey", "Curves", "Size"]}>
+                  {Object.entries(usage.data.surveys).map(([survey, stats]) => (
+                    <tr key={survey} className="border-b border-[var(--color-edge)]/50">
+                      <td className="px-2 py-1.5 font-mono">{survey}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{stats.curves.toLocaleString()}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{num(stats.gb, 4)} GB</td>
+                    </tr>
+                  ))}
+                </Table>
+              </div>
             )}
           </div>
           <div>
             <h3 className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Download cache</h3>
             {cache.data ? (
-              <KeyValue
-                rows={[
-                  ["Total", `${num(cache.data.total_gb, 3)} GB`],
-                  ["Cap", `${num(cache.data.cap_gb, 1)} GB`],
-                  ["Files", cache.data.file_count.toLocaleString()],
-                  ["Evicted", `${num(cache.data.evicted_gb, 3)} GB / ${cache.data.evicted_files} files`],
-                ]}
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <StatTile label="Total" value={`${num(cache.data.total_gb, 3)} GB`} />
+                <StatTile label="Cap" value={`${num(cache.data.cap_gb, 1)} GB`} />
+                <StatTile label="Files" value={cache.data.file_count.toLocaleString()} />
+                <StatTile
+                  label="Evicted"
+                  value={`${num(cache.data.evicted_gb, 3)} GB / ${cache.data.evicted_files} files`}
+                />
+              </div>
             ) : (
               <Empty>{cache.error ?? "Reading cache status…"}</Empty>
             )}

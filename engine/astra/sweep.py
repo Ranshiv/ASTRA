@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .research import stats as research_stats
+
 # Explored in both directions from the current defaults, which are latent 16,
 # channels (16, 32, 64), lr 1e-3, KL weight 1.0.
 DEFAULT_GRID: dict[str, tuple] = {
@@ -85,16 +87,12 @@ class TrialResult:
         return len(self.roc_auc)
 
     def _summary(self, values: list[float]) -> dict | None:
-        finite = np.asarray([v for v in values if np.isfinite(v)], dtype=float)
-        if not len(finite):
-            return None
-        return {
-            "mean": round(float(np.mean(finite)), 4),
-            "std": (round(float(np.std(finite, ddof=1)), 4)
-                    if len(finite) > 1 else 0.0),
-            "ci95": [round(float(np.quantile(finite, 0.025)), 4),
-                     round(float(np.quantile(finite, 0.975)), 4)],
-        }
+        """Delegates to `research.stats.summary`, which this module's own
+        version was written first and later mirrored by (see that
+        function's own docstring: "matches sweep._summary"). Migrated per
+        docs/LIMITATIONS.md's tracked debt so there is one implementation,
+        not two that happen to agree."""
+        return research_stats.summary(values)
 
     @property
     def mean_auc(self) -> float:

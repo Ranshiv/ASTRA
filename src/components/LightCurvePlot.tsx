@@ -2,38 +2,54 @@ import { useEffect, useRef, useState } from "react";
 import type Plotly from "plotly.js-dist-min";
 
 import type { CurvePayload, FoldedCurve } from "@/lib/engine";
+import { readThemeColor, useTheme } from "@/lib/theme";
 
-const BAND_COLORS: Record<string, string> = {
-  g: "#4ade80",
-  r: "#f87171",
-  i: "#fbbf24",
-  TESS: "#6ea8ff",
-  G: "#d8dce8",
-};
+/** Band colours read from the theme tokens at render time rather than
+ * hardcoded: they were already exact duplicates of --color-ok/-bad/-warn/
+ * -accent/-text (g/r/i/TESS/G respectively), so sourcing them from
+ * getComputedStyle makes them follow a theme change for free instead of
+ * staying frozen at whatever the dark palette happened to be. */
+function bandColors(): Record<string, string> {
+  return {
+    g: readThemeColor("--color-ok"),
+    r: readThemeColor("--color-bad"),
+    i: readThemeColor("--color-warn"),
+    TESS: readThemeColor("--color-accent"),
+    G: readThemeColor("--color-text"),
+  };
+}
 
-/** Convert a #rrggbb colour into rgba() so error bars can be faded. */
+/** Convert a #rrggbb colour into rgba() so error bars can be faded. Falls
+ * back to opaque black on a malformed value instead of propagating NaN into
+ * the rgba() string, which Plotly would silently fail to parse. */
 function withAlpha(hex: string, alpha: number): string {
   const value = parseInt(hex.slice(1), 16);
+  if (!Number.isFinite(value)) return `rgba(0,0,0,${alpha})`;
   const r = (value >> 16) & 255;
   const g = (value >> 8) & 255;
   const b = value & 255;
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-const LAYOUT_BASE: Partial<Plotly.Layout> = {
-  paper_bgcolor: "rgba(0,0,0,0)",
-  plot_bgcolor: "rgba(0,0,0,0)",
-  font: { color: "#6b7590", size: 11 },
-  margin: { l: 56, r: 16, t: 8, b: 40 },
-  showlegend: false,
-  hovermode: "closest",
-};
+function layoutBase(): Partial<Plotly.Layout> {
+  return {
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: readThemeColor("--color-muted"), size: 11 },
+    margin: { l: 56, r: 16, t: 8, b: 40 },
+    showlegend: false,
+    hovermode: "closest",
+  };
+}
 
-const AXIS_BASE: Partial<Plotly.LayoutAxis> = {
-  gridcolor: "#1c2030",
-  zerolinecolor: "#1c2030",
-  linecolor: "#1c2030",
-};
+function axisBase(): Partial<Plotly.LayoutAxis> {
+  const edge = readThemeColor("--color-edge");
+  return {
+    gridcolor: edge,
+    zerolinecolor: edge,
+    linecolor: edge,
+  };
+}
 
 export function LightCurvePlot({
   curve,
@@ -44,6 +60,7 @@ export function LightCurvePlot({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const { resolved } = useTheme();
 
   useEffect(() => {
     if (!container.current) return;
@@ -53,7 +70,7 @@ export function LightCurvePlot({
     const render = async () => {
       const { default: Plotly } = await import("plotly.js-dist-min");
       if (disposed || !container.current) return;
-      const color = BAND_COLORS[curve.band] ?? "#6ea8ff";
+      const color = bandColors()[curve.band] ?? readThemeColor("--color-accent");
     const showing = folded ?? curve;
     const x = folded ? folded.phase : curve.time;
     const y = showing.value;
@@ -84,16 +101,16 @@ export function LightCurvePlot({
     }
 
     const layout: Partial<Plotly.Layout> = {
-      ...LAYOUT_BASE,
+      ...layoutBase(),
       xaxis: {
-        ...AXIS_BASE,
+        ...axisBase(),
         title: {
           text: folded ? "Phase" : `Time (${curve.time_system})`,
           font: { size: 11 },
         },
       },
       yaxis: {
-        ...AXIS_BASE,
+        ...axisBase(),
         title: {
           text: curve.value_kind === "mag" ? "Magnitude" : "Flux",
           font: { size: 11 },
@@ -118,7 +135,7 @@ export function LightCurvePlot({
       if (!disposed) setRenderError(err instanceof Error ? err.message : String(err));
     });
     return () => { disposed = true; };
-  }, [curve, folded]);
+  }, [curve, folded, resolved]);
 
   useEffect(() => {
     const node = container.current;

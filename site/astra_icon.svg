@@ -1,0 +1,24 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="astraClip"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#astraClip)">
+    <rect width="512" height="512" fill="#F5F3EE"/>
+    <g fill="#2A3140">
+      <circle cx="118" cy="134" r="11"/>
+      <circle cx="232" cy="100" r="7"/>
+      <circle cx="360" cy="146" r="12"/>
+      <circle cx="424" cy="244" r="9"/>
+      <circle cx="146" cy="266" r="9"/>
+      <circle cx="106" cy="386" r="12"/>
+      <circle cx="240" cy="424" r="7"/>
+      <circle cx="358" cy="398" r="11"/>
+      <circle cx="304" cy="216" r="8"/>
+      <circle cx="186" cy="184" r="6"/>
+      <circle cx="412" cy="352" r="6"/>
+      <circle cx="170" cy="332" r="6"/>
+    </g>
+    <circle cx="286" cy="312" r="74" fill="none" stroke="#D9402F" stroke-width="15"/>
+    <circle cx="286" cy="312" r="25" fill="#D9402F"/>
+  </g>
+</svg>

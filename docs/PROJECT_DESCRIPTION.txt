@@ -1,0 +1,944 @@
+ASTRA PROJECT DESCRIPTION
+=========================
+
+Project name
+------------
+
+ASTRA means Astronomical Survey & Transient Research Analyzer.
+
+ASTRA is a Windows-first, local-first scientific desktop application for
+discovering unusual astronomical objects and transient behavior. It combines
+observations from independent astronomical surveys, extracts scientifically
+useful features, detects unusual behavior, checks whether the signal could be
+an instrumental artifact, explains why a candidate was selected, and helps a
+researcher decide what to investigate or observe next.
+
+The project is intended for astronomers, astrophysics researchers, students,
+machine-learning researchers, observatory groups, citizen scientists, and
+computational scientists who need a reproducible local analysis environment.
+
+
+Core scientific idea
+--------------------
+
+One survey calling an object unusual is a claim. Independent instruments with
+different detectors, cadences, filters, and systematics agreeing on related
+behavior is stronger evidence. A major design goal is therefore to separate a
+real astrophysical signal from a survey-specific problem such as a bad pixel,
+cosmic ray, diffraction spike, saturation, poor calibration, or blending.
+
+ASTRA is not only a viewer and it is not only a classifier. Its target output
+is a ranked, explainable set of candidates that a researcher can independently
+review and validate. The system must also be able to conclude that a candidate
+is probably an artifact; rejecting false positives is as important as finding
+interesting objects.
+
+
+End-to-end workflow
+-------------------
+
+1. Create a research project.
+2. Choose preferred surveys, tags, a data root, and one or more sky regions.
+3. Acquire observations with a cone search or across all configured project
+   regions.
+4. Normalize observations into ASTRA's common records and time conventions.
+5. Clean and quality-filter measurements, handling missing values, duplicates,
+   bad metadata, and survey-specific quality flags.
+6. Extract photometric, temporal, periodic, astrometric, image, spectral, and
+   optional multimodal features.
+7. Run unsupervised anomaly detectors over a versioned feature matrix.
+8. Assemble candidates and rank them using anomaly rarity, detector agreement,
+   temporal behavior, physical consistency, catalog novelty, cross-survey
+   agreement, and data quality.
+9. Cross-match the candidates between surveys and determine whether the
+   evidence is resolved, ambiguous, or blended.
+10. Review the candidate's light curves, sky location, images, FITS products,
+    timelines, explanations, artifact indicators, literature, and physical
+    diagnostics.
+11. Add labels, notes, votes, and follow-up status; optionally use reviewed
+    labels to train a supervised ranking model.
+12. Generate research exports, local candidate feeds, benchmark records, or
+    signed reproducibility bundles.
+
+
+Desktop application and user interface
+---------------------------------------
+
+The current React application has fourteen hash-routed workspaces grouped by
+workflow, investigation, research, and system tasks.
+
+Dashboard
+---------
+
+The landing screen provides quick actions for creating a project, exploring
+existing data, and investigating candidates. It summarizes:
+
+- CPU or CUDA execution mode and detected GPU information.
+- Number of stored light curves and per-survey storage counts.
+- Dataset usage and configured storage cap.
+- Number of candidates and number of human labels.
+- Highest-ranked candidates in the current run.
+- Recent experiment records and failure indicators.
+- Recent acquisition manifests, survey coverage, object counts, and hashes.
+- Human-review label totals.
+
+Projects
+--------
+
+Projects keep datasets, manifests, candidate files, reviews, experiments,
+results, and reports separate. The project workspace supports:
+
+- Creating a new project with a name and description.
+- Assigning comma-separated tags.
+- Selecting preferred surveys.
+- Adding and removing sky regions using RA, declination, and radius in arcsec.
+- Editing project metadata and acquisition regions.
+- Selecting an active project.
+- Archiving a project to make it read-only and restoring it later.
+- Validating project layout and manifests.
+- Displaying the project's data root.
+
+Acquire
+-------
+
+Acquisition supports a coordinate cone search across selected surveys and a
+project-wide operation over every configured region. The interface provides:
+
+- RA, declination, and search-radius validation.
+- Survey selection chips with release information.
+- Background job submission rather than blocking the window.
+- Progress messages and item counts for long archive queries.
+- Cancellation of running acquisitions.
+- Idempotent acquisition keys so repeating the same request can reuse an
+  existing job rather than duplicating work.
+- Skip-existing behavior for project acquisitions.
+- Per-survey options, including alternate TESS acquisition paths where
+  supported by a connector.
+- Per-survey result tables containing source counts, curves, points, bytes,
+  release, and errors.
+- Project-region result summaries and totals.
+- Sealed dataset manifests and content hashes.
+
+Raw archive files are processed into normalized Parquet data where possible;
+temporary downloads are not retained unnecessarily. Capacity refusal is
+reported when the data cap would be exceeded.
+
+Events
+------
+
+The event inbox handles event-native data separately from point-source survey
+rows. It supports:
+
+- Ingesting JSON event packets in the UI.
+- Backend support for JSON objects and VOEvent-style event payloads.
+- Provider metadata and provider availability states.
+- Immutable, SHA-256-addressed raw packet storage.
+- Packet revisions grouped into event clusters.
+- Deterministic read-only packet replay.
+- Conservative event-to-candidate association using localization and time
+  windows.
+- Explicit alert polling for configured GCN, VOEvent, ALeRCE, or Fink-style
+  providers.
+- Resumable alert cursors and per-packet malformed-payload errors.
+- Clear distinction between offline, unavailable, provider failure, and a real
+  no-match result.
+
+Sky explorer
+------------
+
+The sky explorer provides both two-dimensional and three-dimensional views:
+
+- Aladin Lite 2D astronomical sky map.
+- Three.js 3D candidate scene using reliable Gaia distance information.
+- RA, declination, and field-of-view controls.
+- Stored candidate markers overlaid on the map.
+- Buttons to center the view on a selected candidate.
+- Automatic fitting of the view to the loaded candidate population until the
+  researcher manually changes the view.
+- Reporting of candidates without reliable parallax-based distances.
+- HJD_UTC to BJD_TDB frame-offset calculation at the current position.
+- Explanation of the UTC-to-TDB and heliocentric-to-barycentric terms.
+
+Light curves
+------------
+
+The light-curve explorer provides:
+
+- Searchable list of stored curves by survey, object, or band.
+- Survey, object ID, band, point count, and time-span metadata.
+- Downsampled display for long curves while retaining original point counts.
+- Interactive Plotly light-curve plots.
+- Common BJD_TDB display where available.
+- Period folding for visualizing periodic behavior.
+- Unfold/reset controls.
+- Backend support for curve binning.
+- Graceful handling of missing or unavailable curves.
+
+Candidate workspace
+-------------------
+
+The candidate workspace is the central investigation surface. It supports:
+
+- Building a fresh end-to-end candidate run.
+- Loading and filtering ranked candidates by ID, object, survey, or band.
+- Candidate rank and score display.
+- Candidate detail retrieval.
+- Candidate-specific light-curve plotting and best-period folding.
+- Candidate sky-position map.
+- Combined multi-survey observation timeline.
+- Explanation of what happened and why it was flagged.
+- Evidence and artifact assessment summary.
+- FITS image and ZTF cutout workflow.
+- TESS target-pixel-file workflow.
+- Candidate research notes.
+- Labels: interesting, artifact, known_object, uncertain, and needs_follow_up.
+- Multiple-reviewer community votes and vote tallies.
+- Promotion of a sufficiently agreed vote consensus into the candidate label.
+- Catalog enrichment using SIMBAD, VSX, and configured TNS access.
+- CSV, FITS, and PDF candidate-run exports.
+
+FITS and image features
+-----------------------
+
+Within a candidate detail view, a researcher can:
+
+- Search for overlapping ZTF image products.
+- Queue quota-safe cutout downloads.
+- Reuse an already verified local FITS product.
+- Inspect FITS dimensions, headers, statistics, and pixel images.
+- Enter a local FITS path manually.
+- Extract bounded image morphology and residual features.
+- Persist image-derived sidecar feature tables.
+
+TESS target-pixel features
+--------------------------
+
+The candidate TESS panel supports:
+
+- Selecting a TESS sector.
+- Downloading a verified TESS target-pixel file.
+- Reusing an existing verified TPF.
+- Extracting background-subtracted aperture photometry.
+- Persisting the resulting curve.
+- Plotting the extracted TESS curve.
+- Reporting neighbors in the aperture and blend risk.
+
+TESS's approximately 21-arcsec pixels mean this is neighborhood photometry,
+not automatically resolved stellar confirmation.
+
+Cross-survey evidence
+---------------------
+
+The cross-survey workspace exposes both source grouping and evidence profiles.
+It supports:
+
+- Proper-motion-aware positional grouping.
+- Automatic grouping anchored on the largest catalog.
+- Explicit anchor selection, such as ZTF or Gaia, for reproducible population
+  denominators.
+- Group, multi-survey, resolved, ambiguous, and blended counts.
+- Per-member separations and source IDs.
+- Survey resolution flags.
+- Period agreement including harmonics and one-day aliases.
+- Period false-alarm context.
+- Variability and amplitude agreement.
+- Temporal-overlap evidence.
+- Positional-quality evidence.
+- Survey-specific profile cards containing point counts, periods, period S/N,
+  reduced chi-square, amplitude, fractional amplitude, and baseline.
+- Explicit weight-used reporting when some evidence components are unavailable.
+
+TESS matches marked blended are not counted as resolved independent evidence.
+
+Explain workspace
+-----------------
+
+The Explain workspace gathers the reasoning behind a candidate in one place:
+
+- Candidate selector and ranked candidate chips.
+- Fixed-heuristic review queue.
+- Optional active-learning review queue reweighted from label history.
+- Score components and weighted contributions.
+- Score renormalization and available-weight warnings.
+- Occlusion-based feature attribution showing the effect of replacing a
+  feature with a typical population value.
+- Artifact verdict, likelihood, indicators, weights, and clearing evidence.
+- Scientific significance and empirical tail-probability context.
+- Evidence-completeness reporting.
+- Literature search and cached ADS/arXiv context.
+- Bounded broadband physical characterization, colors, and coarse blackbody
+  temperature diagnostics.
+- Gravitational-wave coincidence checks.
+- Fast-radio-burst coincidence checks.
+- Candidate follow-up visibility planning.
+- Follow-up request history with requested, observed, no-show, and cancelled
+  states.
+
+Follow-up planning is deliberately draft-only. It computes visibility windows,
+altitude, azimuth, airmass, twilight, lunar constraints, weather/facility
+constraints, and rejected-slot counts, but it does not submit telescope time
+automatically.
+
+Experiments
+-----------
+
+The experiment workspace makes research runs inspectable and comparable. It
+supports:
+
+- Listing recorded experiments.
+- Running a single ablation.
+- Running repeated-seed ablations.
+- Selecting a metric such as ROC-AUC, average precision, precision, recall, or
+  F1.
+- Selecting multiple experiments for comparison.
+- Opening full experiment configuration and results.
+- Inspecting dataset, code, feature, preprocessing, model, seed, hardware,
+  runtime, and schema provenance.
+- Verifying whether the current environment has drifted from the recorded
+  environment.
+- Showing field-by-field drift instead of hiding mismatches.
+- Warning when experiments use incompatible feature or preprocessing versions
+  and are not comparable.
+
+Models
+------
+
+The models workspace provides the following controls:
+
+Feature matrices:
+
+- Build a versioned feature matrix.
+- Build features in resumable durable batches.
+- List stored matrices and sizes.
+- Run baseline anomaly detection.
+- Clear the feature cache.
+- Inspect detector counts, score ranges, and flagged rows.
+
+Baseline anomaly ensemble:
+
+- Isolation Forest.
+- Local Outlier Factor.
+- One-Class SVM.
+- PCA reconstruction error.
+- Rank-based consensus across detectors.
+- Per-run score normalization and empirical-CDF calibration.
+- Configurable contamination level.
+
+Supervised ranker:
+
+- Train a calibrated logistic-style ranker from reviewed labels.
+- Apply the saved ranker to candidates.
+- List saved ranker models and checksums.
+- Enforce a deliberate data gate before training. A new installation is not
+  treated as trainable until it has enough labels and independent object
+  groups per class.
+
+Deep models:
+
+- Convolutional autoencoder.
+- Variational autoencoder.
+- Patch-transformer time-series model.
+- Training over resampled sequences.
+- Injection-recovery comparison between methods.
+- Multi-seed hyperparameter sweeps.
+- Best-epoch, validation-loss, parameter-count, device, and checkpoint output.
+- Explicit CPU-only refusal message when the packaged engine does not include
+  PyTorch.
+
+Survey digital twin
+-------------------
+
+The digital-twin workspace is a read-only diagnostic for the survey simulator.
+It can:
+
+- Fit a per-survey cadence, gap, coverage, and noise profile from real curves.
+- Sample a synthetic population from the fitted profile.
+- Report synthetic row counts and coverage.
+- Measure per-feature Kolmogorov-Smirnov distance between real and synthetic
+  populations.
+- Run a transfer study that trains identical detector architectures on real or
+  synthetic data and evaluates both on held-out real data.
+- Report means, standard deviations, confidence intervals, and seed counts.
+
+Digital-twin results do not modify candidate ranking.
+
+Reports
+-------
+
+The reports workspace supports:
+
+- Exporting candidate runs to CSV, FITS, or PDF.
+- Showing export paths and candidate counts.
+- Copying export paths and hashes.
+- Generating a local thresholded candidate feed file.
+- Evaluating saved labels for precision, recall, F1, ROC-AUC, and average
+  precision.
+- Refusing to present misleading metrics when the label sample is too small.
+- Listing acquisition manifests, surveys, object counts, timestamps, and
+  content hashes.
+- Building signed reproducibility bundles for sealed datasets and experiments.
+- Verifying bundle hashes and Ed25519 signatures.
+
+The local feed is written to disk and is not published automatically.
+
+Settings
+--------
+
+The settings workspace provides:
+
+- Capability/readiness status for external or optional features.
+- Gaia epoch readiness.
+- Multimodal-training readiness and available VRAM.
+- Production-release readiness.
+- TNS API-key, bot-ID, and bot-name configuration.
+- Secure TNS credential clearing.
+- TNS credential configured/usable state without exposing the key.
+- Catalog cache entries, status, and expiry information.
+- Dataset usage, cap, available space, and survey-level sizes.
+- Download-cache usage, cap, file count, and eviction totals.
+- Explicit cache-cap enforcement.
+- Engine paths for projects, datasets, models, cache, logs, and configuration.
+
+
+Scientific engine capabilities
+------------------------------
+
+Survey connector architecture
+-----------------------------
+
+Survey connectors implement a common interface. Registering a connector makes
+its metadata available to acquisition, project configuration, manifests, and
+the UI without rewriting the pipeline.
+
+Core workflow surveys are:
+
+- ZTF DR24: time-domain catalogs, light curves, and image products.
+- Gaia DR3: astrometry and mean photometry.
+- TESS SPOC: high-cadence light curves and target-pixel files; alternate QLP
+  acquisition options are supported where configured.
+
+The registry also contains SDSS, Pan-STARRS, ALeRCE, Kepler, OGLE, Rubin TAP,
+DES, DESI, Hubble, JWST, Chandra, Swift, XMM-Newton, eROSITA, GALEX, 2MASS,
+WISE, Herschel, and VLASS connectors.
+
+Connector readiness is intentionally explicit. Depending on the connector,
+the current evidence status is live-verified, cassette-verified, mock-only,
+metadata-only, or dormant. Metadata-only connectors provide identity and
+position records without claiming a light curve. The direct Rubin TAP path is
+credential-gated and dormant until a valid data-rights token is configured.
+
+Acquisition and normalization
+-----------------------------
+
+The acquisition layer provides:
+
+- Cone searches by celestial coordinates and radius.
+- Multi-region project acquisition.
+- Survey-specific archive adapters.
+- Release-aware source identity.
+- Common light-curve records and value-kind handling.
+- Time-system normalization.
+- Download retries and resilient HTTP behavior.
+- Offline cache and cassette replay support.
+- Content-addressed manifests.
+- Capacity checks before materializing data.
+- Persistent jobs with status, progress, cancellation, retry, and recovery.
+
+Data storage
+------------
+
+ASTRA matches storage to the data type:
+
+- FITS for raw astronomical observations and image products.
+- Parquet for normalized light curves, feature matrices, labels, and sidecars.
+- SQLite for project metadata, indexes, jobs, event packets, reviews, and
+  application state.
+- DuckDB-compatible analytical workflows where appropriate.
+- Local project directories for candidates, experiments, results, and reports.
+- A size-capped download cache for temporary archive data.
+- Separate model storage for checkpoints and ranker files.
+
+Existing data is not silently auto-evicted. Cache enforcement is explicit, and
+acquisition returns a capacity refusal when the dataset cap cannot safely hold
+new data.
+
+Feature extraction
+------------------
+
+The feature layer is versioned and cached. It computes robust features for
+irregular survey time series, including:
+
+Photometric features:
+
+- Number of points.
+- Mean, inverse-variance weighted mean, median, standard deviation, and MAD.
+- Full and robust percentile amplitude.
+- Skewness and kurtosis.
+- Fraction of points beyond one standard deviation.
+- Median measurement error.
+
+Variability features:
+
+- Reduced chi-square against a constant source.
+- Stetson J and K indices.
+- Von Neumann eta ratio.
+
+Temporal features:
+
+- Time baseline.
+- Median cadence and maximum gap.
+- Linear trend per day.
+- Maximum step change.
+- Change-point score.
+
+Periodic features:
+
+- Lomb-Scargle best period.
+- Best periodogram power.
+- Period signal-to-noise.
+- Alias-aware period comparison between surveys.
+
+Additional feature paths support astrometric information, multiband
+photometry, image morphology, spectral properties, polarization, sidecar
+tables, and fixed-size multimodal tensors.
+
+The periodogram has CPU and optional exact CUDA backends. GPU availability is
+never assumed; when an optional GPU path is unavailable, the system reports or
+falls back safely rather than failing a complete acquisition pipeline.
+
+Anomaly detection and calibration
+---------------------------------
+
+The production baseline is unsupervised. Four detectors run over the same
+finite feature rows and fail differently by design:
+
+- Isolation Forest finds points isolated by random partitions.
+- Local Outlier Factor measures local density deviation.
+- One-Class SVM learns a boundary around the normal population.
+- PCA reconstruction identifies rows that a low-rank model cannot rebuild.
+
+ASTRA combines detector ordering using a rank-consensus ensemble. It does not
+blindly average raw detector scores, because different score distributions can
+make a raw average misleading. Scores are normalized per run, and optional
+empirical-CDF calibration expresses how extreme a row is relative to a
+reference population.
+
+The default contamination assumption is deliberately low because astronomical
+events of interest are rare. A batch-relative score of 1.0 means most
+anomalous in that batch, not an absolute universal probability.
+
+Candidate scoring
+-----------------
+
+The production candidate score is a transparent weighted composite:
+
+- Statistical rarity: 25 percent.
+- Cross-survey consistency: 20 percent.
+- Temporal uniqueness: 15 percent.
+- Physical inconsistency: 15 percent.
+- Catalog novelty: 10 percent.
+- Model agreement: 10 percent.
+- Data quality: 5 percent.
+
+Missing evidence components are represented as unavailable rather than zero.
+The total is renormalized over the available weight, and every candidate
+reports weight_used so scores based on incomplete evidence are not mistaken
+for fully weighted scores.
+
+Cross-survey evidence
+---------------------
+
+Cross-survey matching considers:
+
+- Angular separation.
+- Proper motion and epoch effects.
+- Survey resolution and blend status.
+- Independent detections.
+- Period agreement, harmonics, and one-day aliases.
+- Period false-alarm probability context.
+- Variability agreement.
+- Amplitude agreement with wavelength-aware tolerance.
+- Temporal overlap.
+- Positional quality.
+
+The result contains the member source IDs, separations, survey views, evidence
+components, weighted contributions, notes, and the fraction of evidence weight
+that was actually available.
+
+Artifact rejection
+------------------
+
+Artifact analysis evaluates whether an unusual signal can be explained by
+instrumental or data-quality behavior. Candidate records can include:
+
+- Artifact likelihood.
+- A verdict such as likely artifact or likely astrophysical.
+- Named artifact indicators.
+- Indicator weights and explanatory details.
+- Evidence that clears or weakens the artifact interpretation.
+
+The engine also contains real-artifact banks, ZTF artifact patches, TESS pixel
+artifact handling, CCD-attribution experiments, and forward PSF tools. These
+advanced artifact-rejection studies are not all part of the default production
+score yet.
+
+Scientific interpretation integrations
+---------------------------------------
+
+Catalog enrichment:
+
+- Cached SIMBAD, VSX, and optional TNS lookups.
+- Provider state tracking for match, no-match, offline, unavailable, and
+  incomplete responses.
+- No-match is never inferred from a missing credential or offline provider.
+
+Literature:
+
+- Cached ADS and arXiv searches.
+- Object, term, and event-based search inputs.
+- Provider release and cache provenance.
+- Literature is context and provenance, not a novelty proof and not a score
+  input.
+
+Physical characterization:
+
+- Available broadband colors.
+- Bounded blackbody temperature-grid diagnostic.
+- Bands used, quality state, residuals, and warnings.
+- Caller-supplied extinction only; ASTRA does not invent reddening.
+- No claim of a spectral type from this diagnostic.
+
+Significance and selection:
+
+- Empirical tail probability calibration.
+- Reference-population size and fingerprint.
+- Estimated false-discovery rate.
+- Selection completeness cells.
+- Wilson confidence intervals.
+- Optional weighted completeness and interpretable recovery model.
+
+Multimessenger context:
+
+- Cached gravitational-wave event catalogs and candidate coincidence checks.
+- Cached fast-radio-burst event catalogs and candidate coincidence checks.
+- Event-to-candidate localization and temporal association.
+- Event-to-event cross-messenger graph correlation and time-slide calibration.
+- These checks are shown as evidence and do not silently increase a candidate's
+  historical ranking score.
+
+TAP and alert interoperability:
+
+- Bounded IVOA TAP/ADQL queries.
+- Single-SELECT validation and TOP row caps.
+- CSV and VOTable parsing.
+- Query, release, cache, and expiry provenance.
+- Explicit alert provider metadata and bounded polling.
+
+
+Research and reproducibility features
+--------------------------------------
+
+Experiment provenance
+---------------------
+
+Experiment records preserve:
+
+- Experiment ID.
+- Dataset and manifest identity.
+- Model and checkpoint identity.
+- Feature version and feature schema hash.
+- Preprocessing and resampling contract.
+- Hyperparameters and configuration.
+- Random seed(s).
+- Hardware and selected execution device.
+- Software/library environment.
+- Runtime and results.
+- Notes and failure state.
+
+Experiment record hashes detect file tampering. Separate verification compares
+the recorded environment with the current environment and reports drift field
+by field.
+
+Benchmark controls
+------------------
+
+The research framework includes:
+
+- Object-grouped splits that prevent the same object appearing in train and
+  test.
+- Sky/time splits that prevent fields or observing seasons straddling folds.
+- Leakage detection before a split is used.
+- Fixed declared seeds.
+- Paired grouped bootstrap confidence intervals.
+- AUPRC, AUROC, precision, recall, F1, discovery rate, FDR, calibration,
+  processing time, and resource metrics.
+- Separate storage for real and synthetic evaluation results.
+- Benchmark records tied to an experiment ID, benchmark ID, split ID, and
+  dataset-manifest hash.
+
+Injection studies are clearly labeled as synthetic. Recovering an injected
+shape demonstrates sensitivity to that injection design; it is not proof that
+the system can discover every unknown phenomenon.
+
+Reproducibility bundles
+-----------------------
+
+Signed bundles can be built from a sealed project manifest and experiment IDs.
+They contain hashes and provenance rather than copying bulk data. Bundles use
+per-project Ed25519 signing keys and support:
+
+- Bundle construction.
+- Content-hash verification.
+- Signature verification.
+- Detection of changed or byte-flipped content.
+- Query-identity checking for a future rerun.
+
+Cassette record/replay
+----------------------
+
+Network-shaped archive responses can be captured into checksummed, credential-
+redacted cassettes and replayed offline. This supports deterministic connector
+tests and offline research reruns. The cassette layer distinguishes a cache
+miss from a true scientific no-match.
+
+
+Additional scientific modules in the repository
+-----------------------------------------------
+
+The engine contains a broader research library than the default UI exposes.
+These modules are useful for future investigations, experiments, or promotion
+into production after validation. Many are currently candidate-only,
+synthetic-only, opt-in, or infrastructure modules rather than guaranteed
+runtime features.
+
+Time-domain and transient analysis:
+
+- AGN damped-random-walk and tidal-disruption-event change-point analysis.
+- Stellar flare templates, detection, energy estimation, and injection
+  recovery.
+- Eclipsing-binary geometry, fitting, masses, and radii.
+- Transit search, transit timing variations, and false-positive vetting.
+- Microlensing forward models, fitting, and posterior sampling.
+- Kilonova light-curve modeling.
+- Early supernova classification and time-to-classification studies.
+- Moving-object tracklet linking and preliminary orbit determination.
+- Reverberation lag recovery.
+- Open-world transient injection and real-data scale studies.
+
+Physical, imaging, and spectroscopy analysis:
+
+- Photometric redshift estimation.
+- Three-dimensional dust and distance-extinction marginalization.
+- Broadband and energy-balance SED diagnostics.
+- Spectral line-profile models and posterior fitting.
+- Spectroscopy wavelength calibration and redshift validation.
+- Strong-lens and weak-lensing features and imaging experiments.
+- Probabilistic host-galaxy association.
+- Radio variability, scintillation, and synchrotron diagnostics.
+- X-ray hardness ratios and discrete-state modeling.
+- Polarization features.
+- Stellar latent-manifold modeling.
+- Survey and photometric calibration diagnostics.
+- Population-rate and selection-function inference.
+
+Advanced machine learning and data quality:
+
+- Masked self-supervised light-curve pretraining.
+- Frozen embedding joins and linear-probe evaluation.
+- Multimodal encoders for photometry, astrometry, images, and spectra.
+- MoCo-style multimodal contrastive learning.
+- Synthetic paired multimodal data generation.
+- Diffusion denoising and transient injection.
+- Federated multi-observatory training studies.
+- Conformal anomaly uncertainty.
+- GPU Bayesian online change-point detection.
+- Quality-drift monitoring.
+- Artifact banks, CCD attribution, ZTF forced photometry, and TESS forward
+  PSF scene-model deblending.
+
+Each advanced module has associated evaluation code where appropriate. The
+evaluation modules are intentionally kept out of the production RPC path so a
+research study cannot silently alter normal candidate ranking.
+
+
+Architecture
+------------
+
+ASTRA is deliberately split into three layers.
+
+1. React and TypeScript frontend
+
+The frontend owns the workspaces, controls, charts, maps, forms, accessibility,
+status display, and typed client calls. It uses React 19, Vite, TypeScript,
+Tailwind CSS, Radix-style UI primitives, Plotly, D3, Aladin Lite, Three.js,
+Lucide icons, and a dark scientific-workstation visual theme.
+
+2. Tauri and Rust native shell
+
+The Rust layer owns the desktop lifecycle, native window behavior, process
+supervision, secure filesystem-mediated operations, hardware-facing behavior,
+and the IPC boundary. Tauri commands are thin adapters that pass typed JSON
+parameters to the science engine.
+
+3. Python scientific engine
+
+The Python sidecar owns astronomy, archive access, normalization, feature
+extraction, anomaly detection, candidate assembly, scoring, catalogs,
+experiments, and scientific diagnostics. It uses JSON-lines RPC over standard
+input/output. The engine is a child process rather than an embedded Python
+interpreter, which keeps the desktop shell isolated and makes packaged and
+development execution paths explicit.
+
+The main Python stack includes Astropy, Astroquery, Lightkurve, NumPy, SciPy,
+Polars, PyArrow, DuckDB, Dask, scikit-learn, Plotly, Matplotlib, Astropy
+HEALPix, Photutils, and optional PyTorch/CuPy.
+
+RPC method families
+-------------------
+
+The bridge exposes families for:
+
+- Engine ping, hardware, versions, paths, readiness, and cache status.
+- Survey listing and acquisition.
+- Store usage, manifests, projects, and validation.
+- Event packets, event graphs, alert polling, and TAP queries.
+- Significance, selection, review, and follow-up.
+- Literature, physical characterization, digital twins, GW, and FRB context.
+- Curves, FITS, images, spectra, TESS products, and sidecar features.
+- Feature matrices, anomaly detection, deep models, rankers, and profiles.
+- Candidate retrieval, spatial views, timelines, explanations, labels, votes,
+  exports, and broadcasts.
+- Cross-survey matching and time-frame offsets.
+- Experiments, ablations, benchmarks, and reproducibility bundles.
+- TNS/Rubin credentials and persistent background jobs.
+
+Rust serializes access to the engine pipes, waits with a bounded timeout, and
+restarts a failed or desynchronized engine on a later request. Python returns
+handler errors as RPC values so one failed operation does not normally kill the
+whole sidecar.
+
+
+Reliability, security, and operational behavior
+------------------------------------------------
+
+- Persistent jobs support queued, running, retrying, completed, failed, and
+  cancelled states.
+- Long operations expose progress and keep the window responsive.
+- Idempotency prevents accidental duplicate acquisition work.
+- Downloads are size-limited and checksummed where products are materialized.
+- Archive/network calls use resilient client behavior and explicit timeouts.
+- The UI distinguishes unavailable capability from a negative scientific
+  result.
+- TNS credentials are stored through Windows DPAPI and never read back into
+  the interface.
+- Filesystem access from the renderer is authorized through the native layer.
+- The desktop window uses a restrictive content-security policy.
+- Local diagnostics and crash logs are bounded; telemetry is not sent off the
+  machine by default.
+- Production signing is intended to fail closed until a real Authenticode
+  certificate and timestamp service are supplied.
+- The interface supports responsive layouts, a collapsible sidebar, keyboard
+  focus states, skip navigation, labels, live status messages, and reduced
+  motion preferences.
+- A startup error boundary and a visible boot screen report initialization
+  failures instead of leaving a blank window.
+
+
+Packaging and installation
+--------------------------
+
+Development uses Windows 11, Node.js LTS, Rust, Python 3.12, and Visual Studio
+Build Tools. NVIDIA drivers and CUDA are optional for GPU work.
+
+The normal development loop is:
+
+- npm install
+- uv pip install -e engine
+- optionally install the engine GPU extra
+- npm run app
+
+The release architecture is:
+
+1. Build the React/Vite frontend.
+2. Build the Python sidecar with PyInstaller.
+3. Compile the Rust/Tauri shell.
+4. Package the application as an NSIS Windows installer.
+5. Generate checksums and perform release validation.
+
+The installed CPU engine intentionally excludes the large PyTorch, torchvision,
+and CuPy stack. Acquisition, storage, feature extraction, baseline anomaly
+detection, cross-survey matching, candidate ranking, and export remain
+available in that build. Deep training and deep sweeps require a development
+installation with the optional ML dependencies and report a clear capability
+message when unavailable.
+
+
+Testing and verification
+------------------------
+
+The repository includes science-engine tests, connector tests, RPC tests,
+cache and job tests, acquisition tests, candidate and scoring tests, research
+and reproducibility tests, Rust bridge tests, frontend component tests, and
+desktop-entry checks.
+
+Useful commands include:
+
+- npm run test:py       Python/astronomy engine tests.
+- npm run test:rs       Rust/Tauri bridge tests.
+- npm run test:ui       React/Vitest tests.
+- npm run typecheck     TypeScript compiler validation.
+- npm run test:desktop-entry  Packaged desktop asset/startup checks.
+- npm run probe         Standalone engine protocol, paths, hardware, and cache
+  probe.
+
+Frontend tests mock at the Tauri invoke boundary so argument names and IPC
+marshalling are tested in the same shape used by the desktop application.
+
+
+Current implementation status and important caveats
+----------------------------------------------------
+
+ASTRA currently has a working core research path, but it should be understood
+as a research prototype and evidence-building environment rather than a fully
+validated all-sky discovery service.
+
+- ZTF and Gaia are live-verified in the demonstration corpus.
+- The TESS connector and several other connectors have mock-only, metadata-only,
+  or opt-in status depending on the path being exercised.
+- The demonstration corpus is small: one 90-arcsec cone with 154 objects
+  (150 ZTF, 4 Gaia, and no TESS light-curve sources at that position).
+- The demonstration feature matrix contains 467 local ZTF rows, of which 286
+  have usable finite features. It is not a tens-of-thousands-object benchmark.
+- The included anomaly leaderboard uses synthetic injected labels. It measures
+  recovery of injected feature perturbations, not verified discovery of an
+  unknown natural phenomenon.
+- TESS's 21-arcsec pixels can blend multiple stars. A TESS match is therefore
+  neighborhood corroboration unless deblending evidence is available.
+- Detector scores are batch-relative unless calibrated against an external
+  reference population.
+- Composite scores report weight_used because missing evidence causes
+  renormalization.
+- Artifact-bank benchmark infrastructure exists, but a fresh TESS pixel-level
+  artifact benchmark was not run for the demonstration corpus.
+- Many advanced modules listed above are candidate-only, opt-in, or evaluation
+  code and are not yet part of the default production score.
+- The research benchmark API and signed-bundle API are wired, while the UI does
+  not yet expose every benchmark ID, split, confidence interval, and provenance
+  field in a dedicated leaderboard screen.
+- Follow-up planning is a visibility draft, not telescope control.
+- Literature, GW, FRB, and physical characterization are interpretation/context
+  layers and are intentionally prevented from silently changing the historical
+  ranking score.
+
+Researchers should read the limitation and deferred-status documentation before
+using any output as a scientific claim.
+
+
+Project definition in one sentence
+-----------------------------------
+
+ASTRA transforms heterogeneous astronomical observations into a ranked,
+cross-survey, artifact-aware, explainable, human-reviewable, and reproducible
+set of unusual-object candidates that researchers can investigate, validate,
+follow up, and eventually publish.
+

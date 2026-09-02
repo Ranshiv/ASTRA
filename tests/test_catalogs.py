@@ -158,3 +158,77 @@ def test_simbad_empty_cone_warning_is_quiet_but_remains_no_match(monkeypatch):
 
     assert result == []
     assert not [warning for warning in seen if warning.category is NoResultsWarning]
+
+
+def _tns_secret() -> dict:
+    return {"api_key": "secret", "bot_id": "123", "bot_name": "ASTRA test"}
+
+
+def test_fetch_tns_uses_the_shared_throttled_session(monkeypatch):
+    """`_fetch_tns` must go through `netclient.post` (shared session, retry
+    policy, throttle bucket), not a bare `requests.post` -- see netclient.py's
+    module docstring for why a raw call silently drops data under load."""
+    monkeypatch.setattr(credentials, "load_tns_credentials", lambda: _tns_secret())
+    seen: dict = {}
+
+    class FakeResponse:
+        def json(self):
+            return {"data": {"reply": [
+                {"objname": "2026abc", "object_type": "SN Ia", "discoverydate": "2026-08-01"},
+            ]}}
+
+    def fake_post(url, data, timeout, provider="irsa", headers=None):
+        seen["url"] = url
+        seen["provider"] = provider
+        seen["data"] = data
+        seen["headers"] = headers
+        return FakeResponse()
+
+    from astra import netclient
+    monkeypatch.setattr(netclient, "post", fake_post)
+
+    result = catalogs._fetch_tns(query())
+
+    assert seen["provider"] == "tns"
+    assert seen["url"] == "https://www.wis-tns.org/api/get/search"
+    assert seen["data"]["api_key"] == "secret"
+    assert "tns_marker" in seen["headers"]["User-Agent"]
+    assert result == [{"name": "2026abc", "object_type": "SN Ia", "discovery_date": "2026-08-01"}]
+
+
+def test_fetch_tns_rate_limit_response_raises_catalog_rate_limit_error(monkeypatch):
+    monkeypatch.setattr(credentials, "load_tns_credentials", lambda: _tns_secret())
+
+    import requests
+
+    def fake_post(url, data, timeout, provider="irsa", headers=None):
+        response = requests.Response()
+        response.status_code = 429
+        raise requests.HTTPError("rate limited", response=response)
+
+    from astra import netclient
+    monkeypatch.setattr(netclient, "post", fake_post)
+
+    try:
+        catalogs._fetch_tns(query())
+        assert False, "expected CatalogRateLimitError"
+    except catalogs.CatalogRateLimitError:
+        pass
+
+
+def test_fetch_tns_network_failure_raises_catalog_error(monkeypatch):
+    monkeypatch.setattr(credentials, "load_tns_credentials", lambda: _tns_secret())
+
+    import requests
+
+    def fake_post(url, data, timeout, provider="irsa", headers=None):
+        raise requests.ConnectionError("no route to host")
+
+    from astra import netclient
+    monkeypatch.setattr(netclient, "post", fake_post)
+
+    try:
+        catalogs._fetch_tns(query())
+        assert False, "expected CatalogError"
+    except catalogs.CatalogError:
+        pass

@@ -10,6 +10,15 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 // index.html's static boot-log markup has already painted, so revealing the
 // window here shows real content immediately instead of waiting on the rest
 // of the app.
-getCurrentWindow()
-  .show()
-  .catch((error) => console.error("failed to show the main window", error));
+// Vite's browser preview does not provide Tauri's internals object. Guard the
+// native-only reveal call so the regular web page can still render for UI
+// development and visual checks.
+const tauriInternals = typeof window !== "undefined"
+  ? (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  : undefined;
+
+if (tauriInternals) {
+  getCurrentWindow()
+    .show()
+    .catch((error) => console.error("failed to show the main window", error));
+}

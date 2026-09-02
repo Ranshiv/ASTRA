@@ -11,7 +11,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 9
 
 
 def database_path(root: Path) -> Path:
@@ -148,6 +148,28 @@ def connect(root: Path) -> sqlite3.Connection:
         last_poll_utc TEXT,
         last_error TEXT
       );
+      CREATE TABLE IF NOT EXISTS followup_requests (
+        request_id TEXT PRIMARY KEY,
+        candidate_key TEXT NOT NULL,
+        facility_name TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'requested',
+        requested_utc TEXT NOT NULL,
+        result_note TEXT,
+        result_utc TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_followup_requests_candidate
+        ON followup_requests(candidate_key, requested_utc);
+      CREATE TABLE IF NOT EXISTS label_votes (
+        vote_id TEXT PRIMARY KEY,
+        candidate_key TEXT NOT NULL,
+        reviewer_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        recorded_utc TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_label_votes_candidate
+        ON label_votes(candidate_key, recorded_utc);
     """)
     _add_missing_columns(db)
     db.execute("INSERT OR IGNORE INTO schema_migrations VALUES (?, ?)",
@@ -176,6 +198,17 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("idempotency_key", "TEXT"),
         ("cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
         ("error_kind", "TEXT"),
+    ),
+    # Direction 6 of the research plan adopted 2026-08-29 ("the review UI as
+    # a controlled experiment"): all five are NULL for every vote cast
+    # before this column set existed, and analysis code must treat a NULL
+    # `arm` as "not part of the experiment" rather than as an error.
+    "label_votes": (
+        ("arm", "TEXT"),
+        ("displayed_score", "REAL"),
+        ("decision_latency_ms", "INTEGER"),
+        ("self_reported_confidence", "REAL"),
+        ("presentation_index", "INTEGER"),
     ),
 }
 
@@ -339,6 +372,138 @@ def move_label(root: Path, old_key: str, new_key: str) -> None:
           AND NOT EXISTS (SELECT 1 FROM labels WHERE candidate_key=?)""",
                    (new_key, old_key, new_key))
         db.commit()
+
+
+def put_followup_request(root: Path, request_id: str, candidate_key: str,
+                         facility_name: str, note: str) -> dict:
+    """Record a new follow-up request. Unlike `labels` (one row per
+    candidate), a candidate can accumulate many requests over its lifetime,
+    so this is append-only -- each call inserts a new row keyed by its own
+    `request_id`, never overwriting a prior request for the same candidate."""
+    entry = {"request_id": request_id, "candidate_key": candidate_key,
+             "facility_name": facility_name, "note": note, "status": "requested",
+             "requested_utc": _now(), "result_note": None, "result_utc": None}
+    with connect(root) as db:
+        db.execute("""INSERT INTO followup_requests
+          (request_id,candidate_key,facility_name,note,status,requested_utc)
+          VALUES (?,?,?,?,?,?)""",
+                   (request_id, candidate_key, facility_name, note, "requested",
+                    entry["requested_utc"]))
+        db.execute("""INSERT INTO audit_events
+          (event_utc,action,subject,details_json) VALUES (?,?,?,?)""",
+                   (_now(), "followup_request", candidate_key, json.dumps(entry)))
+        db.commit()
+    return entry
+
+
+def put_followup_result(root: Path, request_id: str, status: str, note: str) -> dict:
+    """Record the outcome of a previously requested follow-up. Returns the
+    full updated row, matching the shape `put_followup_request`/
+    `followup_history` return, rather than a partial patch dict."""
+    result_utc = _now()
+    with connect(root) as db:
+        cursor = db.execute(
+            """UPDATE followup_requests SET status=?, result_note=?, result_utc=?
+              WHERE request_id=?""",
+            (status, note, result_utc, request_id))
+        if cursor.rowcount == 0:
+            raise KeyError(f"no follow-up request {request_id!r}")
+        row = db.execute(
+            """SELECT request_id, candidate_key, facility_name, note, status,
+                     requested_utc, result_note, result_utc
+              FROM followup_requests WHERE request_id=?""",
+            (request_id,)).fetchone()
+        db.execute("""INSERT INTO audit_events
+          (event_utc,action,subject,details_json) VALUES (?,?,?,?)""",
+                   (result_utc, "followup_result", row["candidate_key"],
+                    json.dumps({"request_id": request_id, "status": status, "note": note})))
+        db.commit()
+    return dict(row)
+
+
+def followup_history(root: Path, candidate_key: str) -> list[dict]:
+    with connect(root) as db:
+        rows = db.execute(
+            """SELECT request_id, candidate_key, facility_name, note, status,
+                     requested_utc, result_note, result_utc
+              FROM followup_requests WHERE candidate_key=? ORDER BY requested_utc""",
+            (candidate_key,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def put_label_vote(root: Path, vote_id: str, candidate_key: str, reviewer_id: str,
+                   label: str, note: str, *, arm: str | None = None,
+                   displayed_score: float | None = None,
+                   decision_latency_ms: int | None = None,
+                   self_reported_confidence: float | None = None,
+                   presentation_index: int | None = None) -> dict:
+    """Record one independent reviewer's vote. Unlike `labels` (one row per
+    candidate, last write wins), this is append-only -- multiple reviewers,
+    or the same reviewer more than once, each add a new row rather than
+    overwriting a prior vote.
+
+    `reviewer_id` is free-text with no account/auth system behind it (this
+    app has none) -- it cannot guarantee one-vote-per-person any more than
+    `active_review.py`'s reviewer-agreement metric can guarantee true
+    inter-rater identity. A stated limitation, not a bug to work around.
+
+    The five keyword-only fields are additive, for Direction 6 of the
+    research plan adopted 2026-08-29 ("the review UI as a controlled
+    experiment"): `arm` is the reviewer's assigned experimental condition
+    (`review_experiment.ARMS`), `displayed_score` is the actual number (or
+    `None`) shown on screen at the moment of this vote -- recorded rather
+    than recomputed later, so a later change to the candidate pool can
+    never retroactively change what an already-cast vote's analysis
+    believes the reviewer saw. Every existing caller (`candidates.
+    cast_label_vote`'s ordinary, non-experimental path) leaves all five
+    `None`, and every row cast before this column set existed reads back
+    `None` for them -- `None` means "not part of the experiment", not
+    "unknown value of a required field".
+    """
+    entry = {"vote_id": vote_id, "candidate_key": candidate_key,
+             "reviewer_id": reviewer_id, "label": label, "note": note,
+             "recorded_utc": _now(), "arm": arm, "displayed_score": displayed_score,
+             "decision_latency_ms": decision_latency_ms,
+             "self_reported_confidence": self_reported_confidence,
+             "presentation_index": presentation_index}
+    with connect(root) as db:
+        db.execute("""INSERT INTO label_votes
+          (vote_id,candidate_key,reviewer_id,label,note,recorded_utc,
+           arm,displayed_score,decision_latency_ms,self_reported_confidence,
+           presentation_index)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   (vote_id, candidate_key, reviewer_id, label, note,
+                    entry["recorded_utc"], arm, displayed_score, decision_latency_ms,
+                    self_reported_confidence, presentation_index))
+        db.execute("""INSERT INTO audit_events
+          (event_utc,action,subject,details_json) VALUES (?,?,?,?)""",
+                   (_now(), "label_vote", candidate_key, json.dumps(entry)))
+        db.commit()
+    return entry
+
+
+def label_votes(root: Path, candidate_key: str) -> list[dict]:
+    with connect(root) as db:
+        rows = db.execute(
+            """SELECT vote_id, candidate_key, reviewer_id, label, note, recorded_utc,
+                     arm, displayed_score, decision_latency_ms,
+                     self_reported_confidence, presentation_index
+              FROM label_votes WHERE candidate_key=? ORDER BY recorded_utc""",
+            (candidate_key,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def all_label_votes(root: Path) -> list[dict]:
+    """Every vote across every candidate, for a study that spans the whole
+    experiment rather than one candidate at a time (`review_experiment_eval.
+    py`'s anchoring/calibration analyses)."""
+    with connect(root) as db:
+        rows = db.execute(
+            """SELECT vote_id, candidate_key, reviewer_id, label, note, recorded_utc,
+                     arm, displayed_score, decision_latency_ms,
+                     self_reported_confidence, presentation_index
+              FROM label_votes ORDER BY recorded_utc""").fetchall()
+    return [dict(row) for row in rows]
 
 
 def put_job(root: Path, job_id: str, method: str, status: str,

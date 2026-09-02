@@ -2,10 +2,57 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/astra_icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASTRA — Astronomical Survey &amp; Transient Research Analyzer</title>
     <style>
+      /* Boot-splash-only palette, prefixed --boot-* rather than reusing
+         --color-* deliberately: this <style> block is unlayered, so a
+         --color-* redefinition here would permanently outrank the real
+         tokens that src/index.css's @theme emits into @layer theme.
+
+         Three sources, in the order the browser applies them: a dark
+         default on bare :root; a prefers-color-scheme override for a
+         browser/vite-dev tab that hasn't set data-theme yet; then an
+         explicit data-theme block that wins once theme-boot.ts (loaded
+         below, ahead of everything else) has run. In the packaged desktop
+         app the window stays hidden until after that script runs, so in
+         practice the explicit block is what paints. */
+      :root {
+        --boot-bg: #0f131b;
+        --boot-panel: #161b26;
+        --boot-edge: #2a3140;
+        --boot-text: #e6e3dc;
+        --boot-accent: #e8563f;
+        --boot-muted: #8a93a6;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme="dark"]) {
+          --boot-bg: #f5f3ee;
+          --boot-panel: #ffffff;
+          --boot-edge: #dcd6c9;
+          --boot-text: #2a3140;
+          --boot-accent: #be3520;
+          --boot-muted: #656d7e;
+        }
+      }
+      :root[data-theme="light"] {
+        --boot-bg: #f5f3ee;
+        --boot-panel: #ffffff;
+        --boot-edge: #dcd6c9;
+        --boot-text: #2a3140;
+        --boot-accent: #be3520;
+        --boot-muted: #656d7e;
+      }
+      :root[data-theme="dark"] {
+        --boot-bg: #0f131b;
+        --boot-panel: #161b26;
+        --boot-edge: #2a3140;
+        --boot-text: #e6e3dc;
+        --boot-accent: #e8563f;
+        --boot-muted: #8a93a6;
+      }
+
       @keyframes astra-blink {
         50% { opacity: 0; }
       }
@@ -13,40 +60,63 @@
         from { opacity: 0; }
         to { opacity: 0.65; }
       }
+      body {
+        margin: 0;
+        background: var(--boot-bg);
+      }
       .astra-boot {
+        width: 100%;
+        max-width: 34rem;
+        padding: 1.25rem 1.5rem;
+        border: 1px solid var(--boot-edge);
+        border-radius: 0.5rem;
+        background: var(--boot-panel);
+        color: var(--boot-text);
         font-family: ui-monospace, "Cascadia Code", "Consolas", "SFMono-Regular", Menlo, monospace;
         font-size: 0.9rem;
         line-height: 1.7;
       }
+      .astra-boot p {
+        margin: 0;
+      }
       .astra-boot .astra-prompt {
-        color: #6ea8ff;
+        color: var(--boot-accent);
       }
       .astra-cursor {
         display: inline-block;
-        color: #6ea8ff;
+        color: var(--boot-accent);
         animation: astra-blink 1s steps(1) infinite;
       }
       .astra-hint {
         opacity: 0;
         margin: 1.25rem 0 0;
-        color: #6b7590;
+        color: var(--boot-muted);
         font-size: 0.8rem;
         animation: astra-fade-in 0.6s ease 3.2s forwards;
+      }
+      .astra-boot-main {
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        box-sizing: border-box;
       }
     </style>
   </head>
 
-  <body style="margin: 0; background: #06070d;">
-    <div id="root" role="status" aria-live="polite">
-      <main style="display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 2rem; box-sizing: border-box;">
-        <div class="astra-boot" style="width: 100%; max-width: 34rem; padding: 1.25rem 1.5rem; border: 1px solid #1c2030; border-radius: 0.5rem; background: #0e1018; color: #d8dce8;">
-          <p style="margin: 0;"><span class="astra-prompt">&gt;</span> Starting ASTRA…</p>
-          <p style="margin: 0;"><span class="astra-prompt">&gt;</span> Loading the scientific workspace…</p>
-          <p style="margin: 0;"><span class="astra-cursor">_</span></p>
+  <body>
+    <div id="root">
+      <main class="astra-boot-main" role="status" aria-live="polite">
+        <div class="astra-boot">
+          <p><span class="astra-prompt">&gt;</span> Starting ASTRA…</p>
+          <p><span class="astra-prompt">&gt;</span> Loading the scientific workspace…</p>
+          <p><span class="astra-cursor">_</span></p>
           <p class="astra-hint">If this message remains, restart the app and report the startup error.</p>
         </div>
       </main>
     </div>
+    <script type="module" src="/src/theme-boot.ts"></script>
     <script type="module" src="/src/reveal-window.ts"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

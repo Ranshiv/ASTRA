@@ -89,6 +89,22 @@ REQUEST_INTERVAL_SECONDS: dict[str, float] = {
     # a different host from mast.stsci.edu (the existing "mast" bucket),
     # so it gets its own bucket rather than sharing MAST's allocation.
     "ps1images": 0.5,
+    # catalogs.py: TNS's transient-name search API -- a credential-gated bot
+    # endpoint, same 1.0s bucket as the other database-job-shaped services
+    # (datalab/rubin/exoplanetarchive), matching catalogs.py's own prior
+    # REQUEST_INTERVAL_SECONDS["tns"] before that throttle moved here.
+    "tns": 1.0,
+    # surveys/asassn.py: ASAS-SN Sky Patrol's own cone-search server
+    # (asassn-lb01.ifa.hawaii.edu) -- a single research group's own
+    # infrastructure, not a large data-consortium archive like VizieR/MAST,
+    # so it gets the same conservative 1.0s bucket as the other
+    # database-job-shaped or single-institution services rather than the
+    # generic 0.2s default.
+    "asassn": 1.0,
+    # surveys/antares.py: ANTARES's own alert-broker API (NOIRLab) -- a
+    # community broker like alerce, same 0.5s bucket as that connector's
+    # "alerce" entry above.
+    "antares": 0.5,
 }
 DEFAULT_INTERVAL_SECONDS = 0.2
 
@@ -235,21 +251,33 @@ def _response_from_cassette(recorded) -> requests.Response:
     return response
 
 
-def post(url: str, data: dict, timeout: float,
-         provider: str = "irsa", headers: dict[str, str] | None = None) -> requests.Response:
+def post(url: str, data: dict | None = None, timeout: float = 60.0,
+         provider: str = "irsa", headers: dict[str, str] | None = None,
+         json: dict | None = None) -> requests.Response:
     """Throttled POST, for the few contracts (e.g. TAP async job submission
-    in `tap.py`) that require one. Unlike `get`, this is NOT auto-retried
-    by the shared session's `Retry` policy (`allowed_methods` there is
-    deliberately `{"GET", "HEAD"}` only) -- retrying a POST that creates a
-    resource, like a TAP async job, risks silently double-submitting it,
-    so that judgment call is left to the caller rather than attempted here.
+    in `tap.py`, or ASAS-SN's cone-search endpoint in `surveys/asassn.py`)
+    that require one. Unlike `get`, this is NOT auto-retried by the shared
+    session's `Retry` policy (`allowed_methods` there is deliberately
+    `{"GET", "HEAD"}` only) -- retrying a POST that creates a resource, like
+    a TAP async job, risks silently double-submitting it, so that judgment
+    call is left to the caller rather than attempted here.
     `requests` follows a redirect response (e.g. a TAP job's `303 See
     Other` to its own status URL) by default; the caller reads the
     resulting `response.url`/`response.text` rather than a raw `Location`
     header.
+
+    `data` form-encodes (the original, still-default contract every
+    existing caller uses); `json` JSON-encodes the body and sets the
+    matching content type instead, for a contract (like ASAS-SN's) that
+    requires an actual JSON body rather than form fields. Passing both is a
+    caller error `requests` itself would reject; callers pass exactly one.
     """
     throttle(provider)
-    kwargs = {"data": data, "timeout": timeout}
+    kwargs: dict = {"timeout": timeout}
+    if json is not None:
+        kwargs["json"] = json
+    else:
+        kwargs["data"] = data
     if headers:
         kwargs["headers"] = headers
     response = session().post(url, **kwargs)
@@ -292,6 +320,15 @@ def download(url: str, destination: str | Path, *, params: dict | None = None,
     A failed or interrupted transfer remains only as a temporary sibling file,
     which is always removed.  Consumers therefore never see a partial FITS
     file at its canonical path.
+
+    A cassette record/replay layer (`astra.research.cassettes`) wraps this
+    the same way `get()` is wrapped -- see that function's docstring. Before
+    this, only `get`'s metadata/query-shaped requests were cassette-
+    verifiable; a connector whose evidence depends on a downloaded product
+    (e.g. a TESS TPF) had no offline-replayable fixture at all (see
+    docs/LIMITATIONS.md's "Cassette layer covers netclient.get, not
+    download" gap). Default mode is `"off"`, i.e. today's unmodified
+    live-streaming behaviour.
     """
     if max_bytes <= 0:
         raise ValueError("max_bytes must be positive")
@@ -302,6 +339,14 @@ def download(url: str, destination: str | Path, *, params: dict | None = None,
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists() and not overwrite:
         raise FileExistsError(str(target))
+
+    from .research import cassettes
+    request_mode = cassettes.mode()
+    cassette_key = (cassettes.identity(provider, "DOWNLOAD", url, params)
+                    if request_mode != "off" else None)
+    if request_mode == "replay":
+        recorded = cassettes.load(cassette_key)
+        return _download_result_from_cassette(recorded, target, max_bytes)
 
     kwargs = {"params": params or {}, "timeout": timeout, "stream": True}
     if headers:
@@ -344,8 +389,39 @@ def download(url: str, destination: str | Path, *, params: dict | None = None,
         if callable(close):
             close()
 
-    return DownloadResult(path=target, bytes_written=received,
-                          sha256=digest.hexdigest(), content_length=declared)
+    result = DownloadResult(path=target, bytes_written=received,
+                            sha256=digest.hexdigest(), content_length=declared)
+
+    if request_mode == "record":
+        # Read the file back rather than buffering the whole transfer in
+        # memory during the stream above -- it already passed the same
+        # `max_bytes` check and atomic-publish path a replay will reuse.
+        cassettes.save(cassette_key, cassettes.RecordedResponse(
+            status_code=response.status_code, headers=dict(response.headers),
+            content=target.read_bytes(), url=response.url))
+
+    return result
+
+
+def _download_result_from_cassette(recorded, target: Path, max_bytes: int) -> DownloadResult:
+    """Replay a recorded download: write the cassette's checksummed body to
+    `target` through the same atomic temp-file-then-replace path the live
+    download uses, so a consumer never sees a partial file either way."""
+    content = recorded.content
+    if len(content) > max_bytes:
+        raise DownloadTooLargeError(len(content), max_bytes)
+
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+    try:
+        temporary.write_bytes(content)
+        os.replace(temporary, target)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+    return DownloadResult(path=target, bytes_written=len(content),
+                          sha256=hashlib.sha256(content).hexdigest(),
+                          content_length=len(content))
 
 
 def reset() -> None:

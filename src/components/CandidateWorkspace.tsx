@@ -2,6 +2,7 @@ import { Database, Download, FlaskConical, ListChecks, Sparkles } from "lucide-r
 import { useEffect, useState } from "react";
 
 import { AladinSky } from "@/components/AladinSky";
+import { CandidateDiscardPilePanel } from "@/components/CandidateDiscardPilePanel";
 import { CandidateFitsPanel } from "@/components/CandidateFitsPanel";
 import { CandidateFoldPanel } from "@/components/CandidateFoldPanel";
 import { CandidateNotesPanel } from "@/components/CandidateNotesPanel";
@@ -19,10 +20,11 @@ export function CandidateWorkspace({ projectId }: { projectId?: string }) {
   const [busy, setBusy] = useState(false);
   const [exported, setExported] = useState("");
   const [candidateQuery, setCandidateQuery] = useState("");
+  const [topCount, setTopCount] = useState("200");
 
   async function refresh() {
     try {
-      const result = await engine.candidates("default", 50, projectId);
+      const result = await engine.candidates("default", Number(topCount) || 200, projectId);
       setCandidates(result.candidates);
       setStatus(`${result.count} candidates`);
     } catch {
@@ -44,8 +46,15 @@ export function CandidateWorkspace({ projectId }: { projectId?: string }) {
     setBusy(true);
     setStatus("Building strata and ranking candidates…");
     try {
-      const result = await engine.pipeline("default", 200, projectId);
-      setCandidates(result.candidates);
+      const result = await engine.pipeline("default", Number(topCount) || 200, projectId);
+      // The pipeline response's own `candidates` array is a separate,
+      // fixed 25-row preview slice (rpc.py's `_handle_pipeline`, `preview`
+      // param, never overridden here) -- unrelated to `top`/candidates_
+      // built. Using it directly showed at most 25 candidates in the list
+      // no matter how many were actually written. Reloading via
+      // `candidates.load` (refresh, already used for the initial mount)
+      // fetches up to the same `topCount` the user just built.
+      await refresh();
       setStatus(`${result.candidates_built} candidates written`);
     } catch (err) {
       setStatus(String(err));
@@ -118,6 +127,14 @@ export function CandidateWorkspace({ projectId }: { projectId?: string }) {
       description={status}
       actions={
         <>
+          <Field
+            id="candidate-top-count"
+            label="Max candidates"
+            value={topCount}
+            onChange={setTopCount}
+            width="w-24"
+            min={1}
+          />
           <Button onClick={generate} disabled={busy} loading={busy} icon={FlaskConical} tone="accent">
             Build candidates
           </Button>
@@ -136,7 +153,7 @@ export function CandidateWorkspace({ projectId }: { projectId?: string }) {
             type="button"
             key={format}
             onClick={() => void exportRun(format)}
-            className="flex items-center gap-1 rounded-full border border-[var(--color-edge)] px-2.5 py-1 text-xs uppercase text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            className="flex items-center gap-1 rounded-full border border-[var(--color-edge)] px-2.5 py-1 text-xs uppercase text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]"
           >
             <Download size={11} strokeWidth={2} />
             {format}
@@ -177,7 +194,7 @@ export function CandidateWorkspace({ projectId }: { projectId?: string }) {
                   key={candidate.candidate_id}
                   onClick={() => void open(candidate)}
                   aria-current={active ? "true" : undefined}
-                  className={`block w-full border-b border-[var(--color-edge)]/50 px-2.5 py-2 text-left text-xs transition ${
+                  className={`block w-full border-b border-[var(--color-edge)]/50 px-2.5 py-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)] ${
                     active ? "bg-[var(--color-accent)]/10" : index % 2 === 1 ? "bg-[var(--color-panel-2)]/40" : ""
                   }`}
                 >
@@ -246,6 +263,8 @@ export function CandidateWorkspace({ projectId }: { projectId?: string }) {
               <CandidateFitsPanel candidate={selected} projectId={projectId} />
 
               <CandidateTessPanel candidate={selected} />
+
+              <CandidateDiscardPilePanel candidate={selected} />
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 ASTRA — DEFERRED WORK
 =====================================================================
 Things named in the project plan that are NOT yet built, and why.
-Updated as each slice completes. Last updated: 2026-08-26.
+Updated as each slice completes. Last updated: 2026-08-31.
 
 Legend:
   [BLOCKED]  waits on a later phase that must come first
@@ -65,6 +65,20 @@ PHASE 2 — ASTRONOMY DATA LAYER
           not a missing capability: run each connector against its real
           endpoint once network access to validate is available, and adjust
           field-name fallbacks/rate limits as needed.
+          UPDATE 2026-08-28: SDSS and Pan-STARRS DR2 (`sdss.py`,
+          `panstarrs.py`) flipped to `enabled_by_default = True` -- both are
+          anonymous/no-auth endpoints, already rate-limited in
+          `netclient.py` (`"sdss": 0.2s`, `"mast": 0.2s`), and their
+          docstrings record live-session verification beyond fixture tests.
+          Chandra (`chandra.py`) stays opt-in: its `cone_search` targets
+          `cda.cfa.harvard.edu/csccli/browse`, confirmed live to require an
+          undocumented `packageset` parameter (400 without it, 404 for every
+          guessed value tried) -- a genuine open contract gap, not yet a
+          provider-validated connector. Chandra's separate
+          `query_band_fluxes` (VizieR `IX/70`) IS live-verified, but
+          acquisition depends on `cone_search`, not that function, so the
+          registry-wide default stays False for Chandra pending a real fix
+          to the `packageset` value.
           UPDATE 2026-08-19 (3): DES, Hubble, and JWST adapters
           (`des.py`, `hubble.py`, `jwst.py`) now exist, registered opt-in
           with the same metadata-only shape, each with its own fixture test
@@ -1974,6 +1988,27 @@ PHASE 5 — DEEP LEARNING
           transfer (all three fractions present, fixed test split reused,
           a too-small fraction skips rather than crashes), and a static
           check that `rpc.py` has no reference to this module.
+          UPDATE 2026-08-28: added `pretrain_join.py`
+          (`join_pretrained_embeddings`), a column-join utility so a
+          researcher CAN append a checkpoint's embeddings onto an existing
+          `FeatureMatrix` -- modelled on `featurematrix.join_gaia_columns`'s
+          proven shape (column join, not row union; NaN for a row whose
+          light curve is unreadable/too-short rather than an imputed
+          value). This is deliberately NOT a promotion of pretraining into
+          live scoring: no checkpoint exists anywhere in this repo, no
+          favorable `probe_transfer` result has ever been measured (unlike
+          the anomaly ensemble's own rank-consensus decision above, which
+          cites a real 0.824-vs-0.840 measurement), and `anomaly.detect()`/
+          `rpc.py` are unchanged -- a researcher must call
+          `join_pretrained_embeddings` explicitly and separately compare
+          detection quality with/without the joined columns (e.g. via
+          `research/benchmark.py`/`ablation.py`, both already `FeatureMatrix`-
+          agnostic) before drawing any conclusion. Confirmed column-generic
+          end-to-end, not just by inspection: `tests/test_pretrain_join.py`
+          (5 cases: row count and column names preserved, all-valid-curves
+          match rate, an unreadable curve gets NaN not a dropped row, the
+          empty-matrix case, and the joined columns passed through
+          `anomaly.detect()` without error).
 
 [KNOWN]   Model capacity is far below what the GPU allows  <-- MEASURED
           The autoencoder is 93,921 parameters and peaks at 38 MB of
@@ -2492,6 +2527,250 @@ PHASE 6 — CROSS-SURVEY ENGINE
 PHASE 7 — EXPLAINABILITY & CANDIDATE RANKING
 ---------------------------------------------------------------------
 
+[DONE]    Per-candidate feature attribution  <-- NEW 2026-08-28
+          Real SHAP was deliberately NOT used, decided this session rather
+          than defaulted into: the 4 live detectors (`anomaly.py`) are
+          heterogeneous -- `run_isolation_forest` is tree-based (SHAP
+          `TreeExplainer`-compatible) but `run_lof`/`run_one_class_svm`/
+          `run_pca_reconstruction` are not, and `LocalOutlierFactor` isn't
+          even fit in novelty mode, so there is no `decision_function` for
+          a modified row without a full refit. Using the real `shap`
+          package would have meant mixing `TreeExplainer` and
+          `KernelExplainer` per detector (two different theoretical
+          footings for one ensemble's explanation), a new dependency with
+          installer/packaging impact, and real per-candidate latency from
+          `KernelExplainer`'s sampling. A future session should read this
+          entry before re-litigating that choice.
+          Built instead: `attribution.py` (`explain_candidate`), a model-
+          agnostic occlusion method that reuses `anomaly.detect()`
+          completely unchanged. For one candidate row, each raw feature in
+          turn is replaced with the population median for that feature
+          (excluding the row's own value), the full ensemble is rerun
+          (same contamination/seed), and `impact = baseline_consensus -
+          occluded_consensus` is recorded -- a positive impact means that
+          feature's actual value is what is raising the score above what a
+          typical value would produce. This reruns the ensemble once per
+          feature (28 today), so it is a real, multi-second, explicit
+          per-candidate action -- never computed automatically for a whole
+          batch, matching the cost class `ExperimentsView`'s existing "Run
+          ablation" button already established for this kind of research
+          action.
+          A candidate's row is re-located after each rerun by its
+          identity's `path` (unique per object, already the pattern
+          `featurematrix.join_gaia_columns` uses), not by positional index,
+          since `anomaly.prepare()`'s finite-mask can drop different rows
+          across reruns in principle even though it never does here in
+          practice (occlusion always writes a finite median).
+          Wired live: `rpc.py` (`candidates.explain`, looks up the matrix
+          row via the candidate's own `path` field -- `Candidate.path` is
+          already copied verbatim from the same `FeatureMatrix` identity
+          `path` at candidate-build time, so no id-recomputation was
+          needed), `src-tauri/src/lib.rs` (`engine_candidate_explain`),
+          `engine.ts` (`AttributionResult`, `candidateExplain`), and
+          `ExplainPanel.tsx` (new `FeatureAttribution` component beside the
+          existing `ScoreDrivers` -- a different, deeper question: Score-
+          Drivers explains the composite score's already-transparent
+          weights, this explains the raw, opaque, unsupervised ensemble
+          score's dependence on the underlying features).
+          Tests: `tests/test_attribution.py` (6 cases: a constructed
+          single-feature outlier gets that feature ranked top by impact, a
+          non-dominant row's impacts stay small, a non-finite feature
+          returns `explainable: False` rather than raising, components are
+          sorted by |impact|, `top` truncates the list, the identifying
+          `path` round-trips) and two `tests/test_rpc.py` cases (found and
+          not-found candidate ids through `candidates.explain`). `cargo
+          check` and `tsc --noEmit` both clean; full Vitest suite green
+          (64 passed).
+
+[DONE]    Confidence + physical labels on feature attribution  <-- NEW 2026-08-31
+          Literature motivation, read from the primary source this session:
+          Ortiz Manrique & Boquien, "Interpreting anomaly detection of SDSS
+          spectra," A&A 703, A242 (2025) (arXiv:2510.05235), which argues
+          interpretable anomaly detection -- not raw detection scores -- is
+          what makes large spectroscopic anomaly searches "scalable,
+          transparent, and physically meaningful" for deciding what gets
+          followed up. `attribution.py`'s existing `explain_candidate`
+          reported a single occlusion impact per feature from ONE reference
+          point (the population median) with no confidence signal and a raw
+          column name -- exactly the two gaps this literature's argument
+          points at.
+          Two gaps closed, both additive; `explain_candidate` itself is
+          UNCHANGED (its 6 existing tests pass verbatim):
+          (1) `engine/astra/feature_glossary.py` (new) -- a pure lookup
+          table mapping every raw feature name (`features.FEATURE_NAMES`,
+          `featurematrix.GAIA_JOIN_COLUMNS`, `.STELLAR_MANIFOLD_COLUMNS`) to
+          a human label, physical unit (where the underlying feature
+          function documents one -- e.g. `time_span_days` -> "days",
+          `gaia_parallax` -> "mas"), and description -- restating what
+          `features.py`/`featurematrix.py` already document, not a new
+          citation. Falls back to a title-cased raw name for any future
+          feature this glossary hasn't been updated for, so coverage gaps
+          degrade gracefully rather than breaking attribution.
+          (2) `attribution.explain_candidate_stable` (new function,
+          `attribution.py`) -- for only the `stability_top` (default 5)
+          highest-|impact| features from an unchanged first median-only
+          pass, additionally occludes at the 25th/75th percentile of the
+          "other" population (reusing the already-computed median result,
+          not a third rerun) and reports `impact_mean/std/min/max` plus a
+          boolean `stable` (sign-consistent across all three references,
+          spread below half the mean magnitude). A full bootstrap over
+          every raw feature (not just the top few) was rejected for cost --
+          it would multiply the already-expensive full-ensemble-rerun-per-
+          feature cost across all ~28-43 columns instead of ~5. Every
+          component also carries `feature_glossary.describe(...)`'s label/
+          unit/description, and a deterministic, template-built (no LLM
+          call) `narrative` string names the top 2-3 STABLE drivers in
+          physical terms; when the single strongest raw impact is itself
+          unstable, the narrative says so explicitly ("reference-sensitive
+          ... treat with caution") rather than presenting a shaky number as
+          confident.
+          The SHAP-rejection reasoning in the entry above is UNCHANGED by
+          this addition -- still occlusion, still no new dependency, still
+          one uniform method across all 4 detectors; not re-litigated here.
+          Deliberately NOT done, and why: persisting/caching attribution on
+          candidate records, and linking the attribution narrative into
+          `scoring.py`'s composite score -- both would start pulling this
+          "diagnostic evidence only" module toward ranking, which this
+          codebase's convention explicitly forbids. Grepped `scoring.py`
+          and `evidence.py` after this pass: zero hits for `attribution`,
+          `attribution_eval`, or `feature_glossary` in either, confirming
+          neither was folded into ranking.
+          Wired live: `rpc.py` (`_handle_candidate_explain` gains an
+          optional `stable` param on the existing `candidates.explain`
+          dispatch key -- no new key, and the default/no-`stable` response
+          stays byte-identical to before this pass), `src-tauri/src/lib.rs`
+          (`engine_candidate_explain` gains an optional `stable` arg),
+          `engine.ts` (`AttributionResult` widened with optional
+          `narrative`/`label`/`unit`/`description`/`impact_mean`/
+          `impact_std`/`impact_min`/`impact_max`/`stable` fields, all
+          optional so the plain-`explain_candidate` response shape still
+          type-checks), and `ExplainPanel.tsx`'s `FeatureAttribution` (new
+          opt-in "Include confidence" checkbox beside the existing button --
+          the cheap default path is unchanged and this cost is disclosed
+          before a user pays it, matching this panel's existing busy-
+          gating discipline).
+          New `engine/astra/attribution_eval.py` (offline self-check,
+          confirmed absent from `rpc.py` by its own
+          `test_not_referenced_by_rpc`, same convention every other eval
+          module in this codebase follows): `evaluate_stability_quality`
+          demonstrates `stable=True` on a constructed symmetric/unimodal
+          reference population and `stable=False` on a constructed 70/30
+          bimodal one (the candidate matches the minority cluster, so the
+          majority-driven median/25th-percentile reference and the
+          candidate's-own-cluster 75th-percentile reference imply opposite
+          conclusions about how anomalous the candidate is -- the occlusion
+          impact flips sign across quantiles, the concrete, measured
+          version of "when is a single-median reference NOT trustworthy").
+          `evaluate_glossary_coverage` asserts every shipped feature column
+          has a real (non-fallback) glossary entry.
+          Tests: `tests/test_attribution.py` gained 7 `TestExplainCandidateStable`
+          cases (dominant feature keeps top rank; stable=True on a
+          symmetric population; stable=False on the constructed skewed
+          population; non-empty narrative naming the dominant feature's
+          label; narrative explicitly flags an unstable top component;
+          `explain_candidate`'s own output shape/behaviour is unchanged;
+          non-finite feature still returns `explainable: False`). New
+          `tests/test_feature_glossary.py` (7 cases: known-feature lookup,
+          unmapped-name fallback, full coverage of every shipped feature
+          name, unit-aware/unitless/NaN value formatting). New
+          `tests/test_attribution_eval.py` (3 cases: both eval functions'
+          expected results on the constructed populations, plus
+          `test_not_referenced_by_rpc`). `tests/test_rpc.py` gained one
+          case exercising `stable: True` through `_handle_candidate_explain`
+          end to end. Full offline suite, `cargo check`, and `tsc --noEmit`
+          all re-verified clean after this pass.
+
+[DONE]    Local candidate feed file (not a network broadcast)  <-- NEW 2026-08-28
+          Scope decision, made explicitly rather than defaulted into: ASTRA
+          is a local desktop app (Tauri) with no user accounts, hosting, or
+          existing outbound network infrastructure -- confirmed by grep
+          across `engine/` and `src-tauri/src/` for watchdog/`notify`/
+          `axum`/`warp`/`hyper`/static-file-serving: zero hits, so a real
+          network push would be entirely new infrastructure, not an
+          extension of anything. Picking and authenticating against a real
+          third-party publish target (a hosted API, a webhook service) was
+          judged a much bigger commitment than "let a researcher share
+          results outside the app" requires. Built instead: `broadcast.py`
+          (`generate_feed`), which writes a LOCAL JSON file a researcher
+          can point external tools at or send manually -- UI copy says
+          "local feed file", never "publish"/"broadcast to the internet",
+          so it never implies network behaviour that does not exist.
+          Reuses two existing precedents rather than inventing new ones:
+          the `>= threshold` cutoff mirrors `review.py`'s own fixed,
+          out-of-band `scores >= 0.5` precedent (`review.py:125`); the
+          envelope shape (`schema_version` + flat candidate array) mirrors
+          `alerts.py`'s inbound packet envelope, the one other alert-shaped
+          format already in this codebase. Unlike `exports.py`'s
+          timestamped snapshots, the feed writes to a STABLE path
+          (`{name}_feed.json`) that overwrites on each call -- a feed is
+          one resource that updates in place, not a growing pile of
+          snapshots.
+          Wired live: `rpc.py` (`candidates.broadcast`), `src-tauri/src/
+          lib.rs` (`engine_candidate_broadcast`), `engine.ts`
+          (`BroadcastFeedResult`, `broadcastFeed`), and `ReportsView.tsx`'s
+          existing "Export candidate run" panel gained a "Generate local
+          feed file" section (threshold input + button + copyable path),
+          extending rather than replacing the existing CSV/FITS/PDF export
+          UI pattern.
+          No changes to `exports.py`, `review.py`, `alerts.py`, or
+          candidate scoring. Tests: `tests/test_broadcast.py` (4 cases:
+          threshold filtering, envelope schema fields, stable-path
+          overwrite on a second call, empty-feed handling) and one
+          `tests/test_rpc.py` case. `cargo check` and `tsc --noEmit` both
+          clean; full Vitest suite green (64 passed).
+
+[DONE]    Multi-reviewer citizen-science voting  <-- NEW 2026-08-28
+          `labels` (`metadata.py:40-43`) is one row per candidate, last
+          write wins -- exactly right for a single expert reviewer, and
+          already trusted unchanged by `active_review.py`, `review.
+          evaluate`, and the ranker. Citizen-science voting needs the
+          opposite shape, so it was added as a genuinely separate,
+          additive table rather than touching `labels`: `label_votes`
+          (`metadata.py`, SCHEMA_VERSION 7->8) is append-only, no `ON
+          CONFLICT` -- multiple independent reviewers, or the same
+          reviewer more than once, each add a new row. Modelled on
+          `followup_requests`' (see the C14-equivalent entry above) same
+          one-candidate-to-many-rows shape, not reinvented.
+          Stated limitation, not worked around: `reviewer_id` is free text
+          with no account/auth system behind it (this app has none) -- it
+          cannot guarantee one-vote-per-person, the same class of caveat
+          `active_review.py`'s reviewer-agreement metric already carries
+          for true inter-rater identity.
+          Promotion from votes to the single authoritative label
+          (`candidates.promote_vote_consensus`) is ALWAYS an explicit,
+          gated action -- never triggered automatically by casting a vote.
+          The gate (`MIN_VOTES = 3`, `MIN_AGREEMENT = 0.6`, both fixed and
+          overridable, in `review.py`'s own stated "deliberately fixed
+          rather than selected on this same set" style) mirrors `review.
+          evaluate`'s exact "build a gate dict reporting thresholds AND
+          observed counts, short-circuit with a reason before computing
+          anything" discipline (`review.py`'s `MIN_LABELS`/
+          `MIN_PER_CLASS`). When the gate passes, promotion calls the
+          EXISTING `record_label` unchanged -- never forked -- so every
+          downstream consumer of `labels` sees a normal label, with no
+          knowledge that it originated from a vote.
+          Wired live: `rpc.py` (`candidates.vote`, `candidates.votes`,
+          `candidates.vote_promote`), `src-tauri/src/lib.rs`
+          (`engine_candidate_vote`/`_votes`/`_vote_promote`), `engine.ts`
+          (`LabelVote`, `VoteTally`, `VotePromotion`), and
+          `CandidateNotesPanel.tsx` gained a "Community votes" section
+          below the existing single-reviewer label buttons: a reviewer-ID
+          field, per-label vote buttons, a live tally (majority label
+          highlighted), and a "Promote consensus" button whose result
+          message reports the gate outcome either way.
+          No changes to `labels`' schema, `put_label`, `review.py`,
+          `active_review.py`, or the ranker. Tests: `tests/test_
+          candidates.py::TestLabelVoting` (10 cases: cast/read round trip,
+          multiple reviewers accumulate rather than overwrite, unknown
+          label rejected, empty reviewer_id rejected, tally majority/
+          agreement correctness, tally-with-no-votes reports None not
+          0, promotion below vote count / below agreement both report the
+          gate reason without touching `labels`, promotion at threshold
+          updates the authoritative label, a second promotion call is
+          safe) and one `tests/test_rpc.py` round-trip case. `cargo check`
+          and `tsc --noEmit` both clean; full Vitest suite green
+          (64 passed).
+
 [PARTIAL] Catalogue cross-reference (SIMBAD / VSX / TNS)
           An explicit, non-blocking enrichment action now queries SIMBAD and
           VSX through VizieR, plus TNS when protected credentials are
@@ -2510,7 +2789,28 @@ PHASE 7 — EXPLAINABILITY & CANDIDATE RANKING
           evidence, but that means a score of 0.70 computed from 75% of
           the evidence is NOT comparable with 0.70 from 100% of it.
           `weight_used` is reported alongside every score for this
-          reason. Cross-run comparison must check it.
+          reason. Cross-run comparison must check it. This part of the
+          gap is inherent and honestly reported, not a bug -- it is not
+          addressed by the update below.
+          UPDATE 2026-08-28: the separate, previously real gap -- raw
+          consensus (`EnsembleResult.consensus`) was only ever min-max
+          rescaled per detector and calibrated (`calibrate_scores`,
+          `anomaly.py`) against its own batch, so a 0.70 in one `detect`
+          call meant something different from a 0.70 in another -- is now
+          closed for the live scoring path. `_handle_detect` (`rpc.py`)
+          loads a persisted, per-feature-matrix-name calibration reference
+          (`anomaly.load_calibration_reference`) before scoring, passes it
+          into `EnsembleResult.ranked()`/`.to_dict()` (both now accept an
+          optional `reference`), then folds this run's consensus scores
+          into that reference for the next run
+          (`anomaly.update_calibration_reference`, FIFO-capped at 20,000
+          scores per name). The first-ever run for a name still falls back
+          to batch-relative calibration (empty reference) by construction;
+          from the second run onward, `consensus_calibrated` is comparable
+          across runs of the same matrix name. `calibration_report`'s
+          `reference_external`/`reference_rows` fields make which mode
+          applied explicit in every response, same discipline as
+          `weight_used` above.
 
 [PARTIAL] Period-luminosity class centres are approximate
           PERIOD_LUMINOSITY_CLASSES holds rough class centres for Delta
@@ -3025,6 +3325,424 @@ CROSS-CUTTING STATUS
           successful fit/distance/transfer renders, the degradation note,
           and error surfacing).
 
+[PARTIAL] Discard-pile transient recovery ("anomalies in the discard pile")  <-- NEW 2026-08-30
+          A new research direction, not a roadmap item: does cross-survey
+          corroboration recover real astrophysical variability from the
+          epochs a survey's OWN quality flags already discard, before a
+          candidate is ever assembled? `surveys.ztf.ZTFConnector.
+          fetch_light_curves_with_quality` (see the digital-twin entry
+          above) already recovers every epoch IRSA's default
+          `DEFAULT_CATFLAGS_MASK` filter strips, paired with the real
+          per-epoch `catflags` word. Three new pure-function modules
+          consume that pairing in sequence, none of them fetching data
+          themselves (matching `scoring.py`/`crossmatch.py`'s own
+          "the caller owns acquisition" layering):
+          `discard_pile.py` finds coherent RUNS of discarded epochs
+          (`extract_discard_records`/`scan_source`/`scan_sources`) --
+          `min_run_length` consecutive same-category epochs, the same bar
+          `ztf_artifact_patches.MIN_RUN_LENGTH` already uses for the same
+          catflags data. A run is flagged `coherent` when its largest
+          single step is small relative to its total offset from the
+          curve's own accepted-epoch baseline (a smooth excursion, not
+          jitter straddling the flag threshold).
+          `discard_corroboration.py` tests a discard record against
+          INDEPENDENT surveys' own photometry in the same real time window
+          (`corroborate`, a direct z-score against each curve's own
+          out-of-window baseline) -- ASTRA's founding corroboration
+          thesis applied one level earlier than any existing candidate
+          ever reaches it. Deliberately NOT injected into
+          `scoring.WEIGHTS`/`combine()`: `CorroborationResult` mirrors
+          `ScoreBreakdown`'s shape (components, reasons) without touching
+          the weights every existing candidate is already scored against
+          while this signal is unproven.
+          `discard_adjudication.py` goes one level deeper still: an
+          independent forced-PSF flux measurement at the target's fixed
+          pixel position via `ztf_forced_photometry.build_scene_model`
+          (already-existing joint scene-model fitting, not a new
+          difference-imaging pipeline -- that remains explicitly out of
+          scope, see `ztf_forced_photometry.py`'s own docstring), compared
+          between the flagged epochs and the rest of a supplied cutout
+          cube. Verdicts are `likely_real` (a significant, correctly-
+          signed flux change independently confirmed), `likely_artifact`
+          (no significant independent change, OR a significant change in
+          the WRONG direction -- itself evidence the catalog's own
+          photometry was contaminated, e.g. by blending), or
+          `inconclusive` (too few independently-fit epochs on either side).
+          Evaluation (`discard_pile_eval.py`), following
+          `research/benchmark.py`'s own already-stated approach for this
+          exact gap ("known anomalies of known shape and amplitude are
+          injected... labels are then true by construction", since no real
+          "this discarded run was real" label store exists yet): synthetic
+          (curve, catflags) pairs with a KNOWN injected label -- a smooth
+          half-sine bump (real) or independent per-epoch noise (artifact-
+          shaped) inside the SAME flagged run shape. Reuses `research.
+          benchmark._bootstrap_auprc_by_object` rather than re-deriving
+          object-grouped bootstrap resampling a second time (the same
+          precedent as `flare.py` importing `transit_ttv._finite_arrays`
+          and `microlensing_eval.py` importing `significance._ci_binomial`).
+          Measured, not assumed: the continuous discriminator (offset
+          relative to largest single step) separates real from artifact
+          runs well (AUPRC > 0.7 at 50/50 balance); the simpler BOOLEAN
+          `coherent` verdict alone is high-precision but conservative
+          (~0.9 precision, ~0.3 recall at these synthetic amplitudes) --
+          reported honestly as a real property of the heuristic rather than
+          tuned to look better, exactly this file's own discipline.
+          Wired live, deliberately partially: `rpc.py`'s `discard.scan`
+          fetches one real ZTF source and returns its discard records --
+          genuinely real and network-backed. `discard.adjudicate` is NOT
+          yet RPC-exposed: it needs a real cutout image CUBE, and real ZTF
+          difference/cutout-cube acquisition across a time baseline is not
+          wired anywhere in this codebase yet (the same gap
+          `ztf_forced_photometry.py`'s own docstring already states for
+          real ZTF difference-image acquisition) -- exposing it over RPC
+          today would mean fabricating that acquisition glue, which was
+          deliberately not done. No UI panel yet either, for the same
+          reason: nothing to browse from a live acquisition path.
+          Genuinely open: `discard_corroboration.py` assumes its caller
+          already resolved counterpart curves via `crossmatch.
+          group_sources` and does no time-system reconciliation itself
+          (a counterpart survey on a different time standard would need
+          `timeframe.py` conversion applied before calling it); the
+          adjudication verdict's significance threshold and the
+          corroboration window's z-score threshold are both hand-set
+          constants, not calibrated against a real labelled set, the same
+          class of caveat `artifact.py`'s hand-set artifact-indicator
+          weights already carry.
+          Tests: `tests/test_discard_pile.py` (12 cases), `tests/
+          test_discard_corroboration.py` (7 cases), `tests/
+          test_discard_adjudication.py` (7 cases, synthetic circular-
+          Gaussian scenes via `ztf_forced_photometry._synthetic_gaussian_
+          image`, no network), `tests/test_discard_pile_eval.py` (7 cases),
+          `tests/test_rpc_discard.py` (2 cases). Full suite green
+          afterward: 2345 passed, 56 skipped.
+
+[PARTIAL] Reviewer human-factors experiment ("the review UI as a controlled
+          experiment")  <-- NEW 2026-08-31
+          A second new research direction from the same 2026-08-29 plan:
+          does DISPLAYING ASTRA's own score measurably bias a human
+          reviewer's decision, and does correcting for that bias change
+          what the human+model ensemble is worth? `active_review.py`
+          already treats reviewer agreement as a quality signal; this adds
+          the piece it never had -- treating what a reviewer SEES as an
+          experimental variable.
+          Storage: `label_votes` (`metadata.py`, SCHEMA_VERSION 8->9, the
+          same `_ADDED_COLUMNS` idempotent-migration mechanism the
+          `sources`/`jobs` tables already use) gained five nullable
+          columns -- `arm`, `displayed_score`, `decision_latency_ms`,
+          `self_reported_confidence`, `presentation_index`. Every row cast
+          before this migration, and every row cast through the ORIGINAL
+          `candidates.cast_label_vote` call (unchanged signature, now with
+          keyword-only additions defaulting to `None`), reads back `None`
+          for all five -- `None` means "not part of the experiment", not
+          "unknown value of a required field". `metadata.all_label_votes`/
+          `candidates.all_label_votes` (new) are the first queries in this
+          codebase to span every candidate's votes at once, needed because
+          this experiment's unit of analysis is the whole vote population,
+          not one candidate at a time.
+          `review_experiment.py`: `assign_arm` is a deterministic SHA-256
+          hash of `(seed, reviewer_id, candidate_id)`, never a stored
+          random draw -- the same pair always lands in the same arm, so
+          reopening a candidate mid-review never reshuffles a reviewer.
+          Three arms: `score_shown` (today's behaviour), `score_blinded`
+          (nothing displayed), `score_shuffled` (a DECOY score, real but
+          belonging to a different candidate). `score_shuffled` is the
+          actual control: if shuffled-arm reviewers agree with blinded-arm
+          reviewers but not with shown-arm reviewers, that is anchoring on
+          a displayed number, not information carried by it. The decoy
+          candidate is picked deterministically too, but the DISPLAYED
+          VALUE is recorded at vote time (`displayed_score`), not
+          recomputed later -- a later change to the candidate pool can
+          never retroactively change what an already-cast vote's analysis
+          believes the reviewer saw. `cast_experimental_vote` is the ONLY
+          intended entry point for a vote that participates (ordinary
+          `candidates.cast_label_vote` stays available, unchanged, for
+          non-experimental use).
+          Pre-registration: `PREREGISTERED_ANALYSIS_PLAN` (hypothesis,
+          arms, primary/secondary analyses, minimum votes per arm,
+          exclusion criteria, stopping rule) is a fixed dict, hashed
+          (canonical JSON + SHA-256, the same scheme `research/records.py`
+          uses) and saved via `save_preregistration()` to
+          `research/experiments/preregistrations/review_experiment.json`
+          BEFORE any experimental label is collected. Calling it again
+          with the SAME plan is a no-op; calling it with a DIFFERENT plan
+          after one is already registered raises rather than silently
+          overwriting -- the entire point of pre-registration is defeated
+          if the analysis plan can be edited after seeing data.
+          `review_experiment_eval.py` (pure functions over vote-row lists
+          plus an externally supplied `truth` mapping, the same "caller
+          resolves context, this module only analyses" layering as
+          `discard_corroboration.py`): `anchoring_effect_size` (per-arm
+          accuracy against truth, per-arm cross-reviewer pairwise
+          agreement, and an `anchoring_signature_detected` flag comparing
+          the three arms' distances from each other), `calibration_curve`
+          (self-reported confidence vs. realised accuracy, binned, per
+          arm), `ensemble_accounting` (model-alone vs. human-alone,
+          BLINDED ARM ONLY so the human signal cannot be contaminated by
+          the displayed score, vs. an unweighted-average combined score,
+          all thresholded at the same fixed 0.5 `review.evaluate` already
+          uses). No real human-subject data exists yet -- these are
+          verified against synthetic vote rows constructed with a known
+          ground truth, exactly `discard_pile_eval.py`'s "labels are then
+          true by construction" approach for the same reason (no real
+          label store for this exists yet either).
+          Wired live, deliberately partially, same discipline as the
+          discard-pile entry above: `rpc.py`'s `review.experiment.vote`
+          (casts a real experimental vote) and `review.experiment.
+          preregister` (idempotent) are real and load-bearing.
+          `anchoring_effect_size`/`calibration_curve`/`ensemble_accounting`
+          are NOT RPC-exposed: they need a `truth` mapping this codebase
+          has no live source for yet (ground truth is precisely what a
+          review campaign is trying to establish), so exposing them today
+          would mean fabricating a truth source. They are usable directly
+          from a research script once real votes accumulate. No UI panel
+          yet, for the same reason `CandidateNotesPanel.tsx`'s existing
+          score display and vote buttons would need conditional
+          arm-gating logic, not just a new call -- deferred until the
+          engine-side experiment is exercised with the vote RPC first.
+          Genuinely open: `reviewer_id` still has no account/auth system
+          behind it (the same stated limitation `candidates.
+          cast_label_vote`'s own docstring already carries), so arm
+          assignment cannot guarantee one reviewer is not accidentally
+          reassigned across sessions if `reviewer_id` itself changes; the
+          minimum-votes-per-arm stopping rule is declared but not yet
+          enforced by any code (nothing currently blocks reading results
+          before it is reached, the same class of "declared, not gated"
+          caveat several roadmap items above already carry until a REAL
+          gate is added).
+          Tests: `tests/test_review_experiment.py` (23 cases: arm
+          assignment, decoy selection, experimental vote casting,
+          pre-registration round-trip and tamper-refusal), `tests/
+          test_review_experiment_eval.py` (12 cases, synthetic vote rows),
+          `tests/test_rpc_review_experiment.py` (5 cases). Full suite green
+          afterward: 2401 passed, 56 skipped.
+
+[PARTIAL] Domain-general corroboration library ("corroboration as a general
+          multi-instrument anomaly library")  <-- NEW 2026-08-31
+          A third new research direction from the 2026-08-29 plan: is
+          ASTRA's founding thesis -- two independent instruments with
+          different systematics agreeing is stronger evidence than either
+          alone -- an astronomy-specific technique, or a domain-general
+          one that happens to have only ever been implemented for
+          astronomy? New package `engine/astra/corroborate/`.
+          NON-NEGOTIABLE CONSTRAINT, honoured by construction rather than
+          merely tested: `crossmatch.py` and `scoring.py` were NOT
+          modified. Every existing candidate score, and the full pre-
+          existing suite, runs through code this session did not touch --
+          the deliberately lower-risk choice over rewriting the modules
+          every existing score already depends on to route through a
+          brand-new package (see `astronomy_adapter.py`'s own docstring
+          for the full reasoning). `corroborate/` is an independent,
+          additional path, verified for AGREEMENT against the real one.
+          `core.py`: domain-agnostic association (`InstrumentRecord`,
+          `match_records`, `group_records`) and agreement scoring
+          (`combine_components`/`AgreementBreakdown`), generalising
+          `crossmatch.match_catalogs`/`group_sources`/`_resolve_anchor`
+          and `scoring.combine`/`ScoreBreakdown`. The generalisation is
+          exactly the metric: `crossmatch.angular_separation_arcsec`
+          becomes an INJECTED `DistanceFn` over an abstract `position:
+          tuple[float, ...]` that need not be (ra, dec) at all, and
+          `scoring.WEIGHTS` (a fixed module dict) becomes a `weights`
+          parameter. Proper-motion epoch correction and beam-width
+          blending (`crossmatch.PIXEL_SCALE_ARCSEC`) deliberately stay
+          OUT of the core -- both are genuinely astronomy-specific, not
+          generalised away, only the "one counterpart claimed by several
+          groups" blend rule IS generalised (`_flag_shared_counterparts`).
+          `astronomy_adapter.py`: crossmatch.py's own domain re-expressed
+          via the core, checked for AGREEMENT against `crossmatch.
+          group_sources` directly (`evaluate_astronomy_equivalence`, 50
+          random synthetic fields per call by default) -- not merely
+          calling the same function through a new name, since the core's
+          grouping/blend-detection logic is independently written.
+          `gw_adapter.py`: the second domain, gravitational-wave-detector-
+          style COINCIDENCE vetting (time stands in for sky position, a
+          coincidence window for a match radius), on clearly-labelled
+          SYNTHETIC data -- real GWOSC/Gravity Spy ingestion is explicitly
+          NOT attempted, the same honest scoping `ztf_forced_photometry.
+          py`'s own docstring already uses for real ZTF difference-image
+          acquisition. The one deliberately controllable parameter,
+          `systematics_correlation`, is the fraction of one detector's
+          glitches that have a coincident glitch in the OTHER detector (a
+          shared environmental noise source) -- the actual mechanism the
+          scaling claim below measures.
+          `eval.py`, three studies: (1) `evaluate_astronomy_equivalence` --
+          measured, not assumed: 0 mismatches across 50 random synthetic
+          fields (`agreement_rate` 1.0), covering explicit and default-
+          anchor grouping, ambiguous matches, beam-width blending, and
+          proper-motion-corrected positions. (2) `evaluate_domain_transfer`
+          -- corroboration ("declare a candidate only when >=2 independent
+          instruments resolve it") measurably reduces the false-positive
+          rate in BOTH astronomy (a synthetic ZTF/Gaia field with known
+          real/artifact truth, an ambient Gaia population giving artifacts
+          a real but small chance of accidental coincidence) AND the
+          synthetic GW-style domain, using the IDENTICAL `core.
+          group_records` call for both -- this is the actual domain-
+          transfer result, not two separately-tuned pipelines that happen
+          to agree. (3) `evaluate_scaling_with_systematics_correlation` --
+          the scaling claim, and the most novel finding of this direction:
+          swept `systematics_correlation` from 0.0 to 1.0 over synthetic
+          glitch-only (no real events) populations, and corroboration's
+          own false-positive rate among 2-detector declarations rises
+          from near zero at independent systematics to the near-total
+          uncorroborated baseline at fully shared systematics -- measured
+          in `tests/test_corroborate_eval.py`
+          (`test_full_correlation_gives_a_high_false_positive_rate`: >0.8
+          at correlation=1.0; `test_near_zero_correlation_gives_a_near_
+          zero_false_positive_rate`: <0.1 at correlation=0.0). This
+          confirms corroboration's power comes specifically from
+          systematics INDEPENDENCE, not merely from requiring two
+          detections -- the finding this direction set out to test.
+          Reuses `significance._ci_binomial` for every reported rate's
+          confidence interval, the same private-helper reuse precedent
+          `flare.py`/`microlensing_eval.py`/`discard_pile_eval.py` already
+          established.
+          Wired live, deliberately read-only, same discipline as the
+          other two 2026-08-29-plan entries above: `rpc.py`'s
+          `corroborate.equivalence`, `corroborate.domain_transfer`, and
+          `corroborate.scaling` are real diagnostics, none of them
+          touching `scoring.WEIGHTS`, ranking, or any existing candidate
+          score -- the same "read-only diagnostic" category `digital_twin.
+          */physical.characterize`/`significance.calibrate` already
+          occupy. No UI panel yet: these three are research-facing
+          numbers, not something a reviewer triaging candidates needs to
+          see, the same reasoning the digital-twin panel's own RPC-first
+          rollout used before its UI followed.
+          Genuinely open: a THIRD domain (seismic networks were the
+          plan's own stated fallback) was not attempted -- two domains
+          already support the transfer and scaling claims, and a third
+          would mostly re-confirm rather than add new information at this
+          scope. `evaluate_domain_transfer`'s astronomy false-positive
+          reduction is on synthetic, not real, labelled astronomy data --
+          `discard_pile_eval.py`'s own real-vs-synthetic caveat applies
+          here identically, for the identical reason (no real "this ZTF
+          source is an artifact" label store exists yet). The GW adapter's
+          realism is deliberately minimal (Gaussian jitter, uniform glitch
+          times) -- it demonstrates the STRUCTURE of the coincidence
+          problem, not GW detector physics, and should not be read as a
+          GW-astronomy result.
+          Tests: `tests/test_corroborate_core.py` (17 cases), `tests/
+          test_corroborate_astronomy_adapter.py` (5 cases, including the
+          proper-motion and beam-width-blending agreement checks),
+          `tests/test_corroborate_gw_adapter.py` (8 cases), `tests/
+          test_corroborate_eval.py` (9 cases), `tests/
+          test_rpc_corroborate.py` (4 cases). Full suite green afterward:
+          2444 passed, 56 skipped.
+
+[PARTIAL] Closed-loop decision-theoretic observation scheduling  <-- NEW 2026-08-31
+          The fourth and final direction from the 2026-08-29 plan:
+          `followup.plan` already answers "when can ONE target be
+          observed" and `information_gain.rank_by_information_gain`
+          already RANKS candidates by value-per-hour, but nothing turned
+          that ranking into an actual ordered SEQUENCE for a night. New
+          `engine/astra/schedule.py` + `schedule_eval.py`, calling both
+          existing modules UNCHANGED.
+          `schedule.build_night_schedule`: greedy insertion by entropy-per-
+          `exposure_hours` priority (the same formula `rank_by_
+          information_gain` uses, computed identically here), each
+          candidate placed in the EARLIEST feasible free gap across its
+          own `followup.plan` windows for the night. Stated scope, not
+          glossed over: `exposure_hours` is uniform across every scheduled
+          slot (matching `rank_by_information_gain`'s own uniform-
+          `exposure_hours` design), and slew cost (`followup.
+          angular_separation_deg` / a fixed `DEFAULT_SLEW_RATE_DEG_PER_SEC`
+          approximation -- not a mount-specific slew table) is a REPORTED
+          diagnostic and the local-search pass's optimisation objective,
+          not a hard feasibility constraint during insertion -- the same
+          class of approximation `followup.py`'s own low-precision
+          sidereal/solar/lunar ephemeris already states plainly in its
+          `caveats` field. `_local_search_reduce_slew` does adjacent-slot
+          swaps that reduce total slew distance; `_recompute_slew` makes
+          the REPORTED `slew_deg_from_previous` always reflect each
+          observation's true chronological predecessor after local search,
+          even though it was only advisory during insertion.
+          `schedule.replan`: re-solves the REMAINDER of a night from a
+          cutoff time, preserving every already-executed observation
+          exactly as recorded -- a mid-night weather change or a new alert
+          never rewrites history, only what has not happened yet.
+          `schedule_eval.py`, the retrospective simulator (the primary
+          claim, since publishing without a telescope means simulation has
+          to carry it): a synthetic candidate population with a KNOWN
+          hidden truth (`_synthetic_population`, the same "labels true by
+          construction" discipline `discard_pile_eval.py`/`review_
+          experiment_eval.py` already use), a synthetic resolution model
+          (`RESOLUTION_FRACTION=0.6` of the remaining posterior gap per
+          observation -- an explicitly idealised model, the same
+          "noiseless follow-up fully resolves current uncertainty"
+          idealisation `information_gain.py`'s own docstring already
+          states and cites), and THREE priority policies --
+          `information_gain` (entropy-first), `rank_order` (confidence-
+          first, the naive baseline every un-optimised review queue
+          already runs), `random` -- compared through the IDENTICAL real
+          sequencer via `build_night_schedule`'s new `priority_fn`
+          override, so the comparison isolates priority order rather than
+          confounding it with three different scheduler implementations.
+          MEASURED, NOT ASSUMED, and genuinely non-obvious: the first
+          version of this evaluation reported only END-OF-CAMPAIGN
+          resolved-candidate counts, and all three policies converged to
+          IDENTICAL numbers (every policy eventually resolves everyone
+          given enough nights) -- an uninformative metric, caught before
+          being reported as a result. Replaced with a proper resolution-
+          vs-time-budget curve (`evaluate_scheduling_policies`,
+          `hour_budgets` checkpoints) under TWO metrics that do NOT agree:
+          `entropy_reduced_bits` (information_gain's own actual
+          optimisation target) shows information_gain leading clearly and
+          early (measured at a 16-telescope-hour checkpoint over 60
+          candidates, 6 runs: information_gain > rank_order, confirmed in
+          `tests/test_schedule_eval.py`), while raw `resolved_candidates`
+          at the SAME early checkpoint favours `rank_order`/`random`
+          instead -- entropy-first scheduling invests repeatedly in the
+          FEW most ambiguous candidates (which each need several
+          observations to cross the resolved threshold), while confidence-
+          first scheduling picks up many cheap, near-certain resolutions
+          first. Both metrics converge once a campaign runs long enough to
+          resolve the whole population. This is reported as the actual
+          finding -- "information gain wins, unconditionally" would have
+          been the WRONG headline for what the numbers show.
+          `evaluate_robustness` was retargeted to match this finding: it
+          compares `entropy_reduced_bits` (the metric information_gain
+          actually has a real early advantage on) rather than
+          `resolved_candidates` (which `rank_order` leads regardless of
+          noise, so degrading information_gain's input has nothing to
+          erode there) as Gaussian noise is added to the posterior
+          information_gain prioritises by. The advantage is measurably
+          positive at zero noise and degrades under heavy noise
+          (`tests/test_schedule_eval.py`'s
+          `test_heavy_noise_erodes_the_advantage`).
+          Live outbound submission (an LCO ToO API adapter behind
+          `followup.request`) was NOT implemented, per this session's
+          explicit instruction to confirm with the user before enabling
+          any real outbound telescope-time-consuming submission --
+          `schedule.py` produces schedules and nothing more. `followup.
+          request`/`.result`/`.history` (already wired, `candidates.
+          request_followup` etc.) remain the only real state this
+          codebase records about follow-up, and stay exactly as they were.
+          Wired live: `rpc.py`'s `schedule.build_night` and `schedule.
+          replan` are real, synchronous, and load-bearing. `schedule_eval.
+          py`'s simulator is NOT RPC-exposed -- a single `evaluate_
+          scheduling_policies` call takes tens of seconds (many real
+          `followup.plan` geometry calls per simulated night), too slow
+          for a synchronous RPC round trip without `job.submit`-style
+          async wrapping, which was not built this session; it belongs in
+          the `job.submit` category the `READY-TO-RUN SCALE STUDIES`
+          section below already uses for long-running work, not as a
+          direct handler. No UI panel yet, for the same "nothing to browse
+          from a live acquisition path" reason the other three 2026-08-29-
+          plan entries above already state.
+          Genuinely open: the local-search swap in `schedule.py` can, in
+          principle, place a candidate outside its own true visibility
+          window if two candidates' feasible windows differ (stated in
+          `_local_search_reduce_slew`'s own docstring) -- not yet measured
+          how often this actually occurs on realistic candidate sets, the
+          same class of "declared, not gated" caveat several roadmap items
+          above already carry. `RESOLUTION_FRACTION`/
+          `RESOLVED_ENTROPY_THRESHOLD` are hand-set constants, not
+          calibrated against any real follow-up outcome (none exist in
+          this codebase to calibrate against), the same caveat `discard_
+          adjudication.py`'s significance thresholds already carry.
+          Tests: `tests/test_schedule.py` (13 cases), `tests/
+          test_schedule_eval.py` (12 cases, including the measured
+          entropy-reduced-vs-resolved-candidates discrepancy and the noise-
+          erodes-advantage robustness check), `tests/test_rpc_schedule.py`
+          (4 cases). Full suite green afterward: 2473 passed, 56 skipped.
 
 ---------------------------------------------------------------------
 READY-TO-RUN SCALE STUDIES  <-- 2026-08-19
@@ -4748,6 +5466,32 @@ EXTERNAL ROADMAP ITEMS
           check, and a static `rpc.py`-non-reference check). Full
           offline suite re-verified after this item landed: 2103
           passed, 52 skipped, 0 failed.
+          UPDATE 2026-08-28: `active_review.py` (the reweighting logic
+          itself, NOT `active_review_eval.py`, which stays research-only)
+          deliberately promoted into the live `review.next` RPC path,
+          gated behind a new `active` flag (default `false`, byte-for-
+          byte unchanged `review.select_next` behaviour). `rpc.py:
+          _handle_review_next` calls `active_review.learn_reason_weights`
+          + `reweighted_select_next` when `active=True`; threaded through
+          `src-tauri/src/lib.rs:engine_review_next` (new `Option<bool>`
+          param, same pattern as the existing `fit_model` param) and
+          `src/lib/engine.ts:reviewNext` up to a new "Active learning"
+          toggle in `ExplainPanel.tsx` next to the existing "Review next"
+          button. The two static non-reference guard tests were updated
+          rather than deleted: `test_active_review_is_not_wired_into_rpc`
+          -> `test_active_review_is_wired_into_rpc_for_active_mode`
+          (asserts the module IS now referenced), and `test_active_
+          review_eval.py`'s guard narrowed to check `active_review_eval`
+          specifically (still absent from rpc.py) rather than the
+          `active_review` substring it used to match. New RPC-level test:
+          `tests/test_rpc.py::test_review_next_active_mode_excludes_
+          labelled_candidates`. This promotion does not change any of the
+          caveats documented above -- the reviewer-agreement metric is
+          still a stated proxy, reason weights still cold-start uniform,
+          and the reason vocabulary is still the same fixed four tags --
+          it only makes the already-tested reweighting reachable from the
+          live UI. No change to `review.py`, `candidates.py`, `active_
+          review.py` itself, or `metadata.py`'s label schema.
 
 
 [PARTIAL] Information-gain follow-up scheduler (P1, roadmap item 37)  <-- NEW 2026-08-26
@@ -4826,6 +5570,46 @@ EXTERNAL ROADMAP ITEMS
           `followup.plan` infeasibility-integration check, and a static
           `rpc.py`-non-reference check). Full offline suite re-verified
           after this item landed: 2120 passed, 52 skipped, 0 failed.
+
+
+[DONE]    Follow-up request/result tracking  <-- NEW 2026-08-28
+          `followup.plan` (`followup.py`) was, and remains, a pure stateless
+          visibility/scheduling calculation for ONE target -- it never
+          recorded that a request was actually made, ending every UI call
+          with "No observation request was submitted" (`ExplainPanel.tsx`).
+          This item adds the tracking layer on top, without touching
+          `followup.py` itself (same "does not modify `followup.py`"
+          discipline the information-gain item above states): a new
+          `followup_requests` table in `metadata.py` (SCHEMA_VERSION 6->7),
+          modelled on `event_packets`' one-candidate-to-many-rows,
+          append-only shape rather than `labels`' single-row-per-candidate
+          shape, since a candidate can legitimately be requested for
+          follow-up more than once over its lifetime. New functions:
+          `metadata.put_followup_request`/`put_followup_result`/
+          `followup_history`, wrapped by `candidates.request_followup`/
+          `record_followup_result`/`followup_history` (request IDs are
+          `uuid4`-based, matching `jobs.py`'s `job_id` pattern -- not
+          content-hashed, since these are user-initiated actions, not
+          idempotent-retry-of-external-feed packets). New RPC methods
+          `followup.request`/`followup.result`/`followup.history`
+          (`rpc.py`, beside the existing `followup.plan`), threaded through
+          new Tauri commands (`engine_followup_request/_result/_history`,
+          `src-tauri/src/lib.rs`) and typed `engine.ts` wrappers
+          (`FollowupRequestEntry`). UI: `ExplainPanel.tsx`'s `FollowupDraft`
+          gained a "Follow-up tracking" section below the existing
+          visibility-planning UI -- request a follow-up (facility + note),
+          load/refresh history, and record an outcome (observed/no_show/
+          cancelled) per open request. Result statuses are a distinct,
+          smaller set (`FOLLOWUP_RESULT_STATUSES`) from the candidate
+          `LABELS` vocabulary -- a follow-up outcome is not a researcher
+          judgement label. Tests: `tests/test_candidates.py::
+          TestFollowupTracking` (6 cases: create/read round trip, multiple
+          requests per candidate, result recording, unknown-status
+          rejection, result-for-unknown-request KeyError, empty history)
+          and `tests/test_rpc.py::test_followup_request_result_and_
+          history_round_trip`. Full offline suite re-verified after this
+          item landed: 2302 passed, 52 skipped, 0 failed. `cargo check`
+          and `tsc --noEmit` both clean.
 
 
 [PARTIAL] Detector/survey quality drift monitor (P0, roadmap item 38)  <-- NEW 2026-08-26
@@ -5100,3 +5884,225 @@ EXTERNAL ROADMAP ITEMS
           `rpc.py`, `scoring.py`, and `evidence.py` for every new
           module's name after all five: zero hits in every case,
           confirming none was accidentally wired in.
+
+
+---------------------------------------------------------------------
+ASTROPHYSICS & EXTRATERRESTRIAL-STUDY FEATURE PASS  <-- NEW 2026-08-31
+---------------------------------------------------------------------
+
+Five new capability verticals, each a full vertical slice (engine
+module + paired `*_eval.py` + tests + `rpc.py` handler + Tauri command
++ `engine.ts` method + React panel + Sidebar/App wiring, under a new
+"Frontier" sidebar group). All five follow this codebase's existing
+"diagnostic evidence only" convention: grepped `scoring.py` and
+`evidence.py` for every new module's name after all five landed --
+zero hits in every case, confirming none was folded into ranking.
+Every `*_eval.py` module is confirmed absent from `rpc.py` by its own
+`test_not_referenced_by_rpc` test, the same convention every other
+eval module in this codebase already follows.
+
+Literature coefficients transcribed for this pass were fetched and
+read from the primary source this session where the source was openly
+accessible (Kopparapu et al. 2013 ApJ 765,131 AND its erratum ApJ
+770,82 -- both PDFs fetched directly, Table 3's ERRATUM values used,
+not the superseded originally-published ones; Bowell et al. 1989's
+H-G phase-function coefficients), or cross-checked against two
+independent secondary sources when the primary was paywalled
+(Schulze-Makuch et al. 2011's ESI weights; Huber et al. 2011's solar
+seismic reference values) -- flagged as weaker corroboration than a
+primary read in each module's own docstring, not silently presented
+as first-hand.
+
+[PARTIAL] Habitability scoring (`habitability.py`, `habitability_eval.py`)
+          Kopparapu et al. (2013 erratum) habitable-zone boundaries and
+          Schulze-Makuch et al. (2011) Earth Similarity Index for a
+          confirmed planet. `exoplanet_archive.py`'s `_PS_COLUMNS`/
+          `PlanetRecord` extended with ten stellar/insolation/mass
+          columns and a new `query_planets_bounded` catalog-scale query
+          path (the original `query_confirmed_planets` single-host/
+          single-planet guard is unchanged). Live-verified this session:
+          `habitability.score_archive_planet("Kepler-10 b")` round-
+          tripped through the real NASA Exoplanet Archive TAP service
+          end to end via `rpc.dispatch`, confirming the ten new column
+          names actually exist on the live `ps` table, not only in a
+          mocked-response test.
+          [GAP] The HZ is a 1D cloud-free radiative-convective result
+          (Kasting-class model); the paper's own abstract states real
+          boundaries "may extend further in both directions" once
+          clouds are included. Eccentricity is reported on
+          `PlanetRecord` but NOT integrated into a time-averaged flux
+          (the paper's own Equation 4 extension is not implemented).
+          ESI's surface term is built from equilibrium temperature, not
+          a measured surface temperature -- no greenhouse model exists
+          in this engine -- and the returned field is named
+          `esi_surface_from_teq`, never `esi_surface`, to keep that
+          substitution visible; a warning is always attached when it is
+          used. Verified in `tests/test_habitability.py`: Earth scored
+          via its true 288 K surface temperature reaches ESI=1.0
+          exactly, but Earth scored via the actual code path (T_eq)
+          does not.
+          Tests: `tests/test_habitability.py` (22 cases) and
+          `tests/test_habitability_eval.py` (9 cases, including
+          reference-case recovery against the erratum's own Table 1
+          Sun values and an HZ-membership-probability Monte Carlo with
+          a Wilson interval). `tests/test_exoplanet_archive.py`'s
+          existing 6 cases pass unchanged.
+
+[PARTIAL] NEO hazard assessment (`neo_hazard.py`, `neo_hazard_eval.py`)
+          MOID, Tisserand parameter, IAU H-G absolute magnitude/
+          diameter, PHA classification, light-time correction, and
+          close-approach distance, built entirely on top of the
+          existing `moving_objects.py` (itself untouched -- imported,
+          never edited). MOID is a numerical grid-search-plus-Nelder-
+          Mead result, not Gronchi's (2005) algebraic method; its
+          convergence is measured, not assumed (`neo_hazard_eval.
+          moid_convergence` reports the error against exactly-known
+          closed-form truth at five grid resolutions).
+          [GAP] Two-body only: no planetary perturbations, no
+          Yarkovsky effect, no Earth-Moon barycentre split, and --
+          stated as the single most important line in the module --
+          NO IMPACT PROBABILITY is ever computed, because that needs
+          covariance propagation through a perturbed force model that
+          does not exist here. `close_approach_sensitivity` in the eval
+          module reports the SPREAD of close-approach distance under
+          element-uncertainty resampling as an explicit sensitivity
+          measure, never reframed as a probability. No JPL Horizons
+          client; `moving_objects.mpc_search_orbits` remains the only
+          live orbit lookup.
+          Tests: `tests/test_neo_hazard.py` (34 cases, including exact
+          closed-form MOID for coplanar circular orbits and identical
+          orbits, and inclusive-boundary PHA classification at
+          MOID=0.05 AU/H=22.0 exactly) and `tests/test_neo_hazard_eval.py`
+          (9 cases).
+
+[PARTIAL] Asteroseismology (`asteroseismology.py`, `asteroseismology_eval.py`)
+          Kjeldsen & Bedding (1995) scaling relations with Huber et al.
+          (2011) solar references (numax_sun=3090 uHz, Dnu_sun=135.1
+          uHz), plus a pure-numpy detection path (Lomb-Scargle power
+          spectrum -> Gaussian power-excess fit over a crude Harvey-
+          profile background -> autocorrelation Dnu, disambiguated
+          against the Stello et al. 2009 Dnu-numax relation) rather
+          than depending on `lightkurve.seismology` for the
+          implementation, even though `lightkurve` is already a core
+          dependency -- kept as an optional API-surface cross-check only
+          (`tests/test_asteroseismology_lightkurve.py`, no network
+          needed), so the module stays offline-testable. That cross-check
+          does NOT assert numerical agreement with this module's own
+          estimator: a manual check found lightkurve's 2-D-autocorrelation
+          numax estimator (Viani et al. 2019) disagreed substantially
+          (~7145 uHz vs. an injected 1200 uHz truth) at default tuning on
+          the same synthetic input -- different algorithms, different
+          default assumptions, not evidence either is wrong, but a real
+          finding worth recording rather than silently asserting
+          agreement. Verified this session on a synthetic oscillation
+          comb via this module's OWN estimator: recovered numax to
+          within 0.2% and Dnu to within 0.01% of injected truth; solar
+          round-trip inversion is exact to 1e-9.
+          [GAP] No individual mode-frequency extraction, no
+          peakbagging, no red-giant mixed-mode/period-spacing analysis
+          (so no RGB-vs-red-clump classification), and no Sharma et al.
+          (2016)-style correction to the Dnu scaling for evolved/metal-
+          poor stars. The well-known x2/0.5x Dnu ACF-aliasing failure
+          mode is not corrected for -- `asteroseismology_eval.
+          measurement_recovery` MEASURES its rate (`n_aliased`) rather
+          than assuming it away, the headline number of that study.
+          Tests: `tests/test_asteroseismology.py` (16 cases) and
+          `tests/test_asteroseismology_eval.py` (7 cases, including an
+          exact algebraic round-trip check and the aliasing-rate
+          measurement on real-cadence synthetic light curves).
+
+[PARTIAL] Biosignature / transmission-spectrum retrieval
+          (`biosignature.py`, `biosignature_fit.py`, `biosignature_eval.py`)
+          Isothermal transmission-spectrum forward model (Lecavelier
+          des Etangs et al. 2008) with Gaussian molecular-band
+          templates (band centres/widths only -- peak cross sections
+          are a REQUIRED caller input, never a module default) and a
+          DE->Nelder-Mead->emcee fitter cloning `line_profile_fit.py`'s
+          shape. A real numerics bug was found and fixed during manual
+          verification before any test was written: the band model had
+          no continuum-opacity floor, so `z = H*ln(sigma/sigma_ref)`
+          blew up between bands from floating-point noise rather than
+          real signal, producing wildly unstable fits; a fixed
+          `CONTINUUM_OPACITY_FLOOR` constant resolved it, verified
+          afterward by confirming flat spectra give a near-zero false-
+          positive rate and strong injections are reliably detected.
+          [GAP] -- the most important one in this whole feature pass:
+          fitted band amplitudes are NOT calibrated absolute molecular
+          abundances. There are no ExoMol/HITEMP line lists anywhere in
+          this repository (petitRADTRANS-class radiative transfer was
+          explicitly ruled out -- no new heavy dependency), so
+          `detection_significance` reports a statistical band-detection
+          significance (Delta BIC) only; a statement of the form "X ppm
+          of water was detected" is not supported by this module. The
+          `BiosignaturePanel.tsx` UI surfaces this as a persistent
+          `<Note tone="bad">`, not only in the docstring, per explicit
+          design requirement. `disequilibrium_flag`'s CH4+oxidant
+          co-detection is a screening heuristic (Lovelock 1965), never
+          a life detection -- abiotic false-positive pathways
+          (Krissansen-Totton et al. 2018) are not evaluated. Also
+          absent: multiple-scattering radiative transfer (isothermal/
+          isobaric single-slab only), non-isothermal T-P profile, limb
+          inhomogeneity, refraction, and stellar-contamination
+          (unocculted spot/facula, Rackham et al. 2018) correction --
+          likely the single largest real-world systematic in real
+          transmission spectra, simply not modelled.
+          Tests: `tests/test_biosignature.py` (20 cases), `tests/
+          test_biosignature_fit.py` (10 cases), `tests/
+          test_biosignature_eval.py` (8 cases, including the false-
+          positive-rate calibration on pure-continuum spectra that is
+          this module's headline metric).
+
+[GAP] Technosignature (SETI) search (`technosignature.py`,
+      `technosignature_eval.py`)
+          Narrowband drift (de-Doppler) search on a caller-supplied
+          `(n_time, n_freq)` dynamic spectrum. Brute-force shift-and-sum
+          dedrift (Enriquez et al. 2017's +/-4 Hz/s, S/N>=10 defaults,
+          confirmed against a secondary source quoting that paper's own
+          search parameters), robust-baseline (1.4826*MAD) hit finding,
+          and ON/OFF cadence RFI rejection (`cadence_filter` -- the
+          single function that turns a hit list into a technosignature
+          CANDIDATE list). Verified by hand before any test was written:
+          zero-drift and both-sign drift injections recovered with the
+          correct sign, pure noise gives zero false alarms across 20
+          trials, and no wrap-around occurs at band edges. A real bug
+          was found and fixed in `DynamicSpectrum`'s uniform-sampling
+          check: a fixed-decimal-rounding uniqueness test spuriously
+          rejected a perfectly uniform frequency grid at realistic
+          ~1.4 GHz scale (float64 precision loss in the last few
+          decimal digits at that magnitude), fixed with a relative-
+          tolerance `np.allclose` check.
+          [GAP] The O(N log N) Taylor-tree fast path (Taylor 1974) is
+          DELIBERATELY NOT IMPLEMENTED -- this codebase's own standard
+          is that a fast path must be checked bit-for-bit against a
+          brute-force reference before being trusted, and the Taylor
+          tree's edge-of-band combination rule could not be verified
+          bit-exact in the time available. `dedrift_bruteforce` is
+          therefore the only search path. No real Breakthrough Listen
+          data ingestion: `h5py` is already a core dependency (`gw.py`
+          uses it), so BL's HDF5 filterbank format is reachable in
+          principle, but the exact `/data` layout and header-attribute
+          schema has not been verified against a real file this
+          session -- the same live-contract-gap class as the Chandra
+          `packageset` gap above, not a shipped capability. SIGPROC
+          `.fil` is not readable at all. Linear drift only (no
+          acceleration term), incoherent summation only, single-dish
+          only (no interferometric coincidence), and no signal
+          classification -- a surviving hit is an unexplained
+          narrowband detection, nothing more. Every number in
+          `technosignature_eval.py` is measured on SYNTHETIC chi-
+          squared-with-2-dof noise (the correct statistic for a
+          square-law-detected spectrometer, not Gaussian); real data's
+          RFI-dominated statistics are nothing like this, so the
+          reported false-alarm rate is a floor for an idealised
+          detector, not a real-world estimate, and `TechnosignaturePanel.
+          tsx` states this in a persistent Note.
+          Tests: `tests/test_technosignature.py` (20 cases, including
+          explicit sign, band-edge-no-wrap, and cadence-filter RFI-
+          rejection cases) and `tests/test_technosignature_eval.py`
+          (9 cases, including a monotone-non-increasing false-alarm-
+          vs-threshold check).
+
+Full offline suite re-run after all five items landed: 2637 passed,
+56 skipped, 0 failed. `npm run typecheck` and `cargo check
+--manifest-path src-tauri/Cargo.toml` both clean; the existing 70-test
+vitest suite unaffected.

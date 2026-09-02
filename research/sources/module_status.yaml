@@ -39,8 +39,8 @@ modules:
   alerts: {status: production-wired}  # referenced from rpc.py
   anomaly: {status: benchmarked}  # referenced from rpc.py
   artifact: {status: production-wired}  # referenced from rpc.py
-  artifact_bank: {status: candidate-only}  # not referenced from rpc.py by this heuristic; verify before trusting
-  artifact_bank_eval: {status: candidate-only}  # evaluator/study harness, not a runtime path
+  artifact_bank: {status: benchmarked}  # EXP-0022, real TESS TPF patch bank -> ResultRecord in metrics.jsonl (synthetic: false); still not referenced from rpc.py
+  artifact_bank_eval: {status: benchmarked}  # evaluate_cross_group_auprc produced EXP-0022's real result; evaluator/study harness, still intentionally not a runtime path
   artifact_patches: {status: candidate-only}  # not referenced from rpc.py by this heuristic; verify before trusting
   association: {status: production-wired}  # referenced from rpc.py
   bocpd_gpu: {status: candidate-only}  # not referenced from rpc.py by this heuristic; verify before trusting

@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "kind": "open_world_scale_study",
+  "provenance": {
+    "experiment_id": "EXP-0007",
+    "created_utc": "2026-08-24T00:21:38+00:00",
+    "code_version": "fc779470dc8dbaf8",
+    "feature_version": 2,
+    "preprocessing_version": 2,
+    "code_revision": "a0f46129eae160a8ca7e88ae116db03d642668e7",
+    "feature_schema_hash": "eb1da88160a9899e",
+    "preprocessing_schema_hash": "bee9fd02c6f93367",
+    "dataset_hash": null,
+    "dataset_id": null,
+    "model_version": null,
+    "seed": 17,
+    "hardware": {
+      "device": "cuda",
+      "reason": "CUDA device available (2023 MB free).",
+      "torch_available": true,
+      "cuda_available": true,
+      "gpu": {
+        "name": "NVIDIA GeForce GTX 1650",
+        "total_vram_mb": 4096,
+        "free_vram_mb": 2023,
+        "compute_capability": "7.5",
+        "driver_version": "592.82"
+      }
+    },
+    "environment": {
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "numpy": "2.5.2",
+      "scipy": "1.18.0",
+      "sklearn": "1.9.0",
+      "astropy": "8.0.1",
+      "astroquery": "0.4.11",
+      "lightkurve": "2.6.0",
+      "pyarrow": "25.0.1",
+      "torch": "2.13.0+cu126"
+    },
+    "benchmark_id": null,
+    "split_id": null,
+    "manifest_content_hash": null,
+    "label_set_hash": null,
+    "result_artifact_paths": []
+  },
+  "configuration": {
+    "class_names": [
+      "SNIa"
+    ],
+    "design_survey": "ZTF",
+    "design_length": 128,
+    "design_limit": 500,
+    "limit_per_class": 10,
+    "negative_count": null,
+    "seeds": [
+      17,
+      29,
+      43
+    ],
+    "fraction": 0.1,
+    "epochs": 15,
+    "patch_length": 32,
+    "diffusion_epochs": 25
+  },
+  "results": {
+    "ready": true,
+    "checkpoint": "C:\\Users\\ransh\\ASTRA\\Projects\\results\\open-world\\scale_study.json",
+    "held_out_summary": {
+      "rows": 6,
+      "positive": 3,
+      "note": "negatives are real, already-locally-stored curves not individually verified as non-transient -- presumed normal by construction of the query (they were not returned by a transient classifier), not confirmed"
+    },
+    "generator_checkpoint": "C:\\Users\\ransh\\ASTRA\\Projects\\results\\open-world\\scale_generator_diffusion.pt",
+    "result": {
+      "closed_world": {
+        "mean": 0.7407,
+        "std": 0.0642,
+        "ci95": [
+          0.6722,
+          0.7778
+        ],
+        "n": 3
+      },
+      "open_world": {
+        "mean": 0.7407,
+        "std": 0.0642,
+        "ci95": [
+          0.6722,
+          0.7778
+        ],
+        "n": 3
+      },
+      "held_out": {
+        "rows": 6,
+        "positive": 3,
+        "note": "negatives are real, already-locally-stored curves not individually verified as non-transient -- presumed normal by construction of the query (they were not returned by a transient classifier), not confirmed"
+      }
+    }
+  },
+  "runtime_seconds": 15.298,
+  "notes": "Real-data scale run of the open-world vs. closed-world injection generalisation comparison, on real ALeRCE-classified held-out transients. Never asserts a winner; reports both arms honestly.",
+  "record_hash": "58bdadbef7e32bfd1c064eaf25b7037976c42b2e7c9b30fed997c93fc5e79cfe"
+}

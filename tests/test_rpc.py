@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import threading
+import time
 
 from astra import rpc
 
@@ -199,6 +201,154 @@ def test_review_next_uses_candidate_uncertainty(monkeypatch):
     response = rpc.dispatch({"id": 15, "method": "review.next", "params": {"limit": 1}})
     assert response["ok"] is True
     assert response["result"][0]["candidate_id"] == "a"
+
+
+def test_review_next_active_mode_excludes_labelled_candidates(monkeypatch, isolated_root):
+    """docs/DEFERRED.txt roadmap item 36: active_review.py's label-reweighted
+    selection, deliberately promoted into `review.next`'s `active` flag."""
+    rows = [
+        {"candidate_id": "a", "score": {"model_agreement": 1},
+         "artifact": {"likelihood": 0.5}, "significance": {"tail_probability": 0.5},
+         "features": {"x": 1}},
+        {"candidate_id": "b", "score": {"model_agreement": 0.5},
+         "artifact": {"likelihood": 0.5}, "significance": {"tail_probability": 0.5},
+         "features": {"x": 2}},
+    ]
+    monkeypatch.setattr(rpc.candidates_mod, "load", lambda name, root: rows)
+    rpc.candidates_mod.record_label("a", "artifact", root=None)
+
+    response = rpc.dispatch({"id": 21, "method": "review.next",
+                             "params": {"limit": 10, "active": True}})
+    assert response["ok"] is True
+    candidate_ids = {row["candidate_id"] for row in response["result"]}
+    assert candidate_ids == {"b"}
+
+    # active omitted/False still returns select_next's unmodified ranking,
+    # unaffected by the recorded label.
+    baseline = rpc.dispatch({"id": 22, "method": "review.next", "params": {"limit": 10}})
+    assert {row["candidate_id"] for row in baseline["result"]} == {"a", "b"}
+
+
+def test_followup_request_result_and_history_round_trip(isolated_root):
+    request_response = rpc.dispatch({"id": 23, "method": "followup.request", "params": {
+        "candidate_id": "ASTRA-000001", "facility_name": "Palomar 200-inch",
+        "note": "worth a spectrum",
+    }})
+    assert request_response["ok"] is True
+    request_id = request_response["result"]["request_id"]
+    assert request_response["result"]["status"] == "requested"
+
+    result_response = rpc.dispatch({"id": 24, "method": "followup.result", "params": {
+        "request_id": request_id, "status": "observed", "note": "clean detection",
+    }})
+    assert result_response["ok"] is True
+    assert result_response["result"]["status"] == "observed"
+
+    history_response = rpc.dispatch({"id": 25, "method": "followup.history", "params": {
+        "candidate_id": "ASTRA-000001",
+    }})
+    assert history_response["ok"] is True
+    assert len(history_response["result"]) == 1
+    assert history_response["result"][0]["status"] == "observed"
+    assert history_response["result"][0]["result_note"] == "clean detection"
+
+
+def test_candidate_explain_round_trip(monkeypatch):
+    import numpy as np
+
+    n_rows, n_features = 30, 4
+    values = np.random.default_rng(0).normal(0.0, 0.1, size=(n_rows, n_features))
+    values[0, 1] = 50.0  # a clear, single-feature outlier
+    identities = [{"object_id": f"obj{i}", "survey": "TEST", "band": "g", "path": f"p{i}"}
+                 for i in range(n_rows)]
+    matrix = rpc.featurematrix.FeatureMatrix(
+        values=values, identities=identities,
+        feature_names=tuple(f"feature_{i}" for i in range(n_features)), feature_version=1)
+    candidate = rpc.candidates_mod.Candidate(
+        candidate_id="cand_x", object_id="obj0", survey="TEST", band="g",
+        ra_deg=0.0, dec_deg=0.0, path="p0")
+
+    monkeypatch.setattr(rpc.candidates_mod, "load", lambda name, root: [candidate])
+    monkeypatch.setattr(rpc.featurematrix, "load", lambda name, root: matrix)
+
+    response = rpc.dispatch({"id": 26, "method": "candidates.explain",
+                             "params": {"candidate_id": "cand_x"}})
+    assert response["ok"] is True
+    assert response["result"]["candidate_id"] == "cand_x"
+    assert response["result"]["explainable"] is True
+    assert response["result"]["components"][0]["feature"] == "feature_1"
+
+
+def test_candidate_explain_stable_round_trip(monkeypatch):
+    import numpy as np
+
+    n_rows, n_features = 30, 4
+    values = np.random.default_rng(0).normal(0.0, 0.1, size=(n_rows, n_features))
+    values[0, 1] = 50.0  # a clear, single-feature outlier
+    identities = [{"object_id": f"obj{i}", "survey": "TEST", "band": "g", "path": f"p{i}"}
+                 for i in range(n_rows)]
+    matrix = rpc.featurematrix.FeatureMatrix(
+        values=values, identities=identities,
+        feature_names=tuple(f"feature_{i}" for i in range(n_features)), feature_version=1)
+    candidate = rpc.candidates_mod.Candidate(
+        candidate_id="cand_x", object_id="obj0", survey="TEST", band="g",
+        ra_deg=0.0, dec_deg=0.0, path="p0")
+
+    monkeypatch.setattr(rpc.candidates_mod, "load", lambda name, root: [candidate])
+    monkeypatch.setattr(rpc.featurematrix, "load", lambda name, root: matrix)
+
+    response = rpc.dispatch({"id": 28, "method": "candidates.explain",
+                             "params": {"candidate_id": "cand_x", "stable": True}})
+    assert response["ok"] is True
+    assert response["result"]["explainable"] is True
+    assert "narrative" in response["result"]
+    assert "stable" in response["result"]["components"][0]
+    assert "label" in response["result"]["components"][0]
+
+
+def test_candidate_explain_unknown_id_is_not_explainable(monkeypatch):
+    monkeypatch.setattr(rpc.candidates_mod, "load", lambda name, root: [])
+
+    response = rpc.dispatch({"id": 27, "method": "candidates.explain",
+                             "params": {"candidate_id": "nope"}})
+    assert response["ok"] is True
+    assert response["result"]["explainable"] is False
+    assert response["result"]["reason"] == "candidate not found"
+
+
+def test_candidate_broadcast_writes_a_local_feed_file(monkeypatch, isolated_root):
+    candidate = rpc.candidates_mod.Candidate(
+        candidate_id="cand_x", object_id="obj0", survey="TEST", band="g",
+        ra_deg=0.0, dec_deg=0.0, score={"total": 0.9}, artifact={"likelihood": 0.1})
+    monkeypatch.setattr(rpc.candidates_mod, "load", lambda name, root: [candidate])
+
+    response = rpc.dispatch({"id": 28, "method": "candidates.broadcast", "params": {}})
+
+    assert response["ok"] is True
+    assert response["result"]["count"] == 1
+    assert response["result"]["path"].endswith("default_feed.json")
+
+
+def test_label_vote_cast_read_and_promote_round_trip(isolated_root):
+    for reviewer in ("alice", "bob", "carol"):
+        response = rpc.dispatch({"id": 29, "method": "candidates.vote", "params": {
+            "candidate_id": "ASTRA-000001", "reviewer_id": reviewer, "label": "interesting",
+        }})
+        assert response["ok"] is True
+
+    votes_response = rpc.dispatch({"id": 30, "method": "candidates.votes", "params": {
+        "candidate_id": "ASTRA-000001",
+    }})
+    assert votes_response["ok"] is True
+    assert votes_response["result"]["tally"]["total"] == 3
+    assert votes_response["result"]["tally"]["majority_label"] == "interesting"
+
+    promote_response = rpc.dispatch({"id": 31, "method": "candidates.vote_promote", "params": {
+        "candidate_id": "ASTRA-000001",
+    }})
+    assert promote_response["ok"] is True
+    assert promote_response["result"]["promoted"] is True
+    assert promote_response["result"]["label"] == "interesting"
 
 
 def test_hardware_handler_always_returns_a_device():
@@ -419,6 +569,90 @@ class TestBrokenPipeShutdown:
         stdout = _FailOnSecondWrite()
         rpc.serve(stdin, stdout)  # must return, not raise
         assert stdout.calls == 2
+
+
+class _LineByLineStdin:
+    """A stdin double that never signals EOF until told to, so `serve()`'s
+    reading loop stays open across the assertions below -- a plain
+    `io.StringIO` finishes iteration (and starts joining in-flight threads)
+    as soon as its buffer is exhausted, which would race the test's own
+    polling for the early response."""
+
+    def __init__(self):
+        self._lines: list[str] = []
+        self._closed = False
+        self._lock = threading.Lock()
+
+    def push(self, line: str) -> None:
+        with self._lock:
+            self._lines.append(line)
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            with self._lock:
+                if self._lines:
+                    return self._lines.pop(0)
+                if self._closed:
+                    raise StopIteration
+            time.sleep(0.01)
+
+
+class TestServeDoesNotBlockJobPollingBehindASlowHandler:
+    """The dispatch model rpc.serve() uses exists specifically so a slow
+    synchronous handler in flight cannot stall `job.status`/`job.cancel`/
+    `job.retry`/`job.list` -- those are what a UI polls to show progress on
+    an UNRELATED already-running job, and job.py's own lock already makes
+    them safe to run without the main dispatch lock (see rpc._UNLOCKED_METHODS
+    and rpc._dispatch_gated)."""
+
+    def test_job_status_answers_while_an_unrelated_handler_is_still_running(self, monkeypatch):
+        release = threading.Event()
+        entered = threading.Event()
+
+        def _slow(_params):
+            entered.set()
+            release.wait(timeout=5)
+            return {"slow": "done"}
+
+        monkeypatch.setitem(rpc.HANDLERS, "slow.method", _slow)
+
+        stdin = _LineByLineStdin()
+        stdout = io.StringIO()
+        serve_thread = threading.Thread(target=rpc.serve, args=(stdin, stdout), daemon=True)
+        serve_thread.start()
+
+        stdin.push('{"id":1,"method":"slow.method"}\n')
+        assert entered.wait(timeout=5), "slow handler never started"
+
+        stdin.push('{"id":2,"method":"job.status","params":{"job_id":"does-not-exist"}}\n')
+
+        deadline = time.monotonic() + 5
+        reply_2 = None
+        while time.monotonic() < deadline and reply_2 is None:
+            for text_line in stdout.getvalue().splitlines():
+                payload = json.loads(text_line)
+                if payload["id"] == 2:
+                    reply_2 = payload
+                    break
+            if reply_2 is None:
+                time.sleep(0.01)
+
+        release.set()
+        stdin.close()
+        serve_thread.join(timeout=5)
+        assert not serve_thread.is_alive()
+
+        assert reply_2 is not None, "job.status never answered while slow.method was in flight"
+        replies = [json.loads(text_line) for text_line in stdout.getvalue().splitlines()]
+        assert {r["id"] for r in replies} == {1, 2}
+        assert next(r for r in replies if r["id"] == 1)["result"] == {"slow": "done"}
 
 
 class TestManifestListDoesNotCrashOnIdentityParams:

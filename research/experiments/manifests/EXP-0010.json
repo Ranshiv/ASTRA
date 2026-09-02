@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "kind": "research_benchmark",
+  "provenance": {
+    "experiment_id": "EXP-0010",
+    "created_utc": "2026-08-27T16:01:03+00:00",
+    "code_version": "3d922be16298fd82",
+    "feature_version": 2,
+    "preprocessing_version": 2,
+    "code_revision": "052e85ce75d202e570f36b247fe660e8b7c03b74",
+    "feature_schema_hash": "eb1da88160a9899e",
+    "preprocessing_schema_hash": "bee9fd02c6f93367",
+    "dataset_hash": null,
+    "dataset_id": null,
+    "model_version": "ensemble+baselines",
+    "seed": 42,
+    "hardware": {
+      "device": "cuda",
+      "reason": "CUDA device available (2245 MB free).",
+      "torch_available": true,
+      "cuda_available": true,
+      "gpu": {
+        "name": "NVIDIA GeForce GTX 1650",
+        "total_vram_mb": 4096,
+        "free_vram_mb": 2245,
+        "compute_capability": "7.5",
+        "driver_version": "592.82"
+      }
+    },
+    "environment": {
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "numpy": "2.5.2",
+      "scipy": "1.18.0",
+      "sklearn": "1.9.0",
+      "astropy": "8.0.1",
+      "astroquery": "0.4.11",
+      "lightkurve": "2.6.0",
+      "pyarrow": "25.0.1",
+      "torch": "2.13.0+cu126"
+    },
+    "benchmark_id": "cross-survey-anomaly-demo",
+    "split_id": "core-demo-2026_object_split",
+    "manifest_content_hash": "c5d4c375553b06a619a8af68c2bf467495d312e3a3ce6999b737169be2689c26",
+    "label_set_hash": null,
+    "result_artifact_paths": [
+      "research/results/metrics_synthetic.jsonl"
+    ]
+  },
+  "configuration": {
+    "matrix_name": "core-demo-2026-ztf",
+    "benchmark_id": "cross-survey-anomaly-demo"
+  },
+  "results": {
+    "n_results": 25
+  },
+  "runtime_seconds": 0.0,
+  "notes": "",
+  "record_hash": "303454a0120226bdf42d2bd48066c65cf82960da738810c623b250c07488f168"
+}

@@ -11,6 +11,8 @@ from __future__ import annotations
 from .base import (ConeQuery, LightCurve, SourceRef, SurveyConnector,
                    TimeSystem, ValueKind)
 from .alerce import ALeRCEConnector
+from .antares import ANTARESConnector
+from .asassn import ASASSNConnector
 from .chandra import ChandraConnector
 from .des import DESConnector
 from .desi import DESIConnector
@@ -21,6 +23,7 @@ from .herschel import HerschelConnector
 from .hubble import HubbleConnector
 from .jwst import JWSTConnector
 from .kepler import KeplerConnector
+from .neowise import NEOWISEConnector
 from .panstarrs import PanSTARRSConnector
 from .rubin_tap import RubinTAPConnector
 from .sdss import SDSSConnector
@@ -34,6 +37,8 @@ from .vlass import VLASSConnector
 from .ztf import ZTFConnector
 
 _REGISTRY: dict[str, type[SurveyConnector]] = {
+    "asassn": ASASSNConnector,
+    "antares": ANTARESConnector,
     "ztf": ZTFConnector,
     "gaia": GaiaConnector,
     "tess": TESSConnector,
@@ -55,6 +60,7 @@ _REGISTRY: dict[str, type[SurveyConnector]] = {
     "twomass": TwoMASSConnector,
     "wise": WISEConnector,
     "herschel": HerschelConnector,
+    "neowise": NEOWISEConnector,
     # K2 shares this same connector; pass mission="K2" via
     # surveys.get("kepler", mission="K2") rather than a near-duplicate entry.
     "kepler": KeplerConnector,
@@ -102,12 +108,13 @@ def describe_all(include_experimental: bool = True) -> list[dict]:
 __all__ = [
     "ConeQuery", "LightCurve", "SourceRef", "SurveyConnector",
     "TimeSystem", "ValueKind",
+    "ASASSNConnector", "ANTARESConnector",
     "GaiaConnector", "TESSConnector", "ZTFConnector",
     "SDSSConnector", "PanSTARRSConnector", "ChandraConnector",
     "SwiftConnector", "XMMConnector",
     "DESConnector", "DESIConnector", "HubbleConnector", "JWSTConnector",
     "ALeRCEConnector", "RubinTAPConnector", "VLASSConnector", "EROSITAConnector",
     "GALEXConnector", "TwoMASSConnector", "WISEConnector", "HerschelConnector",
-    "KeplerConnector",
+    "KeplerConnector", "NEOWISEConnector",
     "available", "register", "get", "describe_all",
 ]

@@ -279,7 +279,11 @@ def open_project(project_id: str, root: Path | None = None) -> dict[str, Any]:
     project = _read(project_id, root)
     result = project.to_dict()
     result["layout"] = layout(project.project_id, root)
-    result["manifest_count"] = len(manifest_mod.list_manifests(manifest_dir(project.project_id, root)))
+    # `list_manifests` appends "manifests" onto its `root` itself, so this
+    # must be the plain project directory, not `manifest_dir()` (which is
+    # already the "manifests" subdirectory -- passing it here would look in
+    # a nonexistent doubly-nested "manifests/manifests").
+    result["manifest_count"] = len(manifest_mod.list_manifests(project_dir(project.project_id, root)))
     return result
 
 
@@ -362,10 +366,13 @@ def validate(project_id: str, root: Path | None = None) -> dict[str, Any]:
         if not (directory / name).is_dir():
             issues.append(f"missing workspace directory: {name}")
 
-    manifests = manifest_mod.list_manifests(manifest_dir(project.project_id, root))
+    # Same fix as open_project() above: `manifest_mod` appends "manifests"
+    # onto `root` itself, so this must be the project directory, not
+    # `manifest_dir()`.
+    manifests = manifest_mod.list_manifests(project_dir(project.project_id, root))
     for summary in manifests:
         try:
-            record = manifest_mod.load(str(summary["dataset_id"]), manifest_dir(project.project_id, root))
+            record = manifest_mod.load(str(summary["dataset_id"]), project_dir(project.project_id, root))
             if not record.verify():
                 issues.append(f"manifest content hash mismatch: {record.dataset_id}")
         except (OSError, ValueError, json.JSONDecodeError) as exc:

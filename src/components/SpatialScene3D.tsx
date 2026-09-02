@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from "react";
+import type {
+  BufferGeometry,
+  Fog,
+  LineBasicMaterial,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  Points,
+  PointsMaterial,
+  Raycaster,
+  Scene,
+  Vector2,
+  WebGLRenderer,
+} from "three";
+import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { SpatialCandidatePoint } from "@/lib/engine";
+import { readThemeColorHexInt, useTheme } from "@/lib/theme";
 
 /** Interactive 3D scatter of candidates by RA/Dec/Gaia distance.
  *
@@ -15,19 +30,24 @@ import type { SpatialCandidatePoint } from "@/lib/engine";
  * reports how many were excluded and why (SpatialResult.reliable vs total).
  */
 
-const TONE_COLORS = {
-  // Matches ui.tsx's Badge tone palette, translated to RGB for WebGL.
-  bad: 0xef4444,
-  warn: 0xf59e0b,
-  ok: 0x34d399,
-  accent: 0x6ea8ff,
-} as const;
+/** Read live so a theme change is reflected without rebuilding the WebGL
+ * context. Previously a frozen object of Tailwind-500 shades that had
+ * drifted from ui.tsx's actual Badge tones (only `accent` matched); sourcing
+ * from the tokens fixes that drift as a side effect. */
+function toneColors() {
+  return {
+    bad: readThemeColorHexInt("--color-bad"),
+    warn: readThemeColorHexInt("--color-warn"),
+    ok: readThemeColorHexInt("--color-ok"),
+    accent: readThemeColorHexInt("--color-accent"),
+  };
+}
 
-function toneForScore(score: number | null): number {
-  if (score === null || !Number.isFinite(score)) return TONE_COLORS.accent;
-  if (score >= 0.7) return TONE_COLORS.bad; // highest anomaly scores stand out
-  if (score >= 0.4) return TONE_COLORS.warn;
-  return TONE_COLORS.ok;
+function toneForScore(score: number | null, tones: ReturnType<typeof toneColors>): number {
+  if (score === null || !Number.isFinite(score)) return tones.accent;
+  if (score >= 0.7) return tones.bad; // highest anomaly scores stand out
+  if (score >= 0.4) return tones.warn;
+  return tones.ok;
 }
 
 // log10(pc) typically spans ~1 (10 pc) to ~4 (10 kpc); shifted and scaled
@@ -71,16 +91,23 @@ export function SpatialScene3D({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("Loading 3D view…");
   const sceneApi = useRef<{
-    scene: any;
-    camera: any;
-    renderer: any;
-    controls: any;
-    points: any;
-    raycaster: any;
-    pointer: any;
+    scene: Scene;
+    camera: PerspectiveCamera;
+    renderer: WebGLRenderer;
+    controls: OrbitControls;
+    points: Points<BufferGeometry, PointsMaterial>;
+    raycaster: Raycaster;
+    pointer: Vector2;
     plotted: SpatialCandidatePoint[];
     frameId: number;
+    // Kept so a later theme-change effect can restyle these in place rather
+    // than rebuilding the WebGL context (which would lose camera position).
+    fog: Fog;
+    anchorMaterial: MeshBasicMaterial;
+    shellMaterials: LineBasicMaterial[];
+    equatorMaterial: LineBasicMaterial;
   } | null>(null);
+  const { resolved } = useTheme();
 
   // Created once. Later effects steer this instance rather than rebuilding
   // it, so orbit position survives a data refresh.
@@ -96,34 +123,40 @@ export function SpatialScene3D({
       .then(([THREE, { OrbitControls }]) => {
         if (disposed || !container) return;
 
+        const tones = toneColors();
+        const voidColor = readThemeColorHexInt("--color-void");
+        const edgeColor = readThemeColorHexInt("--color-edge");
+        const mutedColor = readThemeColorHexInt("--color-muted");
+
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a0e14);
+        scene.background = new THREE.Color(voidColor);
         // Points near the fog's far edge fade into the background instead of
         // staying tack-sharp -- without this, orbiting gives almost no sense
         // of depth since every point renders at the same apparent contrast
         // regardless of distance from the camera.
-        scene.fog = new THREE.Fog(0x0a0e14, 30, 160);
+        const fog = new THREE.Fog(voidColor, 30, 160);
+        scene.fog = fog;
 
         // Every candidate's position is relative to this point (direction +
         // log-distance from Earth); without a visible anchor there, the
         // layout has nothing for the eye to read depth against.
-        scene.add(new THREE.Mesh(
-          new THREE.SphereGeometry(0.6, 16, 16),
-          new THREE.MeshBasicMaterial({ color: TONE_COLORS.accent }),
-        ));
+        const anchorMaterial = new THREE.MeshBasicMaterial({ color: tones.accent });
+        scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), anchorMaterial));
 
         // Concentric distance-shell wireframes at round parsec values. Their
         // near/far arcs move at different apparent rates while orbiting,
         // which is what actually reads as "3D" -- flat dots on black don't,
         // regardless of how the camera is set up.
+        const shellMaterials: LineBasicMaterial[] = [];
         for (const distancePc of DISTANCE_SHELLS_PC) {
           const wireframe = new THREE.WireframeGeometry(
             new THREE.SphereGeometry(sceneRadiusForDistance(distancePc), 16, 10),
           );
-          scene.add(new THREE.LineSegments(
-            wireframe,
-            new THREE.LineBasicMaterial({ color: 0x2a3350, transparent: true, opacity: 0.07 }),
-          ));
+          const shellMaterial = new THREE.LineBasicMaterial({
+            color: edgeColor, transparent: true, opacity: 0.07,
+          });
+          scene.add(new THREE.LineSegments(wireframe, shellMaterial));
+          shellMaterials.push(shellMaterial);
         }
 
         // Celestial-equator ring (Dec = 0) at the outermost shell's radius,
@@ -134,9 +167,12 @@ export function SpatialScene3D({
           const t = (i / 64) * Math.PI * 2;
           return new THREE.Vector3(equatorRadius * Math.cos(t), equatorRadius * Math.sin(t), 0);
         });
+        const equatorMaterial = new THREE.LineBasicMaterial({
+          color: mutedColor, transparent: true, opacity: 0.12,
+        });
         scene.add(new THREE.LineLoop(
           new THREE.BufferGeometry().setFromPoints(equatorPoints),
-          new THREE.LineBasicMaterial({ color: 0x3a4570, transparent: true, opacity: 0.12 }),
+          equatorMaterial,
         ));
 
         const width = container.clientWidth || 400;
@@ -171,6 +207,7 @@ export function SpatialScene3D({
         sceneApi.current = {
           scene, camera, renderer, controls, points: cloud, raycaster,
           pointer: new THREE.Vector2(), plotted: [], frameId: 0,
+          fog, anchorMaterial, shellMaterials, equatorMaterial,
         };
         animate();
         setStatus("");
@@ -202,11 +239,12 @@ export function SpatialScene3D({
       const positions = new Float32Array(plotted.length * 3);
       const colors = new Float32Array(plotted.length * 3);
       const color = new THREE.Color();
+      const tones = toneColors();
 
       plotted.forEach((point, index) => {
         const [x, y, z] = toSceneXYZ(point.ra_deg, point.dec_deg, point.gaia_distance_pc as number);
         positions.set([x, y, z], index * 3);
-        color.setHex(toneForScore(point.score_total));
+        color.setHex(toneForScore(point.score_total, tones));
         colors.set([color.r, color.g, color.b], index * 3);
       });
 
@@ -215,7 +253,27 @@ export function SpatialScene3D({
       api.points.geometry.computeBoundingSphere();
       api.plotted = plotted;
     });
-  }, [points, status]);
+  }, [points, status, resolved]);
+
+  // Restyle the fixed scene chrome (background, fog, anchor, distance
+  // shells, equator ring) on a theme change, without touching the WebGL
+  // context itself -- same "steer, don't rebuild" discipline as the effect
+  // above and AladinSky's marker overlay.
+  useEffect(() => {
+    const api = sceneApi.current;
+    if (!api) return;
+    void import("three").then((THREE) => {
+      const tones = toneColors();
+      const voidColor = readThemeColorHexInt("--color-void");
+      const edgeColor = readThemeColorHexInt("--color-edge");
+      const mutedColor = readThemeColorHexInt("--color-muted");
+      api.scene.background = new THREE.Color(voidColor);
+      api.fog.color.setHex(voidColor);
+      api.anchorMaterial.color.setHex(tones.accent);
+      for (const shellMaterial of api.shellMaterials) shellMaterial.color.setHex(edgeColor);
+      api.equatorMaterial.color.setHex(mutedColor);
+    });
+  }, [resolved, status]);
 
   useEffect(() => {
     const container = containerRef.current;

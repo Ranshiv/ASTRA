@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import config, credentials, metadata, scoring
+from . import config, credentials, metadata, netclient, scoring
 
 CACHE_TTL_DAYS = 30
 ERROR_TTL_MINUTES = 5
@@ -213,17 +213,25 @@ def _fetch_tns(query: CatalogQuery) -> list[dict]:
     }
     marker = {"tns_id": secret["bot_id"], "type": "bot",
               "name": secret["bot_name"]}
+    # netclient.post gives this the shared session (connection reuse) and a
+    # throttle bucket; TNS creates no server-side resource on a search, so
+    # unlike a TAP job submission there is no double-submission risk in
+    # retrying it -- but netclient.post itself does not auto-retry POSTs
+    # (see its docstring), so a 429/503 still surfaces here as `_tns_error`
+    # exactly as before, just via the shared session instead of a bare
+    # `requests.post` with no throttle and no connection reuse.
     try:
-        response = requests.post(
+        response = netclient.post(
             "https://www.wis-tns.org/api/get/search",
             data={"api_key": secret["api_key"], "data": json.dumps(data)},
+            timeout=30,
+            provider="tns",
             headers={"User-Agent": "tns_marker" + json.dumps(marker, separators=(",", ":"))},
-            timeout=(5, 30),
         )
+    except requests.HTTPError as exc:
+        raise _tns_error(exc.response) from exc
     except requests.RequestException as exc:
         raise CatalogError("TNS request failed") from exc
-    if not response.ok:
-        raise _tns_error(response)
     try:
         reply = response.json().get("data", {}).get("reply", [])
     except (ValueError, AttributeError) as exc:

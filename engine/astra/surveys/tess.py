@@ -56,7 +56,13 @@ def _row_float(row, columns: set[str], candidates: tuple[str, ...],
             continue
         try:
             value = float(row[name])
-        except (TypeError, ValueError):
+        # A real bug found live: a masked/missing cell in the archive's
+        # results table (astropy masked columns are common in MAST search
+        # results) raises numpy.ma.MaskError on conversion, not TypeError
+        # or ValueError -- an uncaught MaskError here crashed the whole
+        # cone_search() for every target in the batch over one missing
+        # coordinate cell, not just this one candidate column.
+        except (TypeError, ValueError, np.ma.MaskError):
             continue
         if np.isfinite(value):
             return value
@@ -69,7 +75,9 @@ def _record_sector(source: SourceRef, row, columns: set[str]) -> None:
         return
     try:
         sector = int(row["sequence_number"])
-    except (TypeError, ValueError):
+    # Same masked-cell gap as _row_float above: a masked sequence_number
+    # must be skipped, not crash the whole cone_search() batch.
+    except (TypeError, ValueError, np.ma.MaskError):
         return
     sectors = source.extra.setdefault("sectors", [])
     if sector not in sectors:

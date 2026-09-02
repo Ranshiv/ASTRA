@@ -12,8 +12,14 @@ a claim; two instruments with different detectors, cadences and systematics
 agreeing is evidence. The most common cause of a single-survey anomaly is the
 survey itself.
 
-Currently integrates **ZTF** (time domain), **Gaia** (astrometry and static
-photometry) and **TESS** (high-cadence photometry, SPOC and QLP).
+Five surveys are enabled by default: **ZTF** (time domain), **Gaia**
+(astrometry and static photometry), **TESS** (high-cadence photometry, SPOC
+and QLP), **SDSS** (spectroscopy) and **Pan-STARRS** (mean photometry). A
+further 20 connectors — including ASAS-SN, NEOWISE, ALeRCE and ANTARES
+(credential-free LSST/ZTF alert brokers), Chandra/Swift/XMM/eROSITA (X-ray),
+WISE/2MASS/GALEX/Herschel (infrared/UV), and Hubble/JWST/DESI/VLASS/OGLE/
+Kepler/DES — are available opt-in once their provider contract is validated
+for a given campaign; see `engine/astra/surveys/` for the full list.
 
 ---
 
@@ -105,6 +111,8 @@ timestamp URL are supplied.
 
 ## Documentation
 
+- `site/` — the download page (deployed separately on Vercel), for users who
+  just want the installer rather than a source checkout.
 - `docs/ASTRA-project-plan.txt` — the full plan: research questions, pipeline,
   scoring, phases, hardware.
 - `docs/DEFERRED.txt` — **the honest status document.** Every gap, limitation

@@ -29,6 +29,24 @@ CALIBRATION_FRACTION = 0.25
 TEST_FRACTION = 0.20
 BOOTSTRAP_SAMPLES = 500
 
+# Modules a ranker artifact is allowed to reconstruct objects from. This is
+# the only `pickle.load` in the engine; the sha256 check in `load()` catches
+# accidental corruption but not a deliberately crafted `.pkl` with a matching
+# hash of itself, so `_RestrictedUnpickler` additionally refuses to resolve
+# any class outside what `_fit` actually produces (numpy arrays, the sklearn
+# pipeline/imputer/scaler/logistic-regression pieces, and this module's own
+# dataclass) -- the classic arbitrary-code-execution surface of `pickle` is a
+# `find_class` lookup of an attacker-chosen callable, and this closes it.
+_UNPICKLE_SAFE_MODULE_PREFIXES = ("numpy", "sklearn", "scipy", "astra.ranker")
+
+
+class _RestrictedUnpickler(pickle.Unpickler):
+    def find_class(self, module: str, name: str):
+        if not module.startswith(_UNPICKLE_SAFE_MODULE_PREFIXES):
+            raise pickle.UnpicklingError(
+                f"refusing to unpickle {module}.{name}: not an approved ranker artifact class")
+        return super().find_class(module, name)
+
 
 @dataclass
 class CalibratedLogisticRanker:
@@ -372,7 +390,7 @@ def load(model_name: str = "calibrated-logistic", root: Path | None = None
     if actual_hash != manifest.get("model_sha256"):
         raise ValueError("ranker model checksum does not match its manifest")
     with model_path.open("rb") as handle:
-        model = pickle.load(handle)
+        model = _RestrictedUnpickler(handle).load()
     if not isinstance(model, CalibratedLogisticRanker):
         raise ValueError("ranker artifact has an unexpected type")
     return model, manifest

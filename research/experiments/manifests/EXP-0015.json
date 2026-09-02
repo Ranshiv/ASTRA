@@ -1,0 +1,849 @@
+{
+  "schema_version": 2,
+  "kind": "stage_b_injection_recovery",
+  "provenance": {
+    "experiment_id": "EXP-0015",
+    "created_utc": "2026-09-01T23:34:29+00:00",
+    "code_version": "9c3c93323bba91e5",
+    "feature_version": 2,
+    "preprocessing_version": 2,
+    "code_revision": "2a8a9acfc44d6c98aeca0a88bf3e57e8b716e406",
+    "feature_schema_hash": "eb1da88160a9899e",
+    "preprocessing_schema_hash": "bee9fd02c6f93367",
+    "dataset_hash": "d5c0877bc2417505d68face1",
+    "dataset_id": null,
+    "model_version": null,
+    "seed": 17,
+    "hardware": {
+      "device": "cuda",
+      "reason": "CUDA device available (3422 MB free).",
+      "torch_available": true,
+      "cuda_available": true,
+      "gpu": {
+        "name": "NVIDIA GeForce GTX 1650",
+        "total_vram_mb": 4096,
+        "free_vram_mb": 3422,
+        "compute_capability": "7.5",
+        "driver_version": "592.82"
+      }
+    },
+    "environment": {
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "numpy": "2.5.2",
+      "scipy": "1.18.0",
+      "sklearn": "1.9.0",
+      "astropy": "8.0.1",
+      "astroquery": "0.4.11",
+      "lightkurve": "2.6.0",
+      "pyarrow": "25.0.1",
+      "torch": "2.13.0+cu126"
+    },
+    "benchmark_id": null,
+    "split_id": null,
+    "manifest_content_hash": null,
+    "label_set_hash": null,
+    "result_artifact_paths": []
+  },
+  "configuration": {
+    "stage": "B",
+    "survey": "ztf",
+    "seeds": [
+      17,
+      29,
+      43,
+      59,
+      71
+    ],
+    "fraction": 0.1,
+    "strength": 6.0,
+    "limit": 10000,
+    "resample_mode": "time",
+    "include_deep": true,
+    "epochs": 20,
+    "dataset_fingerprint": "d5c0877bc2417505d68face1",
+    "sequence": {
+      "rows": 373,
+      "length": 256,
+      "channels": 2,
+      "mode": "time",
+      "mean_coverage": 0.4324
+    },
+    "survey_release_band_strata": {
+      "ZTF|unknown|g": 132,
+      "ZTF|unknown|i": 16,
+      "ZTF|unknown|r": 225
+    },
+    "sidecar_schemas": [
+      {
+        "kind": "multiband",
+        "path": "C:\\Users\\ransh\\ASTRA\\Projects\\features\\sidecars\\default_multiband_v1.parquet",
+        "rows": 0,
+        "columns": [
+          "survey",
+          "release",
+          "object_id",
+          "band",
+          "sidecar_kind",
+          "sidecar_schema_version",
+          "source_sha256",
+          "source_path",
+          "quality_json"
+        ],
+        "schema_version": 1
+      }
+    ],
+    "sidecar_policy": "recorded for provenance; not joined into sequence models"
+  },
+  "results": {
+    "ready": true,
+    "dataset_fingerprint": "d5c0877bc2417505d68face1",
+    "checkpoint": "C:\\Users\\ransh\\ASTRA\\Projects\\results\\stage-b\\comparison.json",
+    "resumed": true,
+    "seeds": [
+      17,
+      29,
+      43,
+      59,
+      71
+    ],
+    "per_seed": [
+      {
+        "seed": 17,
+        "best_method": "baseline_pca_reconstruction",
+        "injection": {
+          "injected": 37,
+          "kinds": {
+            "eclipse": 8,
+            "flare": 9,
+            "noise_burst": 6,
+            "step": 14
+          },
+          "rows": 373
+        },
+        "methods": [
+          {
+            "average_precision": 0.4482,
+            "name": "baseline_pca_reconstruction",
+            "note": "",
+            "precision_at_k": 0.5135,
+            "recall_at_k": 0.5135,
+            "roc_auc": 0.8022,
+            "seconds": 0.12
+          },
+          {
+            "average_precision": 0.4174,
+            "name": "baseline_ensemble",
+            "note": "",
+            "precision_at_k": 0.5405,
+            "recall_at_k": 0.5405,
+            "roc_auc": 0.7875,
+            "seconds": 0.5
+          },
+          {
+            "average_precision": 0.3554,
+            "name": "baseline_lof",
+            "note": "",
+            "precision_at_k": 0.4865,
+            "recall_at_k": 0.4865,
+            "roc_auc": 0.7788,
+            "seconds": 0.12
+          },
+          {
+            "average_precision": 0.4473,
+            "name": "deep_vae",
+            "note": "cuda, 9 epochs, batch 256x1",
+            "precision_at_k": 0.4865,
+            "recall_at_k": 0.4865,
+            "roc_auc": 0.7784,
+            "seconds": 0.59
+          },
+          {
+            "average_precision": 0.3558,
+            "name": "baseline_isolation_forest",
+            "note": "",
+            "precision_at_k": 0.5405,
+            "recall_at_k": 0.5405,
+            "roc_auc": 0.7772,
+            "seconds": 0.12
+          },
+          {
+            "average_precision": 0.4127,
+            "name": "deep_autoencoder",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7634,
+            "seconds": 3.88
+          },
+          {
+            "average_precision": 0.3938,
+            "name": "deep_transformer",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.4595,
+            "recall_at_k": 0.4595,
+            "roc_auc": 0.7634,
+            "seconds": 1.24
+          },
+          {
+            "average_precision": 0.2397,
+            "name": "baseline_one_class_svm",
+            "note": "",
+            "precision_at_k": 0.3514,
+            "recall_at_k": 0.3514,
+            "roc_auc": 0.6784,
+            "seconds": 0.12
+          }
+        ]
+      },
+      {
+        "seed": 29,
+        "best_method": "deep_autoencoder",
+        "injection": {
+          "injected": 37,
+          "kinds": {
+            "eclipse": 11,
+            "flare": 10,
+            "noise_burst": 6,
+            "step": 10
+          },
+          "rows": 373
+        },
+        "methods": [
+          {
+            "average_precision": 0.3904,
+            "name": "deep_autoencoder",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7831,
+            "seconds": 0.86
+          },
+          {
+            "average_precision": 0.3878,
+            "name": "baseline_pca_reconstruction",
+            "note": "",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7827,
+            "seconds": 0.12
+          },
+          {
+            "average_precision": 0.3703,
+            "name": "deep_transformer",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.4054,
+            "recall_at_k": 0.4054,
+            "roc_auc": 0.7649,
+            "seconds": 1.2
+          },
+          {
+            "average_precision": 0.3385,
+            "name": "baseline_lof",
+            "note": "",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7629,
+            "seconds": 0.12
+          },
+          {
+            "average_precision": 0.3477,
+            "name": "baseline_ensemble",
+            "note": "",
+            "precision_at_k": 0.3784,
+            "recall_at_k": 0.3784,
+            "roc_auc": 0.745,
+            "seconds": 0.49
+          },
+          {
+            "average_precision": 0.3201,
+            "name": "baseline_isolation_forest",
+            "note": "",
+            "precision_at_k": 0.4054,
+            "recall_at_k": 0.4054,
+            "roc_auc": 0.7424,
+            "seconds": 0.12
+          },
+          {
+            "average_precision": 0.2982,
+            "name": "deep_vae",
+            "note": "cuda, 7 epochs, batch 256x1",
+            "precision_at_k": 0.3514,
+            "recall_at_k": 0.3514,
+            "roc_auc": 0.7378,
+            "seconds": 0.45
+          },
+          {
+            "average_precision": 0.2241,
+            "name": "baseline_one_class_svm",
+            "note": "",
+            "precision_at_k": 0.2703,
+            "recall_at_k": 0.2703,
+            "roc_auc": 0.588,
+            "seconds": 0.12
+          }
+        ]
+      },
+      {
+        "seed": 43,
+        "best_method": "deep_vae",
+        "injection": {
+          "injected": 37,
+          "kinds": {
+            "eclipse": 9,
+            "flare": 7,
+            "noise_burst": 5,
+            "step": 16
+          },
+          "rows": 373
+        },
+        "methods": [
+          {
+            "average_precision": 0.4951,
+            "name": "deep_vae",
+            "note": "cuda, 8 epochs, batch 256x1",
+            "precision_at_k": 0.5405,
+            "recall_at_k": 0.5405,
+            "roc_auc": 0.8357,
+            "seconds": 0.58
+          },
+          {
+            "average_precision": 0.3479,
+            "name": "baseline_isolation_forest",
+            "note": "",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.8127,
+            "seconds": 0.13
+          },
+          {
+            "average_precision": 0.3459,
+            "name": "baseline_ensemble",
+            "note": "",
+            "precision_at_k": 0.3784,
+            "recall_at_k": 0.3784,
+            "roc_auc": 0.8094,
+            "seconds": 0.53
+          },
+          {
+            "average_precision": 0.3342,
+            "name": "baseline_pca_reconstruction",
+            "note": "",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7967,
+            "seconds": 0.13
+          },
+          {
+            "average_precision": 0.3046,
+            "name": "baseline_lof",
+            "note": "",
+            "precision_at_k": 0.3514,
+            "recall_at_k": 0.3514,
+            "roc_auc": 0.7868,
+            "seconds": 0.13
+          },
+          {
+            "average_precision": 0.3924,
+            "name": "deep_transformer",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.4865,
+            "recall_at_k": 0.4865,
+            "roc_auc": 0.7856,
+            "seconds": 1.33
+          },
+          {
+            "average_precision": 0.2752,
+            "name": "deep_autoencoder",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.3784,
+            "recall_at_k": 0.3784,
+            "roc_auc": 0.7535,
+            "seconds": 1.06
+          },
+          {
+            "average_precision": 0.2154,
+            "name": "baseline_one_class_svm",
+            "note": "",
+            "precision_at_k": 0.2973,
+            "recall_at_k": 0.2973,
+            "roc_auc": 0.6162,
+            "seconds": 0.13
+          }
+        ]
+      },
+      {
+        "seed": 59,
+        "best_method": "baseline_isolation_forest",
+        "injection": {
+          "injected": 37,
+          "kinds": {
+            "eclipse": 7,
+            "flare": 11,
+            "noise_burst": 7,
+            "step": 12
+          },
+          "rows": 373
+        },
+        "methods": [
+          {
+            "average_precision": 0.3368,
+            "name": "baseline_isolation_forest",
+            "note": "",
+            "precision_at_k": 0.4595,
+            "recall_at_k": 0.4595,
+            "roc_auc": 0.7786,
+            "seconds": 0.11
+          },
+          {
+            "average_precision": 0.367,
+            "name": "baseline_pca_reconstruction",
+            "note": "",
+            "precision_at_k": 0.4865,
+            "recall_at_k": 0.4865,
+            "roc_auc": 0.767,
+            "seconds": 0.11
+          },
+          {
+            "average_precision": 0.3637,
+            "name": "baseline_ensemble",
+            "note": "",
+            "precision_at_k": 0.4865,
+            "recall_at_k": 0.4865,
+            "roc_auc": 0.7627,
+            "seconds": 0.43
+          },
+          {
+            "average_precision": 0.3294,
+            "name": "baseline_lof",
+            "note": "",
+            "precision_at_k": 0.4865,
+            "recall_at_k": 0.4865,
+            "roc_auc": 0.762,
+            "seconds": 0.11
+          },
+          {
+            "average_precision": 0.3826,
+            "name": "deep_autoencoder",
+            "note": "cuda, 7 epochs, batch 256x1",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7509,
+            "seconds": 0.46
+          },
+          {
+            "average_precision": 0.3664,
+            "name": "deep_vae",
+            "note": "cuda, 7 epochs, batch 256x1",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7509,
+            "seconds": 0.45
+          },
+          {
+            "average_precision": 0.3622,
+            "name": "deep_transformer",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.4865,
+            "recall_at_k": 0.4865,
+            "roc_auc": 0.7259,
+            "seconds": 1.29
+          },
+          {
+            "average_precision": 0.2183,
+            "name": "baseline_one_class_svm",
+            "note": "",
+            "precision_at_k": 0.3243,
+            "recall_at_k": 0.3243,
+            "roc_auc": 0.6617,
+            "seconds": 0.11
+          }
+        ]
+      },
+      {
+        "seed": 71,
+        "best_method": "deep_vae",
+        "injection": {
+          "injected": 37,
+          "kinds": {
+            "eclipse": 4,
+            "flare": 8,
+            "noise_burst": 11,
+            "step": 14
+          },
+          "rows": 373
+        },
+        "methods": [
+          {
+            "average_precision": 0.4014,
+            "name": "deep_vae",
+            "note": "cuda, 7 epochs, batch 256x1",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.793,
+            "seconds": 0.52
+          },
+          {
+            "average_precision": 0.323,
+            "name": "baseline_isolation_forest",
+            "note": "",
+            "precision_at_k": 0.4054,
+            "recall_at_k": 0.4054,
+            "roc_auc": 0.7744,
+            "seconds": 0.1
+          },
+          {
+            "average_precision": 0.3459,
+            "name": "deep_transformer",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.4324,
+            "recall_at_k": 0.4324,
+            "roc_auc": 0.7278,
+            "seconds": 1.3
+          },
+          {
+            "average_precision": 0.2929,
+            "name": "baseline_lof",
+            "note": "",
+            "precision_at_k": 0.3784,
+            "recall_at_k": 0.3784,
+            "roc_auc": 0.7229,
+            "seconds": 0.1
+          },
+          {
+            "average_precision": 0.267,
+            "name": "baseline_ensemble",
+            "note": "",
+            "precision_at_k": 0.2973,
+            "recall_at_k": 0.2973,
+            "roc_auc": 0.7071,
+            "seconds": 0.41
+          },
+          {
+            "average_precision": 0.3022,
+            "name": "deep_autoencoder",
+            "note": "cuda, 20 epochs, batch 256x1",
+            "precision_at_k": 0.3243,
+            "recall_at_k": 0.3243,
+            "roc_auc": 0.6844,
+            "seconds": 0.94
+          },
+          {
+            "average_precision": 0.237,
+            "name": "baseline_pca_reconstruction",
+            "note": "",
+            "precision_at_k": 0.3243,
+            "recall_at_k": 0.3243,
+            "roc_auc": 0.6632,
+            "seconds": 0.1
+          },
+          {
+            "average_precision": 0.1706,
+            "name": "baseline_one_class_svm",
+            "note": "",
+            "precision_at_k": 0.2432,
+            "recall_at_k": 0.2432,
+            "roc_auc": 0.5382,
+            "seconds": 0.1
+          }
+        ]
+      }
+    ],
+    "aggregate": [
+      {
+        "name": "baseline_ensemble",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.7623,
+          "std": 0.0394,
+          "ci95": [
+            0.7109,
+            0.8072
+          ]
+        },
+        "average_precision": {
+          "mean": 0.3483,
+          "std": 0.0539,
+          "ci95": [
+            0.2749,
+            0.412
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.4162,
+          "std": 0.0967,
+          "ci95": [
+            0.3054,
+            0.5351
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.4162,
+          "std": 0.0967,
+          "ci95": [
+            0.3054,
+            0.5351
+          ]
+        }
+      },
+      {
+        "name": "baseline_isolation_forest",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.7771,
+          "std": 0.0249,
+          "ci95": [
+            0.7456,
+            0.8093
+          ]
+        },
+        "average_precision": {
+          "mean": 0.3367,
+          "std": 0.0154,
+          "ci95": [
+            0.3204,
+            0.355
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.4486,
+          "std": 0.056,
+          "ci95": [
+            0.4054,
+            0.5324
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.4486,
+          "std": 0.056,
+          "ci95": [
+            0.4054,
+            0.5324
+          ]
+        }
+      },
+      {
+        "name": "baseline_lof",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.7627,
+          "std": 0.0246,
+          "ci95": [
+            0.7268,
+            0.786
+          ]
+        },
+        "average_precision": {
+          "mean": 0.3242,
+          "std": 0.0253,
+          "ci95": [
+            0.2941,
+            0.3537
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.427,
+          "std": 0.0616,
+          "ci95": [
+            0.3541,
+            0.4865
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.427,
+          "std": 0.0616,
+          "ci95": [
+            0.3541,
+            0.4865
+          ]
+        }
+      },
+      {
+        "name": "baseline_one_class_svm",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.6165,
+          "std": 0.0566,
+          "ci95": [
+            0.5432,
+            0.6767
+          ]
+        },
+        "average_precision": {
+          "mean": 0.2136,
+          "std": 0.0258,
+          "ci95": [
+            0.1751,
+            0.2381
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.2973,
+          "std": 0.0428,
+          "ci95": [
+            0.2459,
+            0.3487
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.2973,
+          "std": 0.0428,
+          "ci95": [
+            0.2459,
+            0.3487
+          ]
+        }
+      },
+      {
+        "name": "baseline_pca_reconstruction",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.7624,
+          "std": 0.0571,
+          "ci95": [
+            0.6736,
+            0.8016
+          ]
+        },
+        "average_precision": {
+          "mean": 0.3548,
+          "std": 0.0779,
+          "ci95": [
+            0.2467,
+            0.4422
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.4378,
+          "std": 0.0725,
+          "ci95": [
+            0.3351,
+            0.5108
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.4378,
+          "std": 0.0725,
+          "ci95": [
+            0.3351,
+            0.5108
+          ]
+        }
+      },
+      {
+        "name": "deep_autoencoder",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.7471,
+          "std": 0.0372,
+          "ci95": [
+            0.6911,
+            0.7811
+          ]
+        },
+        "average_precision": {
+          "mean": 0.3526,
+          "std": 0.0601,
+          "ci95": [
+            0.2779,
+            0.4105
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.4,
+          "std": 0.0483,
+          "ci95": [
+            0.3297,
+            0.4324
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.4,
+          "std": 0.0483,
+          "ci95": [
+            0.3297,
+            0.4324
+          ]
+        }
+      },
+      {
+        "name": "deep_transformer",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.7535,
+          "std": 0.0259,
+          "ci95": [
+            0.7261,
+            0.7835
+          ]
+        },
+        "average_precision": {
+          "mean": 0.3729,
+          "std": 0.0204,
+          "ci95": [
+            0.3475,
+            0.3937
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.4541,
+          "std": 0.0353,
+          "ci95": [
+            0.4081,
+            0.4865
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.4541,
+          "std": 0.0353,
+          "ci95": [
+            0.4081,
+            0.4865
+          ]
+        }
+      },
+      {
+        "name": "deep_vae",
+        "runs": 5,
+        "roc_auc": {
+          "mean": 0.7792,
+          "std": 0.0384,
+          "ci95": [
+            0.7391,
+            0.8314
+          ]
+        },
+        "average_precision": {
+          "mean": 0.4017,
+          "std": 0.0754,
+          "ci95": [
+            0.305,
+            0.4903
+          ]
+        },
+        "precision_at_k": {
+          "mean": 0.4486,
+          "std": 0.0705,
+          "ci95": [
+            0.3595,
+            0.5351
+          ]
+        },
+        "recall_at_k": {
+          "mean": 0.4486,
+          "std": 0.0705,
+          "ci95": [
+            0.3595,
+            0.5351
+          ]
+        }
+      }
+    ],
+    "confidence_interval": "empirical 2.5th\u201397.5th percentile across independent injection seeds",
+    "caveat": "Seed intervals are not population confidence intervals; injected shapes bound this claim."
+  },
+  "runtime_seconds": 0.004,
+  "notes": "Resumable Stage-B injection-recovery comparison; only explicit runs make performance claims.",
+  "record_hash": "cc2b2b8f5279036e59c2c3061cf0554e5214c4166fdfed5d72ff2221ba7ace4c"
+}

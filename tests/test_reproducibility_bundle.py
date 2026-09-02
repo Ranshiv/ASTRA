@@ -139,5 +139,10 @@ def test_reproducibility_bundle_is_wired_into_rpc():
     previously asserted the opposite, when the module was still standalone."""
     rpc_source = (Path(__file__).parent.parent / "engine" / "astra" / "rpc.py").read_text()
     assert "reproducibility_bundle" in rpc_source
-    assert "research.bundle.build" in rpc_source
-    assert "research.bundle.verify" in rpc_source
+    # The build/verify/rerun handlers themselves live in
+    # rpc_handlers/experiments_research.py (rpc.py is now just the protocol
+    # plus the composed HANDLERS table).
+    handler_source = (Path(__file__).parent.parent / "engine" / "astra"
+                      / "rpc_handlers" / "experiments_research.py").read_text()
+    assert "research.bundle.build" in handler_source
+    assert "research.bundle.verify" in handler_source

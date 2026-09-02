@@ -1,0 +1,18 @@
+{
+  "benchmark_id": "artifact-rejection-p0",
+  "task_family": "artifact_rejection",
+  "modalities": [
+    "tess_tpf"
+  ],
+  "positive_definition": "real TESS quality-flag-derived defect patch (stray_light/excluded categories) vs real clean-contrast patch, from real downloaded SPOC TPFs",
+  "split_ids": [
+    "artifact-rejection-p0_camera_loco"
+  ],
+  "primary_metric": "auprc",
+  "secondary_metrics": [],
+  "seeds": [
+    42
+  ],
+  "created_utc": "2026-09-02T00:03:54+00:00",
+  "notes": "Leave-one-camera-out AUPRC over a real 3-TPF patch bank (TIC 125736995 sector 42, TIC 950029959 sector 23, TIC 63003344 sector 14). Small real sample (30 patches, 2 camera groups) -- proof of concept, not a release-scale artifact bank. See docs/BENCHMARKS.md."
+}

@@ -1,4 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { AladinCatalog, AladinInstance, AladinStatic } from "aladin-lite";
+
+import { readThemeColor, useTheme } from "@/lib/theme";
 
 export interface SkyMarker {
   ra: number;
@@ -29,9 +32,10 @@ export function AladinSky({
   const rawId = useId();
   const id = `aladin-${rawId.replace(/:/g, "")}`;
   const [status, setStatus] = useState("Loading sky map…");
-  const aladin = useRef<any>(null);
-  const api = useRef<any>(null);
-  const overlay = useRef<any>(null);
+  const aladin = useRef<AladinInstance | null>(null);
+  const api = useRef<AladinStatic | null>(null);
+  const overlay = useRef<AladinCatalog | null>(null);
+  const { resolved } = useTheme();
 
   useEffect(() => {
     let disposed = false;
@@ -52,6 +56,14 @@ export function AladinSky({
       setStatus("Sky map unavailable offline; coordinates are shown below.");
       return () => { disposed = true; };
     }
+    // A re-run for a theme change (see the [id, resolved] deps below) lands
+    // here with a previous instance already mounted in the DOM: clear it and
+    // drop the stale overlay/status so the effects below re-apply markers
+    // and viewport once the fresh instance is ready, exactly as they do on
+    // first mount.
+    document.getElementById(id)?.replaceChildren();
+    overlay.current = null;
+    setStatus("Loading sky map…");
     let timedOut = false;
     const timeout = window.setTimeout(() => {
       timedOut = true;
@@ -98,9 +110,9 @@ export function AladinSky({
           // theme rather than a coordinate overlay. Matched to the app's
           // accent colour instead, at low opacity so it stays a guide, not
           // the most prominent thing on screen.
-          gridColor: "#6ea8ff",
+          gridColor: readThemeColor("--color-accent"),
           gridOpacity: 0.35,
-          reticleColor: "#6ea8ff",
+          reticleColor: readThemeColor("--color-accent"),
         });
         window.clearTimeout(timeout);
         setStatus("");
@@ -113,9 +125,15 @@ export function AladinSky({
       disposed = true;
       window.clearTimeout(timeout);
     };
-    // Created once: target and markers are applied by the effects below.
+    // Created once per id, plus once per theme change: gridColor and
+    // reticleColor above are init-only options with no discovered runtime
+    // setter in this version of aladin-lite, so a theme toggle re-inits the
+    // widget rather than restyling it in place. This does re-fetch tiles
+    // (the cost the one-time-creation discipline in this file's docstring is
+    // otherwise avoiding), but theme changes are rare and data refreshes --
+    // the case that discipline actually protects -- still don't rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, resolved]);
 
   useEffect(() => {
     if (!aladin.current) return;
@@ -128,18 +146,28 @@ export function AladinSky({
   }, [ra, dec, fov, status]);
 
   useEffect(() => {
-    if (!aladin.current || !api.current) return;
+    const currentAladin = aladin.current;
+    const currentApi = api.current;
+    if (!currentAladin || !currentApi) return;
     try {
-      if (overlay.current) aladin.current.removeLayer(overlay.current);
+      if (overlay.current) currentAladin.removeLayer(overlay.current);
       if (markers.length === 0) {
         overlay.current = null;
         return;
       }
-      const catalog = api.current.catalog({ name: "Stored sources", sourceSize: 10 });
-      aladin.current.addCatalog(catalog);
+      // Without an explicit `color`, Aladin assigns one from its own
+      // internal rotating palette (reds, blues, greens...) rather than the
+      // app's theme -- the same mismatch `gridColor`/`reticleColor` above
+      // already avoid for the grid and reticle.
+      const catalog = currentApi.catalog({
+        name: "Stored sources",
+        sourceSize: 10,
+        color: readThemeColor("--color-accent"),
+      });
+      currentAladin.addCatalog(catalog);
       catalog.addSources(
         markers.map((marker) =>
-          api.current.source(marker.ra, marker.dec, { label: marker.label ?? "" }),
+          currentApi.source(marker.ra, marker.dec, { label: marker.label ?? "" }),
         ),
       );
       overlay.current = catalog;

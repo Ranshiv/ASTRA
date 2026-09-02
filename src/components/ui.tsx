@@ -4,7 +4,7 @@
  * common Panel/Button/Field the same Tailwind class strings would have been
  * pasted seven times and drifted apart on the first restyle.
  */
-import type { LucideIcon } from "lucide-react";
+import { Loader2, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { SectionHeader } from "@/components/SectionHeader";
@@ -79,8 +79,12 @@ export function Button({
       aria-busy={loading || undefined}
       className={`inline-flex items-center justify-center gap-1.5 rounded border text-xs transition-colors hover:border-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)] disabled:cursor-not-allowed disabled:opacity-40 ${BUTTON_SIZES[size]} ${border} ${className}`}
     >
-      {Icon && <Icon aria-hidden="true" size={12} strokeWidth={2} />}
-      {loading ? "Working…" : children}
+      {loading ? (
+        <Loader2 aria-hidden="true" size={12} strokeWidth={2} className="animate-spin" />
+      ) : (
+        Icon && <Icon aria-hidden="true" size={12} strokeWidth={2} />
+      )}
+      {children}
     </button>
   );
 }
@@ -139,7 +143,7 @@ export function Field({
         autoComplete={autoComplete}
         aria-invalid={Boolean(error)}
         aria-describedby={[helpId, errorId].filter(Boolean).join(" ") || undefined}
-        className={`${width} min-h-9 rounded border ${error ? "border-[var(--color-bad)]" : "border-[var(--color-edge)]"} bg-[var(--color-void)] px-2.5 py-1.5 text-sm text-[var(--color-text)] outline-none transition-colors focus-visible:border-[var(--color-accent)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/40`}
+        className={`${width} min-h-9 rounded border ${error ? "border-[var(--color-bad)]" : "border-[var(--color-edge)]"} bg-[var(--color-void)] px-2.5 py-1.5 text-sm text-[var(--color-text)] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]`}
       />
       {help && <span id={helpId} className="text-[var(--color-muted)]">{help}</span>}
       {error && <span id={errorId} className="text-[var(--color-bad)]" role="alert">{error}</span>}
@@ -221,6 +225,33 @@ export function KeyValue({ rows }: { rows: Array<[string, ReactNode]> }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/** A single glanceable stat as a bordered card (label above, bold value
+ * below), for a handful of summary numbers that would otherwise cram into
+ * a dense two-column KeyValue list. Same shell StatusStrip's device/cache
+ * tiles use (StatusPanel.tsx), minus the icon+dot header those carry for
+ * device/cache tone logic this doesn't need. */
+export function StatTile({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "accent" | "warn";
+}) {
+  const valueColour = {
+    neutral: "text-[var(--color-text)]",
+    accent: "text-[var(--color-accent)]",
+    warn: "text-[var(--color-warn)]",
+  }[tone];
+  return (
+    <div className="rounded-lg border border-[var(--color-edge)] bg-[var(--color-panel-2)] p-3">
+      <p className="text-xs text-[var(--color-muted)]">{label}</p>
+      <p className={`mt-1 text-xl font-semibold tabular-nums ${valueColour}`}>{value}</p>
+    </div>
   );
 }
 

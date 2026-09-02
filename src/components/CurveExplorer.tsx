@@ -89,7 +89,7 @@ export function CurveExplorer({ projectId }: { projectId?: string }) {
                   }
                 }}
                 tabIndex={0}
-                role="button"
+                role="row"
                 aria-label={`Open ${summary.survey} ${summary.object_id} ${summary.band} light curve`}
                 aria-selected={active}
                 className={`cursor-pointer border-b border-[var(--color-edge)]/50 transition

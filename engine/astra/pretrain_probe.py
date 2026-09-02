@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .research import stats as research_stats
+
 
 def _pooled_embeddings(encoder, values: np.ndarray, batch_size: int = 64) -> np.ndarray:
     import torch
@@ -53,16 +55,11 @@ def _stratified_subsample(train_idx: np.ndarray, labels: np.ndarray,
 
 
 def _summary(values: list[float]) -> dict | None:
-    finite = np.asarray([v for v in values if np.isfinite(v)], dtype=float)
-    if not len(finite):
-        return None
-    return {
-        "mean": round(float(np.mean(finite)), 4),
-        "std": round(float(np.std(finite, ddof=1)), 4) if len(finite) > 1 else 0.0,
-        "ci95": [round(float(np.quantile(finite, 0.025)), 4),
-                 round(float(np.quantile(finite, 0.975)), 4)],
-        "n": len(finite),
-    }
+    """Delegates to `research.stats.summary` -- see that module's docstring
+    for why this shape (mean/std/ci95 over repeated seeds, not object-group
+    bootstrap) is the right one here. Was this module's own local
+    reimplementation; migrated per docs/LIMITATIONS.md's tracked debt."""
+    return research_stats.summary(values)
 
 
 def _train_test_split_indices(n: int, seed: int,

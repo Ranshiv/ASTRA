@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config
+from . import config, security
 from .surveys.base import ConeQuery, SourceRef
 
 MANIFEST_VERSION = 2
@@ -168,7 +168,7 @@ def capture_environment() -> dict:
 
 def manifest_path(dataset_id: str, root: Path | None = None) -> Path:
     root = root or config.PATHS.projects
-    return root / "manifests" / f"{dataset_id}.json"
+    return security.scoped_id_path(root / "manifests", dataset_id)
 
 
 def save(manifest: Manifest, root: Path | None = None) -> Path:
@@ -180,7 +180,22 @@ def save(manifest: Manifest, root: Path | None = None) -> Path:
 
 def load(dataset_id: str, root: Path | None = None) -> Manifest:
     path = manifest_path(dataset_id, root)
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        # A bare "[Errno 2] No such file or directory: '<path>'" is a raw OS
+        # errno string, not an answer -- it doesn't say what the caller
+        # should do about it. `list_manifests` glob-scans this same
+        # directory on every call, so a dataset that once appeared there can
+        # only go missing between listing and use (moved, deleted outside
+        # ASTRA, or a stale UI list from before that happened); either way,
+        # re-listing is the right next step, not staring at an errno.
+        raise FileNotFoundError(
+            f"manifest {dataset_id!r} not found at {path} -- it may have "
+            "been moved or deleted since the dataset list was last "
+            "refreshed; refresh the list and try again"
+        ) from None
+    payload = json.loads(text)
     queries = [SurveyQuery(**q) for q in payload.pop("queries", [])]
     return Manifest(queries=queries, **payload)
 

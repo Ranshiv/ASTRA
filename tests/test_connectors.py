@@ -81,8 +81,12 @@ class TestGaiaDerivedProperties:
 
 class TestRegistry:
     def test_the_three_initial_surveys_are_registered(self):
-        assert surveys.available() == ["gaia", "tess", "ztf"]
-        assert {"sdss", "panstarrs"}.issubset(set(surveys.available(True)))
+        assert {"gaia", "tess", "ztf"}.issubset(set(surveys.available()))
+
+    def test_sdss_and_panstarrs_are_enabled_by_default(self):
+        assert surveys.available() == ["gaia", "panstarrs", "sdss", "tess", "ztf"]
+        assert "chandra" not in surveys.available()
+        assert {"sdss", "panstarrs", "chandra"}.issubset(set(surveys.available(True)))
 
     def test_lookup_is_case_insensitive(self):
         assert surveys.get("ZTF").name == "ZTF"
@@ -124,7 +128,13 @@ class TestRegistry:
         assert rows == [{"objID": "1", "ra": "10", "dec": "20"}]
 
     def test_panstarrs_json_fixture_is_bounded(self):
-        rows = panstarrs.parse_rows([{"objID": 1}, {"objID": 2}], limit=1)
+        # The real `mean` endpoint returns {"info": [...columns...],
+        # "data": [...positional rows...]}, not a bare list of dicts --
+        # see test_surveys_panstarrs.py for the full finding. This fixture
+        # predated that fix and encoded the same wrong shape.
+        payload = {"info": [{"name": "objID"}],
+                  "data": [[1], [2]]}
+        rows = panstarrs.parse_rows(payload, limit=1)
         assert rows == [{"objID": 1}]
 
     def test_metadata_connectors_are_not_falsified_as_light_curves(self, source):

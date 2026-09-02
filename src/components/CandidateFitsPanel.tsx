@@ -88,7 +88,7 @@ export function CandidateFitsPanel({ candidate, projectId }: { candidate: Candid
           type="button"
           key={item.product_id}
           onClick={() => setFitsPath(item.path)}
-          className="block max-w-full truncate text-left font-mono text-xs text-[var(--color-accent)]"
+          className="block max-w-full truncate text-left font-mono text-xs text-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]"
         >
           {item.product_id.slice(0, 12)} · {(item.bytes / 1024).toFixed(0)} KiB
         </button>

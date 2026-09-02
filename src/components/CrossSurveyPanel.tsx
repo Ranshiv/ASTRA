@@ -12,7 +12,7 @@ import { Link2, Radar } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { engine, type CrossSurveyProfile } from "@/lib/engine";
-import { Badge, Button, Empty, KeyValue, Note, Panel, Select, Table, num, useAsync } from "@/components/ui";
+import { Badge, Button, Empty, KeyValue, Note, Panel, Select, StatTile, Table, num, useAsync } from "@/components/ui";
 
 export function SurveyViews({ profile }: { profile: CrossSurveyProfile }) {
   return (
@@ -137,34 +137,41 @@ export function CrossSurveyPanel({ projectId }: { projectId?: string }) {
         {groups.error && <Note tone="bad">{groups.error}</Note>}
         {groups.data && (
           <>
-            <KeyValue
-              rows={[
-                ["Groups", groups.data.summary.groups.toLocaleString()],
-                ["Multi-survey", groups.data.summary.multi_survey.toLocaleString()],
-                [
-                  "Resolved multi-survey",
-                  <span key="r" className="text-[var(--color-accent)]">
-                    {groups.data.summary.resolved_multi_survey.toLocaleString()}
-                  </span>,
-                ],
-                ["Ambiguous", groups.data.summary.ambiguous.toLocaleString()],
-              ]}
-            />
-            <Note>
-              Resolved multi-survey is the honest count. A blended match corroborates the
-              neighbourhood at that survey's pixel scale, not this object.
-            </Note>
-            {groups.data.summary.grouping_bias && (
-              <Note tone="warn">
-                {groups.data.summary.grouping_bias.warning} · anchor share {num(groups.data.summary.grouping_bias.anchor_share, 2)}.
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatTile label="Groups" value={groups.data.summary.groups.toLocaleString()} />
+              <StatTile label="Multi-survey" value={groups.data.summary.multi_survey.toLocaleString()} />
+              <StatTile
+                label="Resolved multi-survey"
+                value={groups.data.summary.resolved_multi_survey.toLocaleString()}
+                tone="accent"
+              />
+              <StatTile
+                label="Ambiguous"
+                value={groups.data.summary.ambiguous.toLocaleString()}
+                tone={groups.data.summary.ambiguous > 0 ? "warn" : "neutral"}
+              />
+            </div>
+            <div className="mt-3 flex flex-col gap-2">
+              <Note>
+                Resolved multi-survey is the honest count. A blended match corroborates the
+                neighbourhood at that survey's pixel scale, not this object.
               </Note>
-            )}
+              {groups.data.summary.grouping_bias && (
+                <div className="rounded-lg border border-[var(--color-warn)]/40 bg-[var(--color-warn)]/5 px-3 py-2">
+                  <Note tone="warn">
+                    {groups.data.summary.grouping_bias.warning} · anchor share{" "}
+                    {num(groups.data.summary.grouping_bias.anchor_share, 2)}.
+                  </Note>
+                </div>
+              )}
+            </div>
             {groups.data.groups.length > 0 && (
-              <Table head={["Surveys", "Resolved", "Members", "Separations", "Flags"]}>
+              <div className="mt-3">
+                <Table head={["Surveys", "Resolved", "Members", "Separations", "Flags"]}>
                 {groups.data.groups.map((group, index) => (
                   <tr key={index} className="border-b border-[var(--color-edge)]/50">
                     <td className="px-2 py-1.5">{group.surveys.join(" + ")}</td>
-                    <td className="px-2 py-1.5">{group.resolved_surveys}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{group.resolved_surveys}</td>
                     <td className="px-2 py-1.5 font-mono text-[10px] text-[var(--color-muted)]">
                       {Object.entries(group.members)
                         .map(([survey, id]) => `${survey}:${id}`)
@@ -191,7 +198,8 @@ export function CrossSurveyPanel({ projectId }: { projectId?: string }) {
                     </td>
                   </tr>
                 ))}
-              </Table>
+                </Table>
+              </div>
             )}
           </>
         )}

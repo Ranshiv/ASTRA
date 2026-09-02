@@ -32,6 +32,7 @@ export function SkyExplorer({ projectId }: { projectId?: string }) {
   const [touched, setTouched] = useState(false);
   const [offset, setOffset] = useState<FrameOffset | null>(null);
   const [offsetError, setOffsetError] = useState<string | null>(null);
+  const [measuringOffset, setMeasuringOffset] = useState(false);
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
 
   function goTo(nextRa: number, nextDec: number) {
@@ -41,13 +42,17 @@ export function SkyExplorer({ projectId }: { projectId?: string }) {
   }
 
   const { data: candidates, error, loading: candidatesLoading } = useAsync(
-    () => engine.candidates("default", 200, projectId));
+    () => engine.candidates("default", 200, projectId), [projectId]);
   const spatial = useAsync(
     () => engine.candidatesSpatial("default", 200, projectId), [projectId]);
 
   const raDeg = Number(ra);
   const decDeg = Number(dec);
-  const valid = Number.isFinite(raDeg) && Number.isFinite(decDeg);
+  // `Number("")` is `0`, not NaN -- without the blank checks a cleared field
+  // reads as a valid position at 0/0 instead of disabling the view.
+  const valid = ra.trim() !== "" && dec.trim() !== ""
+    && Number.isFinite(raDeg) && Number.isFinite(decDeg)
+    && raDeg >= 0 && raDeg < 360 && decDeg >= -90 && decDeg <= 90;
 
   const markers: SkyMarker[] = useMemo(
     () =>
@@ -85,10 +90,13 @@ export function SkyExplorer({ projectId }: { projectId?: string }) {
 
   async function measureOffset() {
     setOffsetError(null);
+    setMeasuringOffset(true);
     try {
       setOffset(await engine.frameOffset(raDeg, decDeg));
     } catch (err) {
       setOffsetError(String(err));
+    } finally {
+      setMeasuringOffset(false);
     }
   }
 
@@ -114,7 +122,12 @@ export function SkyExplorer({ projectId }: { projectId?: string }) {
             >
               3D
             </Button>
-            <Button icon={Clock} disabled={!valid} onClick={() => void measureOffset()}>
+            <Button
+              icon={Clock}
+              disabled={!valid || measuringOffset}
+              loading={measuringOffset}
+              onClick={() => void measureOffset()}
+            >
               Time-frame offset
             </Button>
             <Badge tone="muted">
@@ -173,8 +186,8 @@ export function SkyExplorer({ projectId }: { projectId?: string }) {
 
         {offsetError && <Note tone="bad">{offsetError}</Note>}
         {offset && (
-          <div className="mt-3">
-            <h3 className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">
+          <div className="mt-3 rounded-lg border border-[var(--color-accent)]/40 bg-[var(--color-accent)]/5 p-3">
+            <h3 className="mb-1.5 text-xs font-medium text-[var(--color-text)]">
               HJD_UTC → BJD_TDB at this position
             </h3>
             <KeyValue
@@ -211,7 +224,7 @@ export function SkyExplorer({ projectId }: { projectId?: string }) {
                 type="button"
                 onClick={() => goTo(candidate.ra_deg, candidate.dec_deg)}
                 aria-label={`Centre map on candidate ${candidate.candidate_id}`}
-                className="min-h-9 rounded-full border border-[var(--color-edge)] px-3 py-1 font-mono text-xs text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                className="min-h-9 rounded-full border border-[var(--color-edge)] px-3 py-1 font-mono text-xs text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]"
               >
                 #{candidate.rank} {candidate.candidate_id}
               </button>

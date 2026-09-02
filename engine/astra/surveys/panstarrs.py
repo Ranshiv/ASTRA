@@ -27,16 +27,36 @@ MEAN_URL = "https://catalogs.mast.stsci.edu/api/v0.1/panstarrs/{release}/mean"
 
 
 def parse_rows(payload: object, limit: int = 100) -> list[dict]:
-    if not isinstance(payload, list):
+    """The `mean` endpoint never returns a bare list of row dicts -- it
+    returns `{"info": [...130 column definitions...], "data": [...130-value
+    positional arrays...]}` (confirmed live: `info[i]["name"]` lines up
+    1:1 with `data[row][i]`). Every row must be zipped against the column
+    names to become the dict `cone_search` below actually reads
+    (`row.get("objID")`, `row.get("raMean")`, ...) -- treating `payload`
+    itself as the row list, as this used to, silently discarded every real
+    response regardless of query or radius: `isinstance(payload, list)` is
+    always False for this endpoint's actual shape, so `cone_search` always
+    returned zero sources."""
+    if not isinstance(payload, dict):
         return []
-    return [row for row in payload[:limit] if isinstance(row, dict)]
+    info = payload.get("info")
+    data = payload.get("data")
+    if not isinstance(info, list) or not isinstance(data, list):
+        return []
+    columns = [col.get("name") for col in info if isinstance(col, dict)]
+    rows: list[dict] = []
+    for row in data[:limit]:
+        if not isinstance(row, list) or len(row) != len(columns):
+            continue
+        rows.append(dict(zip(columns, row)))
+    return rows
 
 
 class PanSTARRSConnector(SurveyConnector):
     name = "Pan-STARRS"
     capabilities = ("catalogue", "mean_photometry")
     resolution_arcsec = 1.0
-    enabled_by_default = False
+    enabled_by_default = True
 
     def __init__(self, release: str = DEFAULT_RELEASE) -> None:
         self.release = release
@@ -79,6 +99,12 @@ class PanSTARRSConnector(SurveyConnector):
                        "z_mean_error": row.get("zMeanPSFMagErr"),
                        "y_mean_error": row.get("yMeanPSFMagErr")},
             ))
+        if rows and not sources:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Pan-STARRS: MAST returned %d row(s) but none parsed as a "
+                "source -- objID/objid or raMean/decMean may no longer "
+                "match the mean endpoint's real columns.", len(rows))
         return sources
 
     def fetch_light_curves(self, source: SourceRef) -> list[LightCurve]:

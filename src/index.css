@@ -1,16 +1,59 @@
 @import "tailwindcss";
 
+/* Both palettes are derived from the product icon (public/astra_icon.svg):
+   a cream #F5F3EE ground, a deep slate #2A3140 star field, and a single
+   vermilion #D9402F focal ring. Light mode uses the cream and the slate
+   literally; dark mode inverts the relationship, keeping the slate as its
+   border colour and a cream-tinted off-white as its text.
+
+   The accent is *not* #D9402F verbatim in either theme. That exact red is
+   4.44:1 on white -- under WCAG AA -- and `--color-accent` is used as text,
+   not just as a border (ui.tsx's accent Button and Badge). Light deepens it
+   and dark lifts it; both still read as the icon's vermilion.
+
+   `--color-bad` was moved off pure red onto a crimson-rose. With the accent
+   now sitting at hue ~6deg, the old #f87171 (hue 0deg) made `Badge
+   tone="bad"` and `Badge tone="accent"` nearly indistinguishable side by
+   side. Rose at ~345deg keeps "danger" legible without colliding with the
+   brand colour.
+
+   Every token must stay a 6-digit hex: LightCurvePlot's withAlpha() and
+   SpatialScene3D's colour bridge both parse these values back out of
+   getComputedStyle as #rrggbb.
+
+   This @theme block is the dark palette *and* the registration of the token
+   names for Tailwind. Tailwind v4 emits it into `@layer theme`, so the
+   unlayered `[data-theme="light"]` block below outranks it whatever the
+   specificity. */
 @theme {
-  --color-void: #06070d;
-  --color-panel: #0e1018;
-  --color-panel-2: #141826;
-  --color-edge: #1c2030;
-  --color-muted: #6b7590;
-  --color-text: #d8dce8;
-  --color-accent: #6ea8ff;
+  --color-void: #0f131b;
+  --color-panel: #161b26;
+  --color-panel-2: #1e2431;
+  --color-edge: #2a3140;
+  --color-muted: #8a93a6;
+  --color-text: #e6e3dc;
+  --color-accent: #e8563f;
   --color-ok: #4ade80;
   --color-warn: #fbbf24;
-  --color-bad: #f87171;
+  --color-bad: #ff6b8a;
+}
+
+:root[data-theme="light"] {
+  /* The depth ordering inverts rather than mirroring: in dark, void is the
+     furthest-back surface and panel-2 the most raised, so in light the same
+     roles want white cards over a cream ground with a *tinted* (not
+     brighter) table header. Getting this right here is what lets all 400+
+     var() references in the components stay untouched. */
+  --color-void: #f5f3ee;
+  --color-panel: #ffffff;
+  --color-panel-2: #ebe7de;
+  --color-edge: #dcd6c9;
+  --color-muted: #656d7e;
+  --color-text: #2a3140;
+  --color-accent: #be3520;
+  --color-ok: #157a3c;
+  --color-warn: #9a6100;
+  --color-bad: #b3123f;
 }
 
 html,
@@ -20,8 +63,18 @@ body,
 }
 
 html {
-  color-scheme: dark;
+  /* Bare :root advertises both so form controls, scrollbars and the caret
+     follow the OS until theme-boot.ts stamps an explicit choice. */
+  color-scheme: light dark;
   background: var(--color-void);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
@@ -90,27 +143,52 @@ textarea:focus-visible {
   background-color: var(--color-muted);
 }
 
-/* Aladin Lite (src/components/AladinSky.tsx) restyled to match ASTRA's dark
-   theme instead of its own defaults. Scoped to .astra-aladin, the class the
-   component puts on its own wrapper div, so nothing outside the sky map is
-   affected.
+/* Aladin Lite (src/components/AladinSky.tsx) restyled to match ASTRA's
+   current theme instead of its own defaults. Scoped to .astra-aladin, the
+   class the component puts on its own wrapper div, so nothing outside the
+   sky map is affected.
 
    The widget has no init option to disable its "ALADIN" watermark, so it is
    hidden here instead. Its remaining chrome (zoom, fullscreen, the
    field-of-view readout) is driven entirely by CSS custom properties that it
-   sets on its own toolbar element via a `data-theme="dark"` attribute --
-   `.astra-aladin [data-theme="dark"]` outranks Aladin's own bare
-   `[data-theme=dark]` rule, so this wins without needing `!important`
-   anywhere except the logo, which Aladin always re-shows via a plain class
-   with no variable to redirect. */
+   sets on its own toolbar element via a `data-theme` attribute it manages
+   itself -- `.astra-aladin [data-theme]` outranks Aladin's own bare
+   `[data-theme=dark]` rule regardless of the value Aladin picks, so this
+   wins without needing `!important` anywhere except the logo, which Aladin
+   always re-shows via a plain class with no variable to redirect. This is a
+   *descendant* selector scoped to Aladin's own toolbar node, so it cannot
+   collide with the app-level `data-theme` this file sets on <html>. */
 .astra-aladin .aladin-logo-container {
   display: none !important;
 }
 
-.astra-aladin [data-theme="dark"] {
+/* `.astra-aladin [data-theme]` alone misses the zoom and fullscreen
+   buttons: Aladin appends those straight onto its root div
+   (`aladinDiv.appendChild(...)`), and `_applyTheme` sets `data-theme` on
+   that same root div -- which is `.astra-aladin` itself, not a descendant
+   of it, so the plain descendant selector never matches it. The compound
+   `.astra-aladin[data-theme]` selector below covers that case too, so
+   every themed control (not just the ones nested in Aladin's toolbar)
+   picks up these variables. */
+.astra-aladin[data-theme],
+.astra-aladin [data-theme] {
   --bg-color: var(--color-panel);
   --text-color: var(--color-muted);
   --border-color: var(--color-edge);
   --hover-color: var(--color-accent);
   --toggle-color: var(--color-accent);
+}
+
+/* Aladin's own fullscreen button (AladinSky.tsx, showFullscreenControl)
+   applies `.aladin-fullscreen` to its widget container: position: fixed,
+   covering the viewport, independent of ASTRA's layout. Without this, the
+   sticky app header (position: sticky; z-index: 10) keeps painting above
+   it while the static sidebar disappears underneath it -- a broken
+   half-and-half overlap. Hiding both while Aladin is fullscreen turns that
+   into a real fullscreen view instead; both come back automatically when
+   Aladin exits fullscreen (its own toggle button, still visible inside
+   .aladin-fullscreen) since this is a live CSS relationship. */
+body:has(.aladin-fullscreen) #app-header,
+body:has(.aladin-fullscreen) #app-sidebar {
+  display: none;
 }

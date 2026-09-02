@@ -16,11 +16,8 @@ coverage (not all-sky), metadata-only `fetch_light_curves`.
 
 from __future__ import annotations
 
-from .. import netclient
-from ..tap import parse_votable
-from .base import ConeQuery, LightCurve, SourceRef, SurveyConnector
+from ._vizier import VizierConeConnector
 
-SCS_URL = "https://vizier.cds.unistra.fr/viz-bin/votable/-A"
 DEFAULT_CATALOG = "VIII/106"
 
 
@@ -34,39 +31,17 @@ def _flux_error_mjy(flux: object, snr: object) -> float | None:
     return abs(flux_value) / snr_value
 
 
-class HerschelConnector(SurveyConnector):
+class HerschelConnector(VizierConeConnector):
     name = "Herschel"
     capabilities = ("catalogue", "mean_photometry")
     resolution_arcsec = 6.0  # PACS 70/100um beam; coarser than WISE, finer than SPIRE
     enabled_by_default = False
+    id_column = "Name"
 
     def __init__(self, release: str = DEFAULT_CATALOG) -> None:
-        self.release = release
+        super().__init__(release)
 
-    def cone_search(self, query: ConeQuery, limit: int = 100) -> list[SourceRef]:
-        top = max(1, min(int(limit), 200))
-        response = netclient.get(
-            SCS_URL,
-            {"-source": self.release, "RA": query.ra_deg, "DEC": query.dec_deg,
-             "SR": query.radius_arcsec / 3600.0, "-out.max": top},
-            timeout=60, provider="vizier",
-        )
-        rows = parse_votable(response.text, top)
-        sources: list[SourceRef] = []
-        for row in rows:
-            try:
-                object_id = str(row["Name"])
-                ra_deg = float(row["RAJ2000"])
-                dec_deg = float(row["DEJ2000"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            sources.append(SourceRef(
-                survey=self.name, object_id=object_id, ra_deg=ra_deg, dec_deg=dec_deg,
-                extra={"band": row.get("Band"), "flux_mjy": row.get("Flux"),
-                       "flux_error_mjy": _flux_error_mjy(row.get("Flux"), row.get("snr")),
-                       "snr": row.get("snr")},
-            ))
-        return sources
-
-    def fetch_light_curves(self, source: SourceRef) -> list[LightCurve]:
-        return []
+    def extra_fields(self, row: dict) -> dict:
+        return {"band": row.get("Band"), "flux_mjy": row.get("Flux"),
+                "flux_error_mjy": _flux_error_mjy(row.get("Flux"), row.get("snr")),
+                "snr": row.get("snr")}

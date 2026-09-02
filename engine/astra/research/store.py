@@ -118,14 +118,29 @@ def list_benchmark_specs() -> list[str]:
 def save_result_records(records: list[ResultRecord], *, synthetic: bool) -> Path:
     """Real and synthetic results are kept in separate files by construction
     -- a caller cannot accidentally merge them by passing the wrong flag,
-    because the flag chooses the filename, not just a column."""
+    because the flag chooses the filename, not just a column.
+
+    Appends to whatever is already on disk rather than replacing it. A real
+    bug this session found by hand: the previous version opened the file in
+    `"w"` mode, so a second real call to `research.benchmark.run` (each one
+    producing a fresh `experiment_id`, never a re-run of an old one) would
+    silently erase every prior leaderboard row the first call had written --
+    including, in this session's own case, the original `core-demo-2026`
+    25-row demonstration leaderboard, recovered afterward from git history
+    rather than lost. A benchmark leaderboard is meant to accumulate one
+    row set per real run, the same append-only discipline
+    docs/DEFERRED.txt's own journal already follows -- this function now
+    matches that instead of contradicting it.
+    """
     name = "metrics_synthetic.parquet" if synthetic else "metrics.parquet"
     # Written as JSON-lines with a .parquet-shaped sibling name reserved for
     # the pandas/polars conversion step in benchmark.py; store.py itself only
     # needs a dependency-free, diffable format for small result sets.
     path = _dir("results") / name.replace(".parquet", ".jsonl")
+    existing = load_result_records(synthetic=synthetic)
+    combined = existing + records
     with path.open("w", encoding="utf-8") as handle:
-        for record in records:
+        for record in combined:
             if record.synthetic != synthetic:
                 raise ResearchStoreError(
                     f"result {record.experiment_id!r} synthetic={record.synthetic} "

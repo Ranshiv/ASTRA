@@ -6,81 +6,7 @@ import pytest
 
 from astra import netclient
 from astra.surveys.base import ConeQuery, SourceRef
-from astra.surveys.swift import SwiftConnector, parse_rows, query_hardness_ratios
-
-VALID_ROWS = [
-    {"IAUName": "SXPS J120021.5+223321", "RA": 180.122, "Decl": 22.411,
-     "ObsID": "00012345001", "NumObs": 3, "Rate": 0.021},
-    {"source_id": 987654, "ra_deg": 180.130, "dec_deg": 22.420},
-]
-
-
-class _FakeResponse:
-    def __init__(self, payload: object) -> None:
-        self._payload = payload
-
-    def json(self) -> object:
-        return self._payload
-
-
-class TestParseRows:
-    def test_keeps_only_dict_rows(self):
-        assert parse_rows(["not-a-dict", {"a": 1}]) == [{"a": 1}]
-
-    def test_non_list_payload_yields_no_rows(self):
-        assert parse_rows({"error": "bad request"}) == []
-
-    def test_respects_limit(self):
-        assert len(parse_rows(VALID_ROWS, limit=1)) == 1
-
-
-class TestSwiftConnector:
-    def test_capabilities_declare_no_light_curve(self):
-        connector = SwiftConnector()
-        assert "light_curve" not in connector.capabilities
-        assert connector.enabled_by_default is False
-
-    def test_cone_search_parses_valid_rows(self, monkeypatch, cone: ConeQuery):
-        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(VALID_ROWS))
-        sources = SwiftConnector().cone_search(cone, limit=10)
-        assert len(sources) == 2
-        assert sources[0].survey == "Swift"
-        assert sources[0].object_id == "SXPS J120021.5+223321"
-        assert sources[0].ra_deg == pytest.approx(180.122)
-        assert sources[0].extra["num_obs"] == 3
-        # second row falls back to source_id / ra_deg / dec_deg.
-        assert sources[1].object_id == "987654"
-        assert sources[1].ra_deg == pytest.approx(180.130)
-
-    def test_cone_search_skips_rows_missing_position(self, monkeypatch, cone: ConeQuery):
-        payload = [{"IAUName": "x"}]
-        monkeypatch.setattr(netclient, "get", lambda *a, **k: _FakeResponse(payload))
-        assert SwiftConnector().cone_search(cone) == []
-
-    def test_cone_search_handles_non_json_response(self, monkeypatch, cone: ConeQuery):
-        class _Broken:
-            def json(self):
-                raise ValueError("not json")
-
-        monkeypatch.setattr(netclient, "get", lambda *a, **k: _Broken())
-        assert SwiftConnector().cone_search(cone) == []
-
-    def test_cone_search_clamps_limit(self, monkeypatch, cone: ConeQuery):
-        captured: dict = {}
-
-        def fake_get(url, params, timeout, provider):
-            captured["params"] = params
-            captured["provider"] = provider
-            return _FakeResponse(VALID_ROWS)
-
-        monkeypatch.setattr(netclient, "get", fake_get)
-        SwiftConnector().cone_search(cone, limit=10_000)
-        assert captured["params"]["limit"] == 200
-        assert captured["provider"] == "swift"
-
-    def test_fetch_light_curves_returns_empty(self):
-        source = SourceRef(survey="Swift", object_id="1", ra_deg=0.0, dec_deg=0.0)
-        assert SwiftConnector().fetch_light_curves(source) == []
+from astra.surveys.swift import SwiftConnector, query_hardness_ratios
 
 
 def _votable(fields: list[str], rows: list[list[str]]) -> str:
@@ -100,8 +26,53 @@ class _VotableResponse:
         self.headers = {"Content-Type": "application/x-votable+xml"}
 
 
+# `cone_search` now reads the same VizieR IX/58 (2SXPS) shape as
+# `query_hardness_ratios` -- see swift.py's module docstring for why this
+# connector moved off its previous (404) CONE_URL entirely.
 SXPS_FIELDS = ["IAUName", "RAJ2000", "DEJ2000", "CR0", "HR1", "HR2"]
 SXPS_ROW = ["2SXPS J120000.0+200000", "180.0", "20.0", "0.05", "-0.2", "0.1"]
+
+
+class TestSwiftConnector:
+    def test_capabilities_declare_no_light_curve(self):
+        connector = SwiftConnector()
+        assert "light_curve" not in connector.capabilities
+        assert connector.enabled_by_default is False
+
+    def test_cone_search_parses_valid_rows(self, monkeypatch, cone: ConeQuery):
+        monkeypatch.setattr(netclient, "get",
+                           lambda *a, **k: _VotableResponse(_votable(SXPS_FIELDS, [SXPS_ROW])))
+        sources = SwiftConnector().cone_search(cone, limit=10)
+        assert len(sources) == 1
+        assert sources[0].survey == "Swift"
+        assert sources[0].object_id == "2SXPS J120000.0+200000"
+        assert sources[0].ra_deg == pytest.approx(180.0)
+        assert sources[0].extra["hr1"] == pytest.approx(-0.2)
+
+    def test_cone_search_skips_rows_missing_position(self, monkeypatch, cone: ConeQuery):
+        fields = ["IAUName", "CR0"]
+        row = ["2SXPS J120000.0+200000", "0.05"]
+        monkeypatch.setattr(netclient, "get",
+                           lambda *a, **k: _VotableResponse(_votable(fields, [row])))
+        assert SwiftConnector().cone_search(cone) == []
+
+    def test_cone_search_uses_the_vizier_provider(self, monkeypatch, cone: ConeQuery):
+        captured: dict = {}
+
+        def fake_get(url, params, timeout, provider):
+            captured["provider"] = provider
+            captured["params"] = params
+            return _VotableResponse(_votable(SXPS_FIELDS, []))
+
+        monkeypatch.setattr(netclient, "get", fake_get)
+        SwiftConnector().cone_search(cone, limit=10_000)
+        assert captured["provider"] == "vizier"
+        assert captured["params"]["-source"] == "IX/58"
+        assert captured["params"]["-out.max"] == 200
+
+    def test_fetch_light_curves_returns_empty(self):
+        source = SourceRef(survey="Swift", object_id="1", ra_deg=0.0, dec_deg=0.0)
+        assert SwiftConnector().fetch_light_curves(source) == []
 
 
 class TestQueryHardnessRatios:
@@ -150,3 +121,16 @@ class TestQueryHardnessRatiosLive:
     def test_returns_real_rows(self):
         results = query_hardness_ratios(187.7059, 12.3911, 60.0)
         assert len(results) > 0
+
+
+@pytest.mark.live
+class TestConeSearchLive:
+    """Confirmed live: `cone_search` itself, not just `query_hardness_
+    ratios`, now returns real 2SXPS rows from the same VizieR fetch -- the
+    whole point of rerouting it off the dead (404) `CONE_URL` this
+    session."""
+
+    def test_returns_real_sources(self):
+        sources = SwiftConnector().cone_search(
+            ConeQuery(ra_deg=187.7059, dec_deg=12.3911, radius_arcsec=60.0), limit=20)
+        assert len(sources) > 0

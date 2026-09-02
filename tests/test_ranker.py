@@ -1,9 +1,12 @@
 """The supervised loop is gated, grouped, calibrated, and reproducible."""
 from __future__ import annotations
 
+import hashlib
 import json
+import pickle
 
 import numpy as np
+import pytest
 
 from astra import candidates, features, ranker
 
@@ -75,3 +78,29 @@ def test_apply_uses_the_persisted_probability_as_an_explicit_ranking(tmp_path):
     assert all("supervised_probability" in candidate.score for candidate in ranked)
     assert ranked[0].score["ranking_method"] == "calibrated_logistic"
     assert ranked[0].rank == 1
+
+
+class _EvilPayload:
+    """A `__reduce__` that would run arbitrary code if actually unpickled."""
+
+    def __reduce__(self):
+        return (eval, ("__import__('os').system('calc')",))
+
+
+def test_load_refuses_to_unpickle_a_class_outside_the_ranker_allowlist(tmp_path):
+    """A crafted `.pkl` with a matching sha256 of *itself* passes the
+    integrity check in `load()`; only `_RestrictedUnpickler` stands between
+    that and arbitrary code execution (see ranker.py's module-level
+    docstring on `_UNPICKLE_SAFE_MODULE_PREFIXES`)."""
+    _labelled_run(tmp_path)
+    ranker.train("reviewed", root=tmp_path, seed=1, bootstrap_samples=5)
+
+    model_path = tmp_path / "models" / "rankers" / "calibrated-logistic.pkl"
+    manifest_path = tmp_path / "models" / "rankers" / "calibrated-logistic.json"
+    model_path.write_bytes(pickle.dumps(_EvilPayload()))
+    manifest = json.loads(manifest_path.read_text())
+    manifest["model_sha256"] = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(pickle.UnpicklingError):
+        ranker.load(root=tmp_path)

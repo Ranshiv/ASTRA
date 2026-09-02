@@ -17,6 +17,13 @@ import {
   Copy,
   Lock,
   Sparkles,
+  Globe,
+  Orbit,
+  AudioWaveform,
+  Beaker,
+  Antenna,
+  Menu,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -35,6 +42,11 @@ export type SectionId =
   | "models"
   | "digitaltwin"
   | "reports"
+  | "habitability"
+  | "neohazard"
+  | "asteroseismology"
+  | "biosignature"
+  | "technosignature"
   | "settings";
 
 type NavItem = { id: SectionId; label: string; icon: LucideIcon };
@@ -71,12 +83,25 @@ const NAV_GROUPS: { heading: string; items: NavItem[] }[] = [
     ],
   },
   {
+    heading: "Frontier",
+    items: [
+      { id: "habitability", label: "Habitability", icon: Globe },
+      { id: "neohazard", label: "NEO hazard", icon: Orbit },
+      { id: "asteroseismology", label: "Asteroseismology", icon: AudioWaveform },
+      { id: "biosignature", label: "Biosignature", icon: Beaker },
+      { id: "technosignature", label: "Technosignature", icon: Antenna },
+    ],
+  },
+  {
     heading: "System",
     items: [{ id: "settings", label: "Settings", icon: Settings }],
   },
 ];
 
 const NARROW_QUERY = "(max-width: 1100px)";
+// Below this width even an icon-only rail crowds the content column out;
+// the sidebar becomes an off-canvas drawer instead of a permanent column.
+const MOBILE_QUERY = "(max-width: 640px)";
 
 export function Sidebar({
   active,
@@ -93,6 +118,8 @@ export function Sidebar({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+  const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const query = window.matchMedia(NARROW_QUERY);
@@ -101,7 +128,35 @@ export function Sidebar({
     return () => query.removeEventListener("change", onChange);
   }, []);
 
-  const effectiveCollapsed = collapsed || narrow;
+  useEffect(() => {
+    const query = window.matchMedia(MOBILE_QUERY);
+    const onChange = () => setMobile(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
+  // Leaving mobile width (e.g. rotating a tablet, resizing a window) with
+  // the drawer open would otherwise leave it permanently open once the
+  // layout switches back to a fixed column.
+  useEffect(() => {
+    if (!mobile) setMobileOpen(false);
+  }, [mobile]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
+  const effectiveCollapsed = (collapsed || narrow) && !mobile;
+
+  function selectAndClose(id: SectionId) {
+    onSelect(id);
+    setMobileOpen(false);
+  }
 
   async function copyDataRoot() {
     if (!dataRoot) return;
@@ -114,10 +169,37 @@ export function Sidebar({
   }
 
   return (
-    <nav
-      aria-label="Primary navigation"
-      className={`${effectiveCollapsed ? "w-14" : "w-56"} flex shrink-0 flex-col overflow-y-auto border-r border-[var(--color-edge)] bg-[var(--color-void)] transition-[width] duration-200`}
-    >
+    <>
+      {mobile && (
+        <button
+          type="button"
+          aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={mobileOpen}
+          aria-controls="app-sidebar"
+          onClick={() => setMobileOpen((value) => !value)}
+          className="fixed bottom-4 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-edge)] bg-[var(--color-panel)] text-[var(--color-text)] shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]"
+        >
+          {mobileOpen ? <X aria-hidden="true" size={18} /> : <Menu aria-hidden="true" size={18} />}
+        </button>
+      )}
+      {mobile && mobileOpen && (
+        <div
+          aria-hidden="true"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/50"
+        />
+      )}
+      <nav
+        id="app-sidebar"
+        aria-label="Primary navigation"
+        className={
+          mobile
+            ? `fixed inset-y-0 left-0 z-50 w-64 transform overflow-y-auto border-r border-[var(--color-edge)] bg-[var(--color-void)] transition-transform duration-200 ${
+                mobileOpen ? "translate-x-0" : "-translate-x-full"
+              }`
+            : `${effectiveCollapsed ? "w-14" : "w-56"} flex shrink-0 flex-col overflow-y-auto border-r border-[var(--color-edge)] bg-[var(--color-void)] transition-[width] duration-200`
+        }
+      >
       <div className="flex items-center justify-end px-2 py-2">
         <button
           type="button"
@@ -125,7 +207,7 @@ export function Sidebar({
           aria-expanded={!effectiveCollapsed}
           disabled={narrow}
           onClick={() => setCollapsed((value) => !value)}
-          className="flex min-h-9 min-w-9 items-center justify-center rounded text-[var(--color-muted)] hover:bg-[var(--color-panel)] hover:text-[var(--color-text)] disabled:cursor-not-allowed disabled:opacity-40"
+          className={`flex min-h-9 min-w-9 items-center justify-center rounded text-[var(--color-muted)] hover:bg-[var(--color-panel)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)] disabled:cursor-not-allowed disabled:opacity-40 ${mobile ? "hidden" : ""}`}
         >
           {effectiveCollapsed ? <PanelLeftOpen aria-hidden="true" size={16} /> : <PanelLeftClose aria-hidden="true" size={16} />}
         </button>
@@ -144,11 +226,12 @@ export function Sidebar({
                   <li key={id}>
                     <button
                       type="button"
-                      onClick={() => !gated && onSelect(id)}
+                      onClick={() => !gated && selectAndClose(id)}
                       disabled={gated}
                       aria-current={isActive ? "page" : undefined}
+                      aria-label={gated ? `${label} — requires an active project` : label}
                       title={gated ? `${label} — requires an active project` : label}
-                      className={`flex min-h-9 w-full items-center gap-2.5 rounded-md border-l-2 px-2.5 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-45 ${
+                      className={`flex min-h-9 w-full items-center gap-2.5 rounded-md border-l-2 px-2.5 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)] disabled:cursor-not-allowed disabled:opacity-45 ${
                         isActive
                           ? "border-[var(--color-accent)] bg-[var(--color-panel)] text-[var(--color-text)]"
                           : "border-transparent text-[var(--color-muted)] hover:bg-[var(--color-panel)] hover:text-[var(--color-text)]"
@@ -182,7 +265,7 @@ export function Sidebar({
               onClick={() => void copyDataRoot()}
               title="Copy data root"
               aria-label="Copy data root"
-              className="rounded p-1 text-[var(--color-muted)] hover:bg-[var(--color-panel)] hover:text-[var(--color-text)]"
+              className="rounded p-1 text-[var(--color-muted)] hover:bg-[var(--color-panel)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]"
             >
               <Copy size={12} />
             </button>
@@ -192,6 +275,7 @@ export function Sidebar({
           </p>
         </div>
       )}
-    </nav>
+      </nav>
+    </>
   );
 }

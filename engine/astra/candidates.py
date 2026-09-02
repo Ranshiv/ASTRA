@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,8 @@ import numpy as np
 from . import artifact as artifact_mod, config, crossmatch, evidence, metadata, scoring
 
 LABELS = ("interesting", "artifact", "known_object", "uncertain", "needs_follow_up")
+
+FOLLOWUP_RESULT_STATUSES = ("observed", "no_show", "cancelled")
 
 # Rough class hints from period alone. Presented as "resembles", never as a
 # classification, because a period is nowhere near sufficient to classify.
@@ -454,3 +457,122 @@ def label_summary(root: Path | None = None) -> dict:
         if name in counts:
             counts[name] += 1
     return {"total": len(labels), "by_label": counts}
+
+
+# --- Follow-up request/result tracking (roadmap: follow-up coordination) ----
+#
+# `followup.plan` (followup.py) is a stateless visibility/scheduling
+# calculation only -- it never records that a request was actually made.
+# These functions add the tracking layer on top: a candidate can accumulate
+# many follow-up requests over its lifetime (unlike a label, which is one
+# row per candidate), so `metadata.followup_requests` is append-only,
+# modelled on the event-packet table's one-candidate-to-many-rows shape
+# rather than the labels table's single-row-per-candidate shape.
+
+def request_followup(candidate_id: str, facility_name: str = "", note: str = "",
+                     root: Path | None = None) -> dict:
+    root = root or config.PATHS.projects
+    request_id = f"followup_{uuid.uuid4().hex}"
+    return metadata.put_followup_request(root, request_id, candidate_id, facility_name, note)
+
+
+def record_followup_result(request_id: str, status: str, note: str = "",
+                           root: Path | None = None) -> dict:
+    if status not in FOLLOWUP_RESULT_STATUSES:
+        raise ValueError(f"unknown follow-up result {status!r}; "
+                         f"expected one of {FOLLOWUP_RESULT_STATUSES}")
+    root = root or config.PATHS.projects
+    return metadata.put_followup_result(root, request_id, status, note)
+
+
+def followup_history(candidate_id: str, root: Path | None = None) -> list[dict]:
+    root = root or config.PATHS.projects
+    return metadata.followup_history(root, candidate_id)
+
+
+# --- Multi-reviewer voting (roadmap: citizen-science / crowd labelling) -----
+#
+# `labels` is one row per candidate, last write wins -- exactly what a
+# single expert reviewer's judgement needs, and what `active_review.py`,
+# `review.evaluate`, and the ranker already trust unchanged. Citizen-science
+# voting needs the opposite shape: many independent reviewers, each casting
+# their own vote for the same candidate, none of them overwriting another.
+# `metadata.label_votes` is append-only for exactly that reason, modelled on
+# the same one-candidate-to-many-rows pattern `followup_requests` above
+# already established. Promotion from votes to the single authoritative
+# label is always an explicit, gated action (`promote_vote_consensus`) that
+# calls `record_label` unchanged -- never automatic, and never a fork of it.
+
+MIN_VOTES = 3
+MIN_AGREEMENT = 0.6
+
+
+def cast_label_vote(candidate_id: str, reviewer_id: str, label: str, note: str = "",
+                    root: Path | None = None, *, arm: str | None = None,
+                    displayed_score: float | None = None,
+                    decision_latency_ms: int | None = None,
+                    self_reported_confidence: float | None = None,
+                    presentation_index: int | None = None) -> dict:
+    if label not in LABELS:
+        raise ValueError(f"unknown label {label!r}; expected one of {LABELS}")
+    if not reviewer_id.strip():
+        raise ValueError("reviewer_id must not be empty")
+    root = root or config.PATHS.projects
+    vote_id = f"vote_{uuid.uuid4().hex}"
+    return metadata.put_label_vote(
+        root, vote_id, candidate_id, reviewer_id, label, note, arm=arm,
+        displayed_score=displayed_score, decision_latency_ms=decision_latency_ms,
+        self_reported_confidence=self_reported_confidence,
+        presentation_index=presentation_index)
+
+
+def label_votes(candidate_id: str, root: Path | None = None) -> list[dict]:
+    root = root or config.PATHS.projects
+    return metadata.label_votes(root, candidate_id)
+
+
+def all_label_votes(root: Path | None = None) -> list[dict]:
+    root = root or config.PATHS.projects
+    return metadata.all_label_votes(root)
+
+
+def label_vote_tally(candidate_id: str, root: Path | None = None) -> dict:
+    """Vote counts per label, the current majority label, and how much of
+    the vote it commands -- `None` majority/agreement when no votes exist
+    yet, never a fabricated 0.0."""
+    votes = label_votes(candidate_id, root)
+    counts = {name: 0 for name in LABELS}
+    for vote in votes:
+        name = vote.get("label")
+        if name in counts:
+            counts[name] += 1
+    total = len(votes)
+    majority_label = max(counts, key=lambda name: counts[name]) if total else None
+    agreement_fraction = (counts[majority_label] / total
+                          if total and majority_label else None)
+    return {"total": total, "by_label": counts,
+           "majority_label": majority_label if total else None,
+           "agreement_fraction": agreement_fraction}
+
+
+def promote_vote_consensus(candidate_id: str, root: Path | None = None,
+                           min_votes: int = MIN_VOTES,
+                           min_agreement: float = MIN_AGREEMENT) -> dict:
+    """Promote the vote majority to the authoritative `labels` table --
+    always explicit, always gated, mirroring `review.evaluate`'s own
+    "report the gate, don't silently degrade" discipline (`review.py`'s
+    `MIN_LABELS`/`MIN_PER_CLASS`)."""
+    root = root or config.PATHS.projects
+    tally = label_vote_tally(candidate_id, root)
+    gate = {"minimum_votes": min_votes, "minimum_agreement": min_agreement,
+            "votes": tally["total"], "agreement_fraction": tally["agreement_fraction"]}
+    if (tally["total"] < min_votes
+            or (tally["agreement_fraction"] or 0.0) < min_agreement):
+        return {"promoted": False, "reason": "insufficient votes or agreement", **gate}
+
+    majority_label = tally["majority_label"]
+    record_label(candidate_id, majority_label,
+                 note=f"promoted from {tally['total']} community votes "
+                      f"({tally['agreement_fraction']:.0%} agreement)",
+                 root=root)
+    return {"promoted": True, "label": majority_label, **gate}

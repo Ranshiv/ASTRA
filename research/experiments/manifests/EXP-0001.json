@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "kind": "ablation_suite",
+  "provenance": {
+    "experiment_id": "EXP-0001",
+    "created_utc": "2026-08-17T15:06:23+00:00",
+    "code_version": "0859a67bd283933d",
+    "feature_version": 1,
+    "preprocessing_version": 1,
+    "code_revision": null,
+    "feature_schema_hash": "",
+    "preprocessing_schema_hash": "",
+    "dataset_hash": null,
+    "dataset_id": null,
+    "model_version": null,
+    "seed": 42,
+    "hardware": {
+      "device": "cuda",
+      "reason": "CUDA device available (2759 MB free).",
+      "torch_available": true,
+      "cuda_available": true,
+      "gpu": {
+        "name": "NVIDIA GeForce GTX 1650",
+        "total_vram_mb": 4096,
+        "free_vram_mb": 2759,
+        "compute_capability": "7.5",
+        "driver_version": "592.82"
+      }
+    },
+    "environment": {
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "numpy": "2.5.2",
+      "scipy": "1.18.0",
+      "sklearn": "1.9.0",
+      "astropy": "8.0.1",
+      "astroquery": "0.4.11",
+      "lightkurve": "2.6.0",
+      "pyarrow": "25.0.1",
+      "torch": "2.13.0+cu126"
+    },
+    "benchmark_id": null,
+    "split_id": null,
+    "manifest_content_hash": null,
+    "label_set_hash": null,
+    "result_artifact_paths": []
+  },
+  "configuration": {
+    "fraction": 0.1,
+    "seed": 42
+  },
+  "results": {
+    "survey_groups": {
+      "kind": "survey_groups",
+      "rows": [
+        {
+          "name": "ztf_only",
+          "roc_auc": 0.5106,
+          "average_precision": 0.1293,
+          "rows_scored": 272,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "gaia_only",
+          "roc_auc": null,
+          "average_precision": null,
+          "rows_scored": 0,
+          "comparable": false,
+          "note": "no stored data for gaia"
+        },
+        {
+          "name": "tess_only",
+          "roc_auc": null,
+          "average_precision": null,
+          "rows_scored": 0,
+          "comparable": true,
+          "note": "only 3 rows; need 10"
+        },
+        {
+          "name": "ztf_gaia",
+          "roc_auc": null,
+          "average_precision": null,
+          "rows_scored": 0,
+          "comparable": false,
+          "note": "no stored data for gaia"
+        },
+        {
+          "name": "ztf_tess",
+          "roc_auc": null,
+          "average_precision": null,
+          "rows_scored": 407,
+          "comparable": false,
+          "note": "survey sizes differ too much to compare ({'ztf': 404, 'tess': 3}); the groups would describe different object populations"
+        },
+        {
+          "name": "gaia_tess",
+          "roc_auc": null,
+          "average_precision": null,
+          "rows_scored": 0,
+          "comparable": false,
+          "note": "no stored data for gaia"
+        },
+        {
+          "name": "all_three",
+          "roc_auc": null,
+          "average_precision": null,
+          "rows_scored": 0,
+          "comparable": false,
+          "note": "no stored data for gaia"
+        }
+      ],
+      "best": "ztf_only",
+      "baseline": "ztf_only",
+      "deltas_vs_baseline": {}
+    },
+    "feature_groups": {
+      "kind": "feature_groups",
+      "rows": [
+        {
+          "name": "all_features",
+          "roc_auc": 0.824,
+          "average_precision": 0.4483,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "without_scatter",
+          "roc_auc": 0.8093,
+          "average_precision": 0.4405,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "without_differences",
+          "roc_auc": 0.8295,
+          "average_precision": 0.4473,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "without_shape",
+          "roc_auc": 0.8395,
+          "average_precision": 0.3928,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "without_extremes",
+          "roc_auc": 0.8182,
+          "average_precision": 0.4528,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "without_coverage",
+          "roc_auc": 0.8422,
+          "average_precision": 0.4618,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        }
+      ],
+      "best": "without_coverage",
+      "baseline": "all_features",
+      "deltas_vs_baseline": {
+        "without_scatter": -0.0146,
+        "without_differences": 0.0055,
+        "without_shape": 0.0155,
+        "without_extremes": -0.0058,
+        "without_coverage": 0.0182
+      }
+    },
+    "detectors": {
+      "kind": "detectors",
+      "rows": [
+        {
+          "name": "ensemble",
+          "roc_auc": 0.824,
+          "average_precision": 0.4483,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "isolation_forest",
+          "roc_auc": 0.8395,
+          "average_precision": 0.4397,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "lof",
+          "roc_auc": 0.8269,
+          "average_precision": 0.4218,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "one_class_svm",
+          "roc_auc": 0.6461,
+          "average_precision": 0.2687,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        },
+        {
+          "name": "pca_reconstruction",
+          "roc_auc": 0.8012,
+          "average_precision": 0.4196,
+          "rows_scored": 301,
+          "comparable": true,
+          "note": ""
+        }
+      ],
+      "best": "isolation_forest",
+      "baseline": "ensemble",
+      "deltas_vs_baseline": {
+        "isolation_forest": 0.0155,
+        "lof": 0.003,
+        "one_class_svm": -0.1779,
+        "pca_reconstruction": -0.0228
+      }
+    }
+  },
+  "runtime_seconds": 583.256,
+  "notes": "Plan section 20 experiment groups plus feature and detector ablations.",
+  "record_hash": "b6a8e0fd36b1b148e7b63bb11dfe5de33b526a09a8f4801dc1373e4b50b3e8ce"
+}

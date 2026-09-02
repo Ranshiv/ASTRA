@@ -1,0 +1,672 @@
+{
+  "schema_version": 2,
+  "kind": "hyperparameter_sweep",
+  "provenance": {
+    "experiment_id": "EXP-0021",
+    "created_utc": "2026-09-01T23:41:17+00:00",
+    "code_version": "9c3c93323bba91e5",
+    "feature_version": 2,
+    "preprocessing_version": 2,
+    "code_revision": "2a8a9acfc44d6c98aeca0a88bf3e57e8b716e406",
+    "feature_schema_hash": "eb1da88160a9899e",
+    "preprocessing_schema_hash": "bee9fd02c6f93367",
+    "dataset_hash": null,
+    "dataset_id": null,
+    "model_version": null,
+    "seed": 17,
+    "hardware": {
+      "device": "cuda",
+      "reason": "CUDA device available (3009 MB free).",
+      "torch_available": true,
+      "cuda_available": true,
+      "gpu": {
+        "name": "NVIDIA GeForce GTX 1650",
+        "total_vram_mb": 4096,
+        "free_vram_mb": 3009,
+        "compute_capability": "7.5",
+        "driver_version": "592.82"
+      }
+    },
+    "environment": {
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "numpy": "2.5.2",
+      "scipy": "1.18.0",
+      "sklearn": "1.9.0",
+      "astropy": "8.0.1",
+      "astroquery": "0.4.11",
+      "lightkurve": "2.6.0",
+      "pyarrow": "25.0.1",
+      "torch": "2.13.0+cu126"
+    },
+    "benchmark_id": null,
+    "split_id": null,
+    "manifest_content_hash": null,
+    "label_set_hash": null,
+    "result_artifact_paths": []
+  },
+  "configuration": {
+    "kind": "autoencoder",
+    "survey": "ztf",
+    "seeds": [
+      17,
+      29,
+      43
+    ],
+    "resample_mode": "time",
+    "epochs": 20,
+    "limit": 10000,
+    "overrides": {
+      "latent_dim": [
+        8,
+        32
+      ]
+    }
+  },
+  "results": {
+    "kind": "autoencoder",
+    "seeds": [
+      17,
+      29,
+      43
+    ],
+    "rows": 373,
+    "trials": [
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.0003
+        },
+        "model_parameters": 138705,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7834,
+          "std": 0.0304,
+          "ci95": [
+            0.7574,
+            0.8143
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.4255,
+          "std": 0.0752,
+          "ci95": [
+            0.3505,
+            0.4926
+          ],
+          "n": 3
+        },
+        "seconds": 1.97,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.001
+        },
+        "model_parameters": 40377,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7826,
+          "std": 0.0314,
+          "ci95": [
+            0.763,
+            0.8161
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.4277,
+          "std": 0.0886,
+          "ci95": [
+            0.3653,
+            0.5219
+          ],
+          "n": 3
+        },
+        "seconds": 1.8,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.0003
+        },
+        "model_parameters": 40377,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7785,
+          "std": 0.0405,
+          "ci95": [
+            0.7516,
+            0.8217
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.4046,
+          "std": 0.0753,
+          "ci95": [
+            0.3298,
+            0.4722
+          ],
+          "n": 3
+        },
+        "seconds": 3.7,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32,
+            64
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.0003
+        },
+        "model_parameters": 61145,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7783,
+          "std": 0.0238,
+          "ci95": [
+            0.7568,
+            0.8018
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3834,
+          "std": 0.0702,
+          "ci95": [
+            0.334,
+            0.4581
+          ],
+          "n": 3
+        },
+        "seconds": 1.58,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32,
+            64
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.0003
+        },
+        "model_parameters": 159473,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7749,
+          "std": 0.0278,
+          "ci95": [
+            0.7555,
+            0.8045
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3637,
+          "std": 0.0377,
+          "ci95": [
+            0.3321,
+            0.4024
+          ],
+          "n": 3
+        },
+        "seconds": 1.93,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            32,
+            64,
+            128
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.0003
+        },
+        "model_parameters": 173481,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.773,
+          "std": 0.0405,
+          "ci95": [
+            0.7457,
+            0.8162
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3761,
+          "std": 0.0613,
+          "ci95": [
+            0.3136,
+            0.4283
+          ],
+          "n": 3
+        },
+        "seconds": 1.39,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            32,
+            64,
+            128
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.001
+        },
+        "model_parameters": 173481,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7599,
+          "std": 0.0198,
+          "ci95": [
+            0.7485,
+            0.7811
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3525,
+          "std": 0.1086,
+          "ci95": [
+            0.257,
+            0.4617
+          ],
+          "n": 3
+        },
+        "seconds": 2.95,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.001
+        },
+        "model_parameters": 138705,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7588,
+          "std": 0.0387,
+          "ci95": [
+            0.7315,
+            0.8
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3461,
+          "std": 0.058,
+          "ci95": [
+            0.3069,
+            0.4081
+          ],
+          "n": 3
+        },
+        "seconds": 1.9,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32,
+            64
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.001
+        },
+        "model_parameters": 159473,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.758,
+          "std": 0.0305,
+          "ci95": [
+            0.7303,
+            0.7881
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.327,
+          "std": 0.0039,
+          "ci95": [
+            0.3233,
+            0.3307
+          ],
+          "n": 3
+        },
+        "seconds": 1.92,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.003
+        },
+        "model_parameters": 40377,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7562,
+          "std": 0.0183,
+          "ci95": [
+            0.7367,
+            0.7675
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3396,
+          "std": 0.0172,
+          "ci95": [
+            0.3212,
+            0.3511
+          ],
+          "n": 3
+        },
+        "seconds": 1.86,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            32,
+            64,
+            128
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.001
+        },
+        "model_parameters": 370113,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.756,
+          "std": 0.0421,
+          "ci95": [
+            0.7256,
+            0.8007
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3323,
+          "std": 0.0876,
+          "ci95": [
+            0.2657,
+            0.4246
+          ],
+          "n": 3
+        },
+        "seconds": 3.16,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            32,
+            64,
+            128
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.003
+        },
+        "model_parameters": 173481,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7474,
+          "std": 0.0126,
+          "ci95": [
+            0.7361,
+            0.7599
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3099,
+          "std": 0.0525,
+          "ci95": [
+            0.2554,
+            0.3525
+          ],
+          "n": 3
+        },
+        "seconds": 2.89,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            32,
+            64,
+            128
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.0003
+        },
+        "model_parameters": 370113,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7462,
+          "std": 0.019,
+          "ci95": [
+            0.7284,
+            0.7646
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.2848,
+          "std": 0.0455,
+          "ci95": [
+            0.2425,
+            0.3289
+          ],
+          "n": 3
+        },
+        "seconds": 3.14,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32,
+            64
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.001
+        },
+        "model_parameters": 61145,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7455,
+          "std": 0.0024,
+          "ci95": [
+            0.7431,
+            0.7477
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.3147,
+          "std": 0.0612,
+          "ci95": [
+            0.2536,
+            0.3692
+          ],
+          "n": 3
+        },
+        "seconds": 2.35,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32,
+            64
+          ],
+          "latent_dim": 8,
+          "learning_rate": 0.003
+        },
+        "model_parameters": 61145,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7434,
+          "std": 0.0217,
+          "ci95": [
+            0.7209,
+            0.7608
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.2959,
+          "std": 0.036,
+          "ci95": [
+            0.2709,
+            0.3343
+          ],
+          "n": 3
+        },
+        "seconds": 2.29,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.003
+        },
+        "model_parameters": 138705,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7211,
+          "std": 0.0635,
+          "ci95": [
+            0.6671,
+            0.7859
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.2863,
+          "std": 0.0677,
+          "ci95": [
+            0.2338,
+            0.3573
+          ],
+          "n": 3
+        },
+        "seconds": 1.87,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            32,
+            64,
+            128
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.003
+        },
+        "model_parameters": 370113,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7181,
+          "std": 0.0195,
+          "ci95": [
+            0.7049,
+            0.7389
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.2641,
+          "std": 0.0434,
+          "ci95": [
+            0.2356,
+            0.3105
+          ],
+          "n": 3
+        },
+        "seconds": 3.4,
+        "note": ""
+      },
+      {
+        "parameters": {
+          "channels": [
+            16,
+            32,
+            64
+          ],
+          "latent_dim": 32,
+          "learning_rate": 0.003
+        },
+        "model_parameters": 159473,
+        "scored_seeds": 3,
+        "roc_auc": {
+          "mean": 0.7173,
+          "std": 0.0367,
+          "ci95": [
+            0.678,
+            0.7413
+          ],
+          "n": 3
+        },
+        "average_precision": {
+          "mean": 0.26,
+          "std": 0.0183,
+          "ci95": [
+            0.2463,
+            0.2794
+          ],
+          "n": 3
+        },
+        "seconds": 2.33,
+        "note": ""
+      }
+    ],
+    "best": null,
+    "separated": false,
+    "note": "No configuration separates from the runner-up across these seeds; the ranking is not evidence of a better setting."
+  },
+  "runtime_seconds": 43.454,
+  "notes": "Grid search over deep-model capacity and optimisation, scored by injection recovery across independent seeds. A winner is reported only when its seed interval separates from the runner-up's.",
+  "record_hash": "6f5ca337530c11001f77d4f253af80326a2d59d3a5f87e502aa16cb9d19f81f4"
+}

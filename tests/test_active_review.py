@@ -132,6 +132,12 @@ def test_reviewer_agreement_with_priority_reports_not_ready_below_gate(tmp_path)
     assert result["ready"] is False
 
 
-def test_active_review_is_not_wired_into_rpc():
-    rpc_source = (Path(__file__).parent.parent / "engine" / "astra" / "rpc.py").read_text()
-    assert "active_review" not in rpc_source
+def test_active_review_is_wired_into_rpc_for_active_mode():
+    """Deliberately promoted (docs/DEFERRED.txt, roadmap item 36): `review.next`
+    with `active=True` reweights via active_review; see test_rpc.py for the
+    dispatch-level behavior this wiring provides."""
+    # `review.next`'s handler lives in rpc_handlers/tap_review.py (rpc.py
+    # itself is now just the protocol plus the composed HANDLERS table).
+    handler_source = (Path(__file__).parent.parent / "engine" / "astra"
+                      / "rpc_handlers" / "tap_review.py").read_text()
+    assert "active_review" in handler_source

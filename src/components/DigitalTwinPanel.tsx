@@ -20,7 +20,7 @@ import {
   type DigitalTwinTransferResult,
   type SurveyProfileSummary,
 } from "@/lib/engine";
-import { Badge, Button, Empty, KeyValue, Note, Panel, Select, Table, num } from "@/components/ui";
+import { Badge, Button, Empty, Field, KeyValue, Note, Panel, Select, Table, num } from "@/components/ui";
 
 const SURVEY_OPTIONS = [
   { value: "ZTF", label: "ZTF" },
@@ -170,11 +170,11 @@ export function DigitalTwinPanel({ projectId: _projectId }: { projectId?: string
         actions={
           <div className="flex items-end gap-2">
             <Select label="Survey" value={survey} options={SURVEY_OPTIONS} onChange={setSurvey} />
-            <input
+            <Field
+              label="Limit"
               value={limit}
-              onChange={(event) => setLimit(event.target.value)}
-              aria-label="Curve limit"
-              className="h-8 w-20 rounded border border-[var(--color-edge)] bg-[var(--color-panel-2)] px-2 text-xs"
+              onChange={setLimit}
+              width="w-20"
             />
             <Button icon={Waves} disabled={sampleBusy} onClick={() => void fitAndSample()}>
               {sampleBusy ? "Fitting…" : "Fit & sample"}

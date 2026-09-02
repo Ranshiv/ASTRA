@@ -55,10 +55,59 @@ re-derived ad hoc per run.
 - Reuses `engine/astra/artifact_bank_eval.py: evaluate_cross_group_auprc`
   (real, leave-one-group-out by camera/CCD/night) directly rather than a
   new evaluator.
-- **Status this release**: infrastructure wired (the runner can call it),
-  but not executed against a fresh acquisition this session — see
-  docs/LIMITATIONS.md. TESS TPF pixel acquisition is a separate step from
-  the light-curve acquisition this session's demonstration corpus used.
+- **Status**: infrastructure wired, and one real TPF has now been pulled —
+  the benchmark itself has still not been executed. `p0-pleiades-2026` is
+  the first acquisition in this project's evidence package to return real
+  TESS *light curves* (8 sources, 30 SPOC curves), up from every prior
+  dataset's 0. Using one of those real TESS sources' position
+  (`TIC 125736995`, RA=56.6639, Dec=24.1032), `tess_pixels.download_tpf`
+  pulled a real 20×20-pixel, 3534-cadence SPOC TESScut TPF from MAST
+  (sector 42; `tess_pixels.find_sectors` also confirmed sectors 43, 44, 70,
+  71 cover the same position) — 28.5 MB, cassette-recorded through the
+  `netclient.download` cassette layer this session added, and verified: an
+  offline replay reproduces the identical `fits_sha256` in ~1.4 s with zero
+  network access. This is the *first* real download-cassette exercise
+  against a real product in this project, not only the unit-test fixtures
+  in `test_research_cassettes.py`.
+  **Now benchmarked at real, small-but-growing scale, across all three
+  grouping axes.** Six real TPFs have been pulled from MAST (3 targets x
+  2 sectors each, chosen specifically for sky/epoch diversity):
+  `TIC 125736995` sectors 42 & 70, `TIC 950029959` sectors 23 & 49,
+  `TIC 63003344` sectors 14 & 55. `extract_camera_ccd`'s FITS-header
+  assumption is confirmed live (`CAMERA=4`/`CCD=4` read correctly from the
+  first TPF's real header). `artifact_bank.build_patch_bank` over all six
+  real files yields 38 real patches spanning 2 real cameras, 3 real CCDs,
+  and 4 real nights, with real TESS-quality-flag-derived labels (19 clean,
+  19 defect-flagged — `stray_light`/`excluded` categories, not synthetic
+  injection). `evaluate_cross_group_auprc` run on all three real axes,
+  sealed as `BenchmarkSpec artifact-rejection-p0-v2` (`EXP-0024`):
+
+  | Grouping | Mean AUPRC | Worst fold |
+  |---|---|---|
+  | camera (2 groups) | 0.6411 | held-out camera 2: 0.6333 (n_test=6) |
+  | ccd (3 groups) | 0.7974 | held-out ccd 3: 0.5 — chance level (n_test=2) |
+  | night (4 groups) | 0.7091 | held-out 2022-02-26: 0.4167 — below chance (n_test=4) |
+
+  **This is a materially different, more honest finding than the earlier
+  3-TPF run's 0.9872**: with genuine camera/CCD/night diversity, cross-
+  group generalization is real but far from perfect, and at least one held-
+  out fold per axis performs at or below chance. A `use_coral=True` rerun
+  on the camera axis (domain-adapting training features to the held-out
+  camera before training) scored **mean AUPRC 0.5834 — worse, not
+  better** (one fold improved 0.6333→0.8333; the other, trained on only 6
+  patches, got worse 0.649→0.3335). This is reported as a genuine negative
+  result: CORAL alignment does not clearly help at this sample size, most
+  plausibly because a 6-patch training set makes any alignment estimate
+  too noisy to trust, not because domain adaptation is unhelpful in
+  principle. The `metrics.jsonl` row for `artifact-rejection-p0` (3-TPF,
+  0.9872) is preserved rather than deleted — both are real, both are
+  honestly small-sample, and the newer, larger, more diverse run is the
+  one to trust.
+  **Read this correctly**: 38 patches across up to 4 groups is still a
+  real proof-of-concept, not a release-scale claim — several folds have
+  single-digit test counts, and no bootstrap CI is reported at this sample
+  size. A real release-scale run needs TPFs spanning many more cameras/
+  CCDs/nights with a much larger, more balanced patch count per group.
 
 ## Experimental standards
 

@@ -100,6 +100,31 @@ class TestConeSearch:
         monkeypatch.setattr(lk, "search_lightcurve", lambda *a, **k: _FakeSearch([], []))
         assert KeplerConnector().cone_search(cone) == []
 
+    def test_masked_sequence_number_is_skipped_not_fatal(self, monkeypatch, cone: ConeQuery):
+        # Real bug found live against a real Kepler-field query: a masked
+        # (missing) `sequence_number` cell -- common in real MAST search
+        # results, astropy masked columns -- raised numpy.ma.MaskError on
+        # `int(...)`, which `_record_quarter`'s `except (TypeError,
+        # ValueError)` did not catch, crashing the whole cone_search() for
+        # every target in the batch over one target's missing quarter.
+        rows = [
+            {"target_name": "9726699", "s_ra": 297.415, "s_dec": 46.949,
+             "sequence_number": np.ma.masked},
+            {"target_name": "9726700", "s_ra": 297.42, "s_dec": 46.95,
+             "sequence_number": 5},
+        ]
+        columns = ["target_name", "s_ra", "s_dec", "sequence_number"]
+        fake_search = _FakeSearch(rows, columns)
+
+        import lightkurve as lk
+        monkeypatch.setattr(lk, "search_lightcurve", lambda *a, **k: fake_search)
+
+        sources = KeplerConnector().cone_search(cone, limit=10)
+        assert len(sources) == 2
+        by_id = {s.object_id: s for s in sources}
+        assert by_id["KIC 9726699"].extra["quarters"] == []
+        assert by_id["KIC 9726700"].extra["quarters"] == [5]
+
     def test_respects_limit(self, monkeypatch, cone: ConeQuery):
         rows = [{"target_name": str(i), "s_ra": 1.0, "s_dec": 1.0, "sequence_number": 1}
                for i in range(5)]

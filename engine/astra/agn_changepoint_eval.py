@@ -8,10 +8,10 @@ project's 500-line guideline (same `stellar_manifold.py`/
 Reuses `sn_classification.truncate_light_curve` UNCHANGED for the
 cutoff-grid early-alert simulation -- the identical client-side mechanism
 item 19 built for early SN classification, now applied to flagging a
-change-point instead of a class label. `_summary()`'s mean/std/ci95 shape
-is this module's own local reimplementation (the same shape items 18-19
-both already carry their own copy of, not a shared import -- each eval
-module in this family stays self-contained).
+change-point instead of a class label. `_summary()`'s mean/std/ci95 shape delegates to `research.stats.summary`
+(migrated per docs/LIMITATIONS.md's tracked _summary-duplication debt --
+this and the other eval modules in this family used to each carry their
+own copy of this shape; now they share one implementation).
 
 "Lead time" has no prior definition in this codebase or, to this module's
 knowledge, one single universally agreed literature definition; the one
@@ -30,6 +30,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .research import stats as research_stats
+
 from .agn_changepoint import (
     AGNChangepointError, calibrate_changepoint_significance, changepoint_evidence,
     default_flare_guess, fit_drw, tde_flare_model,
@@ -38,15 +40,11 @@ from .sn_classification import truncate_light_curve
 
 
 def _summary(values: list[float]) -> dict | None:
-    finite = np.asarray([v for v in values if np.isfinite(v)], dtype=np.float64)
-    if not len(finite):
-        return None
-    return {
-        "mean": round(float(np.mean(finite)), 4),
-        "std": round(float(np.std(finite, ddof=1)), 4) if len(finite) > 1 else 0.0,
-        "ci95": [round(float(np.quantile(finite, 0.025)), 4),
-                round(float(np.quantile(finite, 0.975)), 4)],
-    }
+    """Delegates to `research.stats.summary` -- see that module's docstring
+    for why this shape (mean/std/ci95 over repeated seeds, not object-group
+    bootstrap) is the right one here. Was this module's own local
+    reimplementation; migrated per docs/LIMITATIONS.md's tracked debt."""
+    return research_stats.summary(values)
 
 
 @dataclass(frozen=True)

@@ -22,11 +22,6 @@ export function CandidateFoldPanel({
     setCurve(null);
     setFolded(null);
     setFoldError(null);
-    setPeriod(
-      typeof bestPeriodDays === "number" && Number.isFinite(bestPeriodDays) && bestPeriodDays > 0
-        ? String(bestPeriodDays)
-        : "",
-    );
     if (path) {
       engine
         .curveGet(path, 2000, "BJD_TDB")
@@ -40,8 +35,19 @@ export function CandidateFoldPanel({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  // Separate from the fetch above: refetching the same curve every time a
+  // period re-estimate arrives for it would be wasted network traffic, but
+  // the field still needs to pick up a fresh `bestPeriodDays` for the SAME
+  // path (e.g. a period detector re-run) rather than only on first mount.
+  useEffect(() => {
+    setPeriod(
+      typeof bestPeriodDays === "number" && Number.isFinite(bestPeriodDays) && bestPeriodDays > 0
+        ? String(bestPeriodDays)
+        : "",
+    );
+  }, [path, bestPeriodDays]);
 
   async function applyFold() {
     if (!curve) return;

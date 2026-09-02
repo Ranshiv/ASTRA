@@ -11,7 +11,7 @@ import {
 } from "@/lib/engine";
 import { Badge, Button, Field, Note, Panel, Table } from "@/components/ui";
 
-const ALL_SURVEYS = ["ztf", "gaia", "tess"];
+const ALL_SURVEYS = ["ztf", "gaia", "tess", "sdss", "panstarrs"];
 
 export function AcquirePanel({
   surveys,
@@ -25,6 +25,7 @@ export function AcquirePanel({
   const [ra, setRa] = useState("291.3663");
   const [dec, setDec] = useState("42.7844");
   const [radius, setRadius] = useState("10");
+  const [limit, setLimit] = useState("200");
   const [selected, setSelected] = useState<string[]>(ALL_SURVEYS);
   const [job, setJob] = useState<EngineJob | null>(null);
   const [result, setResult] = useState<AcquisitionResult | ProjectAcquisitionResult | null>(null);
@@ -53,10 +54,10 @@ export function AcquirePanel({
         dec_deg: Number(dec),
         radius_arcsec: Number(radius),
         surveys: selected,
-        limit: 5,
+        limit: Number(limit),
         project_id: projectId,
       };
-      const key = ["acquire", params.ra_deg, params.dec_deg, params.radius_arcsec, ...[...selected].sort()].join(":");
+      const key = ["acquire", params.ra_deg, params.dec_deg, params.radius_arcsec, params.limit, ...[...selected].sort()].join(":");
       const submitted = await engine.jobSubmit("acquire.cone", params, projectId, key);
 
       // Idempotent replay: submitting the same cone+surveys again while an
@@ -86,7 +87,7 @@ export function AcquirePanel({
     try {
       const params = {
         surveys: selected,
-        limit: 5,
+        limit: Number(limit),
         project_id: projectId,
         skip_existing: true,
       };
@@ -147,15 +148,18 @@ export function AcquirePanel({
   const valid =
     Number.isFinite(Number(ra)) && Number(ra) >= 0 && Number(ra) < 360 &&
     Number.isFinite(Number(dec)) && Number(dec) >= -90 && Number(dec) <= 90 &&
-    Number.isFinite(Number(radius)) && Number(radius) > 0 && selected.length > 0;
+    Number.isFinite(Number(radius)) && Number(radius) > 0 &&
+    Number.isFinite(Number(limit)) && Number(limit) > 0 && selected.length > 0;
 
   function validateForm() {
     const raValue = Number(ra);
     const decValue = Number(dec);
     const radiusValue = Number(radius);
+    const limitValue = Number(limit);
     if (!Number.isFinite(raValue) || raValue < 0 || raValue >= 360) return "RA must be between 0 and 360 degrees.";
     if (!Number.isFinite(decValue) || decValue < -90 || decValue > 90) return "Dec must be between −90 and +90 degrees.";
     if (!Number.isFinite(radiusValue) || radiusValue <= 0) return "Radius must be greater than 0 arcsec.";
+    if (!Number.isFinite(limitValue) || limitValue <= 0) return "Max sources per survey must be greater than 0.";
     if (selected.length === 0) return "Select at least one survey.";
     return null;
   }
@@ -166,7 +170,7 @@ export function AcquirePanel({
       title="Acquire"
       description="Cone search across the selected surveys. Raw files are extracted to Parquet and the downloads discarded."
     >
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <Field
           id="acquire-ra"
           label="RA (deg)"
@@ -197,6 +201,16 @@ export function AcquirePanel({
           width="w-full"
           error={radius && (!(Number(radius) > 0) || !Number.isFinite(Number(radius))) ? "Must be greater than 0" : undefined}
         />
+        <Field
+          id="acquire-limit"
+          label="Max sources / survey"
+          value={limit}
+          onChange={setLimit}
+          min={1}
+          step="1"
+          width="w-full"
+          error={limit && (!(Number(limit) > 0) || !Number.isFinite(Number(limit))) ? "Must be greater than 0" : undefined}
+        />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -209,7 +223,7 @@ export function AcquirePanel({
               type="button"
               onClick={() => toggle(key)}
               aria-pressed={on}
-              className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs transition ${
+              className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)] ${
                 on
                   ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
                   : "border-[var(--color-edge)] text-[var(--color-muted)] hover:border-[var(--color-muted)]"

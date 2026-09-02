@@ -75,6 +75,28 @@ def test_result_records_real_and_synthetic_kept_separate(research_root):
     assert store.load_result_records(synthetic=True) == []
 
 
+def test_result_records_accumulate_across_calls(research_root):
+    """Regression: `save_result_records` used to open the file in `"w"`
+    mode, so a second real benchmark run would silently erase every prior
+    run's rows -- a real bug this project's own P0 evidence run hit and
+    recovered from via git history. Every call must add to the leaderboard,
+    never replace it."""
+    first = ResultRecord(experiment_id="EXP-0001", benchmark_id="bench-1",
+                         split_id="s1", dataset_manifest_hash="abc", metric="auprc",
+                         value=0.7, sample_count=100, confidence_interval=[0.6, 0.8],
+                         seed=0, synthetic=False)
+    second = ResultRecord(experiment_id="EXP-0002", benchmark_id="bench-1",
+                          split_id="s1", dataset_manifest_hash="def", metric="auprc",
+                          value=0.8, sample_count=50, confidence_interval=[0.7, 0.9],
+                          seed=0, synthetic=False)
+
+    store.save_result_records([first], synthetic=False)
+    store.save_result_records([second], synthetic=False)
+
+    loaded = store.load_result_records(synthetic=False)
+    assert {r.experiment_id for r in loaded} == {"EXP-0001", "EXP-0002"}
+
+
 def test_result_records_rejects_mismatched_synthetic_flag(research_root):
     real = ResultRecord(experiment_id="EXP-0001", benchmark_id="bench-1",
                         split_id="s1", dataset_manifest_hash="abc", metric="auprc",

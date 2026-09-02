@@ -1,0 +1,20 @@
+{
+  "benchmark_id": "artifact-rejection-p0-v2",
+  "task_family": "artifact_rejection",
+  "modalities": [
+    "tess_tpf"
+  ],
+  "positive_definition": "real TESS quality-flag-derived defect patch (stray_light/excluded categories) vs real clean-contrast patch, from 6 real downloaded SPOC TPFs across 3 targets x 2 sectors each",
+  "split_ids": [
+    "artifact-rejection-p0-v2_camera_loco",
+    "artifact-rejection-p0-v2_ccd_loco",
+    "artifact-rejection-p0-v2_night_loco"
+  ],
+  "primary_metric": "auprc",
+  "secondary_metrics": [],
+  "seeds": [
+    42
+  ],
+  "created_utc": "2026-09-02T02:21:07+00:00",
+  "notes": "Leave-one-group-out AUPRC over a real 6-TPF, 38-patch bank spanning 2 cameras, 3 CCDs, 4 nights. Real quality-flag labels, no synthetic injection. Supersedes artifact-rejection-p0 (3 TPFs, 30 patches, 2 groups)."
+}

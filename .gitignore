@@ -55,6 +55,13 @@ release/
 !research/labels/*.parquet
 !research/results/**/*.parquet
 
+# Oversized fixture cassettes that violate research/README.md's
+# "kept small per-cassette" policy and exceed GitHub's file size limits.
+research/fixtures/cassettes/157f9cb9611cad8949ccaf76a1140e87d21b59d465a54bd7c8dea689461fd54e.json
+research/fixtures/cassettes/663a9508ed62e121724db5c5c412807b38dde946cc35813c7560966c558935b7.json
+research/fixtures/cassettes/7c89967e7cd3d4c237a7932dee1739946b5746845baf81da1d2a39548c0e1d57.json
+research/fixtures/cassettes/e9d772edc429dd2c4796b169d2045489d1a7dc29cb77ccd16813a4b0e6e15a06.json
+
 # Screenshots / dogfood output produced by running the app locally
 *.png
 !public/**/*.png

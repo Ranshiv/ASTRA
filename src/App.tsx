@@ -2,12 +2,17 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Circle, FolderKanban } from "lucide-react";
 
 import { AcquirePanel } from "@/components/AcquirePanel";
-import { Empty } from "@/components/ui";
+import { Empty, Note } from "@/components/ui";
 import { CurveExplorer } from "@/components/CurveExplorer";
 import { CrossSurveyPanel } from "@/components/CrossSurveyPanel";
 import { Dashboard } from "@/components/Dashboard";
 import { DigitalTwinPanel } from "@/components/DigitalTwinPanel";
 import { ExperimentsView } from "@/components/ExperimentsView";
+import { HabitabilityPanel } from "@/components/HabitabilityPanel";
+import { NeoHazardPanel } from "@/components/NeoHazardPanel";
+import { AsteroseismologyPanel } from "@/components/AsteroseismologyPanel";
+import { BiosignaturePanel } from "@/components/BiosignaturePanel";
+import { TechnosignaturePanel } from "@/components/TechnosignaturePanel";
 import { ExplainPanel } from "@/components/ExplainPanel";
 import { EventsView } from "@/components/EventsView";
 import { ModelsView } from "@/components/ModelsView";
@@ -43,6 +48,11 @@ const PAGE_TITLES: Record<SectionId, string> = {
   models: "Models",
   digitaltwin: "Survey digital twin",
   reports: "Research reports",
+  habitability: "Habitability",
+  neohazard: "NEO hazard",
+  asteroseismology: "Asteroseismology",
+  biosignature: "Biosignature",
+  technosignature: "Technosignature",
   settings: "Settings",
 };
 
@@ -78,7 +88,7 @@ function WorkflowRail({ section, activeProject, onNavigate }: {
           </span>
         </div>
         {!activeProject && (
-          <button type="button" onClick={() => onNavigate("projects")} className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded border border-[var(--color-accent)] px-3 py-1.5 text-xs text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10">
+          <button type="button" onClick={() => onNavigate("projects")} className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded border border-[var(--color-accent)] px-3 py-1.5 text-xs text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)]">
             Create project <ArrowRight size={12} />
           </button>
         )}
@@ -96,7 +106,7 @@ function WorkflowRail({ section, activeProject, onNavigate }: {
                 disabled={!available}
                 aria-current={active ? "step" : undefined}
                 title={item.description}
-                className={`flex min-h-11 w-full items-center gap-2 rounded border px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${active ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-text)]" : "border-[var(--color-edge)] text-[var(--color-muted)] hover:border-[var(--color-muted)]"} disabled:cursor-not-allowed disabled:opacity-45`}
+                className={`flex min-h-11 w-full items-center gap-2 rounded border px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-void)] ${active ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-text)]" : "border-[var(--color-edge)] text-[var(--color-muted)] hover:border-[var(--color-muted)]"} disabled:cursor-not-allowed disabled:opacity-45`}
               >
                 {complete ? <Check size={14} className="shrink-0 text-[var(--color-ok)]" /> : <Circle size={14} className="shrink-0" />}
                 <span className="min-w-0 truncate">{item.label}</span>
@@ -166,7 +176,11 @@ export default function App() {
     engine.curvesList(undefined, 500, activeProject?.project_id).then((curves) => {
       if (!cancelled) setCurvesCount(curves.length);
     }).catch(() => {});
-    engine.candidates().then((result) => {
+    // Without projectId this always read the global default candidate
+    // store (Projects/candidates/default_candidates.json) instead of the
+    // active project's own candidates -- the System status "Candidates"
+    // tile could never reflect anything generated inside a project.
+    engine.candidates("default", 50, activeProject?.project_id).then((result) => {
       if (!cancelled) setCandidatesCount(result.count);
     }).catch(() => {});
     return () => {
@@ -176,6 +190,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded focus:bg-[var(--color-panel)] focus:px-3 focus:py-2">Skip to main content</a>
       <TitleBar />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
@@ -188,8 +203,7 @@ export default function App() {
 
         <div className="flex-1 overflow-y-auto">
           <main id="main-content" className="mx-auto flex max-w-[1400px] flex-col gap-5 px-4 pb-8 pt-4 sm:px-6 lg:px-8">
-            <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:rounded focus:bg-[var(--color-panel)] focus:px-3 focus:py-2">Skip to main content</a>
-            <div className="sticky top-0 z-10 flex flex-col gap-4 border-b border-[var(--color-edge)] bg-[var(--color-void)]/95 pb-4 pt-2 backdrop-blur">
+            <div id="app-header" className="sticky top-0 z-10 flex flex-col gap-4 border-b border-[var(--color-edge)] bg-[var(--color-void)]/95 pb-4 pt-2 backdrop-blur">
               <header className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <h1 className="text-balance text-2xl font-semibold tracking-tight">{PAGE_TITLES[section]}</h1>
@@ -228,7 +242,7 @@ export default function App() {
             {section === "sky" && <SkyExplorer projectId={activeProject?.project_id} />}
 
             {section === "candidates" && (
-              <Suspense fallback={<p className="text-xs text-[var(--color-muted)]">Loading candidate tools…</p>}>
+              <Suspense fallback={<Note>Loading candidate tools…</Note>}>
                 <CandidateWorkspace projectId={activeProject?.project_id} />
               </Suspense>
             )}
@@ -238,6 +252,11 @@ export default function App() {
             {section === "experiments" && <ExperimentsView projectId={activeProject?.project_id} />}
             {section === "models" && <ModelsView projectId={activeProject?.project_id} />}
             {section === "digitaltwin" && <DigitalTwinPanel projectId={activeProject?.project_id} />}
+            {section === "habitability" && <HabitabilityPanel projectId={activeProject?.project_id} />}
+            {section === "neohazard" && <NeoHazardPanel projectId={activeProject?.project_id} />}
+            {section === "asteroseismology" && <AsteroseismologyPanel projectId={activeProject?.project_id} />}
+            {section === "biosignature" && <BiosignaturePanel projectId={activeProject?.project_id} />}
+            {section === "technosignature" && <TechnosignaturePanel projectId={activeProject?.project_id} />}
             {section === "reports" && <ReportsView projectId={activeProject?.project_id} />}
             {section === "settings" && <SettingsView />}
           </main>

@@ -25,7 +25,13 @@ export function SectionHeader({
           )}
         </div>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
+      {/* items-end, not items-center: actions mix single-row Buttons with
+          two-row Field/Select (label above input) -- centering by total
+          height puts a Button's middle at the gap between label and input
+          instead of lining it up with the input box. Bottom-aligning keeps
+          every same-height group identical (no visible change there) and
+          fixes the mixed-height case. */}
+      {actions && <div className="flex flex-wrap items-end gap-1.5">{actions}</div>}
     </div>
   );
 }
