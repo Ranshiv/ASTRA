@@ -43,31 +43,36 @@
     });
   })();
 
-  /* ---------------- Sticky nav shrink ---------------- */
+  /* ---------------- Sticky nav shrink + nav download pill ---------------- */
   (function navScroll() {
     var nav = document.getElementById("site-nav");
     var heroCta = document.getElementById("hero-cta-anchor");
     var navCta = document.getElementById("nav-cta");
     if (!nav) return;
 
+    // Plain scroll-position comparison, not IntersectionObserver: Safari's
+    // collapsing/expanding URL bar resizes the visual viewport as you
+    // scroll, which has known inconsistent interactions with
+    // IntersectionObserver across engines — the nav pill was confirmed
+    // showing before any scroll had happened at all. offsetTop is measured
+    // against the layout viewport, which doesn't have that problem.
+    var heroCtaBottom = heroCta ? heroCta.offsetTop + heroCta.offsetHeight : 0;
+
+    function recomputeHeroCtaBottom() {
+      if (heroCta) heroCtaBottom = heroCta.offsetTop + heroCta.offsetHeight;
+    }
+
     function onScroll() {
       if (window.scrollY > 24) nav.classList.add("scrolled");
       else nav.classList.remove("scrolled");
+
+      if (navCta && heroCta) {
+        navCta.classList.toggle("visible", window.scrollY > heroCtaBottom);
+      }
     }
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-
-    if (heroCta && navCta) {
-      var io = new IntersectionObserver(
-        function (entries) {
-          entries.forEach(function (e) {
-            navCta.classList.toggle("visible", !e.isIntersecting);
-          });
-        },
-        { threshold: 0 }
-      );
-      io.observe(heroCta);
-    }
+    window.addEventListener("resize", recomputeHeroCtaBottom);
   })();
 
   /* ---------------- Scroll reveals ---------------- */

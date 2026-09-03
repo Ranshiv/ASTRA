@@ -171,6 +171,14 @@ footer {
   font-size: 0.85rem;
 }
 
+/* justify-content: space-between only spaces items within one row; when the
+   footer wraps (narrow viewports), the second row needs its own margin or it
+   sits flush against the first — not flex `gap`, see .status-line in
+   sections.css for why. */
+footer > * {
+  margin: 0.4rem 0;
+}
+
 footer a {
   color: var(--color-muted);
   text-decoration: none;
@@ -197,9 +205,9 @@ footer a:hover {
   .arch-tier {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.25rem;
   }
   .arch-tier .detail {
+    margin-top: 0.25rem; /* not flex `gap` — see .status-line in sections.css */
     text-align: left;
   }
   .requirements {
@@ -219,5 +227,8 @@ footer a:hover {
   }
   .hero h1 {
     font-size: 1.9rem;
+  }
+  .schematic-wrap {
+    padding: 1rem;
   }
 }

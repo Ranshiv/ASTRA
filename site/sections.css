@@ -114,6 +114,20 @@
   padding: 2rem;
 }
 
+/* The diagram's labels are set at fixed font sizes inside its own 700-unit
+   viewBox; scaling the whole SVG down to fit a narrow phone shrinks that
+   text below legibility (measured: ~6px tall at 390px viewport width).
+   Give it a floor close to its native size and let it scroll horizontally
+   below that, instead of shrinking further — same trade-off already made
+   for pre.cmds and the checksum block. */
+.schematic-scroll {
+  overflow-x: auto;
+}
+
+.schematic-scroll svg {
+  min-width: 640px;
+}
+
 .schematic-caption {
   margin-top: 1rem;
   font-size: 0.82rem;
