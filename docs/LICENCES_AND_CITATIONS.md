@@ -1,6 +1,8 @@
 # Licences and citations
 
-How to cite ASTRA and the archives it draws on.
+How to cite ASTRA and the archives it draws on. For the full list of
+research papers, data archives, and software libraries the project uses —
+with links and file-level provenance — see `docs/REFERENCES.md`.
 
 ## Citing ASTRA
 

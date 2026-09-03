@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/astra_icon.svg" />
+    <title>ASTRA — References</title>
+    <meta
+      name="description"
+      content="Every research paper, data archive, and software library ASTRA's engine and UI draw on, with links and file-level provenance."
+    />
+    <link rel="preload" href="/fonts/roboto-var.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/roboto-mono-400.woff2" as="font" type="font/woff2" crossorigin />
+    <script src="/theme-boot.js?v=2026-09-02-7"></script>
+    <link rel="stylesheet" href="/base.css?v=2026-09-02-7" />
+    <link rel="stylesheet" href="/sections.css?v=2026-09-02-7" />
+    <link rel="stylesheet" href="/components.css?v=2026-09-02-7" />
+    <link rel="stylesheet" href="/motion.css?v=2026-09-02-7" />
+  </head>
+  <body>
+    <div class="starfield" aria-hidden="true">
+      <div class="layer" style="background-image: radial-gradient(1px 1px at 10% 20%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 40% 70%, var(--color-muted) 50%, transparent 50%), radial-gradient(1.5px 1.5px at 70% 30%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 85% 80%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 25% 90%, var(--color-muted) 50%, transparent 50%); background-size: 400px 400px;"></div>
+      <div class="layer" style="background-image: radial-gradient(1.5px 1.5px at 15% 45%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 55% 15%, var(--color-muted) 50%, transparent 50%), radial-gradient(1px 1px at 80% 55%, var(--color-muted) 50%, transparent 50%), radial-gradient(1.5px 1.5px at 30% 85%, var(--color-muted) 50%, transparent 50%); background-size: 560px 560px; opacity: 0.6;"></div>
+    </div>
+
+    <nav id="site-nav">
+      <div class="nav-inner">
+        <a class="brand" href="/">
+          <img src="/astra_icon.svg" alt="" />
+          <span>ASTRA</span>
+        </a>
+        <div class="nav-links">
+          <a class="navlink" href="/#premise">How it works</a>
+          <a class="navlink" href="/#surveys">Surveys</a>
+          <a class="navlink" href="/#download">Download</a>
+          <a class="navlink" href="/references">References</a>
+          <a class="navlink" href="https://github.com/Ranshiv/ASTRA">GitHub</a>
+          <button id="theme-toggle" class="icon-btn" type="button" aria-label="Switch theme">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <circle cx="12" cy="12" r="4.5" />
+              <path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8L6 18M18 6l1.8-1.8" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main id="top">
+      <section aria-label="References intro">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">References</div>
+            <h2>What ASTRA is built on</h2>
+            <p class="section-lede">
+              Every research paper, data archive, and software library the
+              engine and UI draw on, collected from the codebase itself —
+              each entry names the file it's cited in. See
+              <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/REFERENCES.md">docs/REFERENCES.md</a>
+              in the repository for the same list in Markdown.
+            </p>
+          </div>
+
+          <div class="caveats reveal">
+            <ul>
+              <li><b>Link convention.</b> An arXiv ID or DOI in the code links straight to <span class="mono">arxiv.org</span>/<span class="mono">doi.org</span>. An archive link is the connector's own endpoint. A paper cited only as "Author et al. Year, Journal" with no arXiv ID or DOI in the code links to a pre-filled <a href="https://ui.adsabs.harvard.edu/">NASA ADS</a> search — not a specific record I looked up and asserted.</li>
+              <li><b>Verification status varies by source.</b> Per <span class="mono">research/sources/connector_status.yaml</span>, only <b>ZTF</b> and <b>Gaia</b> are exercised against a real response this session (<span class="mono">live-verified</span>). Many survey connectors are <span class="mono">metadata-only</span> (identity/position rows; light-curve fetch is a documented no-op) or <span class="mono">mock-only</span> (tested only against hand-written mocks). Rubin/LSST TAP is credential-gated and <span class="mono">dormant</span>. Listing a source below documents that ASTRA's code can query it — not that this build has acquired data from it.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Data sources and archives">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Data sources &amp; archives</div>
+            <h2>Surveys, catalogs, and services</h2>
+            <p class="section-lede">
+              Grouped as in <span class="mono">research/sources/source_registry.yaml</span>, the project's machine-readable source registry.
+            </p>
+          </div>
+
+          <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="chev-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></symbol></svg>
+
+          <div class="faq-list">
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-1"><span>Time domain</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-1"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://www.ztf.caltech.edu/ztf-public-releases.html">ZTF Public Data Releases<span class="desc">public · acquired</span></a>
+                  <a href="https://irsa.ipac.caltech.edu/Missions/ztf.html">IRSA ZTF Archive<span class="desc">public · acquired</span></a>
+                  <a href="https://archive.stsci.edu/missions-and-data/tess">MAST TESS<span class="desc">public · registered</span></a>
+                  <a href="https://gea.esac.esa.int/archive/">Gaia Archive<span class="desc">public · acquired</span></a>
+                </div>
+              </div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-2"><span>Labels &amp; classification</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-2"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://simbad.cds.unistra.fr/simbad/">SIMBAD<span class="desc">public · acquired</span></a>
+                  <a href="https://vizier.cds.unistra.fr/">VizieR<span class="desc">public · registered</span></a>
+                  <a href="https://www.aavso.org/vsx/">AAVSO VSX<span class="desc">public · registered</span></a>
+                  <a href="https://www.wis-tns.org/">Transient Name Server (TNS)<span class="desc">registration required · registered</span></a>
+                  <a href="https://exoplanetarchive.ipac.caltech.edu/">NASA Exoplanet Archive<span class="desc">public · registered</span></a>
+                  <a href="https://sites.astro.caltech.edu/ztf/bts/">ZTF Bright Transient Survey<span class="desc">public · registered</span></a>
+                </div>
+              </div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-3"><span>Alerts &amp; events</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-3"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://alerce.science/">ALeRCE Broker<span class="desc">public · registered</span></a>
+                  <a href="https://fink-broker.org/">Fink Broker<span class="desc">public · registered</span></a>
+                  <a href="https://gcn.nasa.gov/">NASA General Coordinates Network (GCN)<span class="desc">public · registered</span></a>
+                  <a href="https://ivoa.net/documents/VOEvent/">IVOA VOEvent<span class="desc">standard · registered</span></a>
+                  <a href="https://api.antares.noirlab.edu/v1">ANTARES (NOIRLab)<span class="desc">public · not yet in registry — engine/astra/surveys/antares.py</span></a>
+                </div>
+              </div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-4"><span>Spectroscopy &amp; broadband context</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-4"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://www.sdss.org/dr18/">SDSS DR18<span class="desc">public · registered</span></a>
+                  <a href="https://data.desi.lbl.gov/doc/releases/">DESI Data Releases<span class="desc">public · registered</span></a>
+                  <a href="https://archive.stsci.edu/missions-and-data/galex">GALEX<span class="desc">public · registered</span></a>
+                  <a href="https://outerspace.stsci.edu/display/PANSTARRS/">Pan-STARRS<span class="desc">public · registered</span></a>
+                  <a href="https://irsa.ipac.caltech.edu/Missions/2mass.html">2MASS<span class="desc">public · registered</span></a>
+                  <a href="https://irsa.ipac.caltech.edu/Missions/wise.html">WISE<span class="desc">public · registered</span></a>
+                  <a href="https://www.cosmos.esa.int/web/herschel">Herschel<span class="desc">public · registered</span></a>
+                </div>
+              </div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-5"><span>X-ray &amp; radio</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-5"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://cxc.harvard.edu/cda/">Chandra Data Archive<span class="desc">public · registered</span></a>
+                  <a href="https://www.cosmos.esa.int/web/xmm-newton/xsa">XMM-Newton Archive (XSA)<span class="desc">public · registered</span></a>
+                  <a href="https://www.swift.ac.uk/archive/">Swift Archive<span class="desc">public · registered</span></a>
+                  <a href="https://erosita.mpe.mpg.de/">eROSITA<span class="desc">public · registered</span></a>
+                  <a href="https://science.nrao.edu/science/surveys/vlass">VLASS<span class="desc">public · registered</span></a>
+                </div>
+              </div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-6"><span>Microlensing, variables &amp; moving objects</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-6"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://ogle.astrouw.edu.pl/">OGLE<span class="desc">public · registered</span></a>
+                  <a href="https://minorplanetcenter.net/web_service/search_orbits">Minor Planet Center<span class="desc">public · not yet in registry — engine/astra/moving_objects.py</span></a>
+                </div>
+              </div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-7"><span>Gravitational wave</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-7"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://gwosc.org/">Gravitational Wave Open Science Center (GWOSC)<span class="desc">public · registered</span></a>
+                  <a href="https://healpix.sourceforge.io/">HEALPix<span class="desc">standard · registered</span></a>
+                </div>
+              </div></div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="ds-a-8"><span>Interoperability, preservation &amp; other endpoints</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="ds-a-8"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://ivoa.net/documents/TAP/">IVOA Table Access Protocol (TAP)<span class="desc">standard · registered</span></a>
+                  <a href="https://ivoa.net/documents/ADQL/">ADQL<span class="desc">standard · registered</span></a>
+                  <a href="https://ivoa.net/documents/VOTable/">VOTable<span class="desc">standard · registered</span></a>
+                  <a href="https://zenodo.org/">Zenodo<span class="desc">public · registered</span></a>
+                  <a href="https://ascl.net/">Astrophysics Source Code Library (ASCL)<span class="desc">public · registered</span></a>
+                  <a href="https://doi.org/10.1038/sdata.2016.18">FAIR Guiding Principles — Wilkinson et al. 2016, Scientific Data<span class="desc">public · registered</span></a>
+                  <a href="https://datalab.noirlab.edu/tap/sync">NOIRLab Astro Data Lab (TAP)<span class="desc">DES DR2, DESI DR1/EDR — engine/astra/surveys/des.py, desi.py</span></a>
+                  <a href="https://data.lsst.cloud/api/tap">Rubin/LSST Science Platform TAP<span class="desc">credential-gated, dormant — engine/astra/surveys/rubin_tap.py</span></a>
+                  <a href="http://asassn-lb01.ifa.hawaii.edu:9006/lookup_cone/">ASAS-SN Sky Patrol<span class="desc">engine/astra/surveys/asassn.py</span></a>
+                  <a href="https://mast.stsci.edu/api/v0/invoke">MAST CAOM (HST/JWST)<span class="desc">engine/astra/surveys/_mast_caom.py</span></a>
+                  <a href="https://mast.stsci.edu/tesscut/api/v0.1/astrocut">MAST TESSCut / Astrocut<span class="desc">engine/astra/tess_pixels.py</span></a>
+                  <a href="https://ps1images.stsci.edu/cgi-bin/">PS1 image cutouts<span class="desc">engine/astra/strong_lens_imaging.py</span></a>
+                  <a href="https://api.adsabs.harvard.edu/v1/search/query">NASA ADS API<span class="desc">Literature corroboration — engine/astra/literature.py</span></a>
+                  <a href="https://export.arxiv.org/api/query">arXiv API<span class="desc">Literature corroboration — engine/astra/literature.py</span></a>
+                  <a href="https://cdsarc.cds.unistra.fr/ftp/J/A+A/664/A174/">Vergely, Lallement &amp; Cox 2022 dust cubes (CDSARC)<span class="desc">engine/astra/dust_3d.py</span></a>
+                  <a href="https://doi.org/10.11570/25.0066">CHIME/FRB Catalog 2 (CADC/CANFAR)<span class="desc">engine/astra/frb.py</span></a>
+                </div>
+              </div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Methods and algorithms">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Methods &amp; algorithms</div>
+            <h2>~90 papers, cited where they're used</h2>
+            <p class="section-lede">Grouped by domain; every entry names the source file its citation lives in.</p>
+          </div>
+
+          <div class="faq-list">
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="m-a-1"><span>Transients &amp; explosive astrophysics</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="m-a-1"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://arxiv.org/abs/1710.11576">Villar et al. 2017, ApJL 851, L21<span class="desc">Kilonova multi-component light-curve model — engine/astra/kilonova.py</span></a>
+                  <a href="https://arxiv.org/abs/1605.07218">Barnes et al. 2016<span class="desc">r-process thermalization efficiency — engine/astra/kilonova.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Oke+Gunn+1983+secondary+standard+stars">Oke &amp; Gunn 1983<span class="desc">AB magnitude zero point — engine/astra/kilonova.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Bazin+2009+A%26A+499+653">Bazin et al. 2009, A&amp;A 499, 653<span class="desc">Parametric SN rise/decay model — engine/astra/sn_classification.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Kelly+2009+ApJ+698+895">Kelly et al. 2009, ApJ 698, 895<span class="desc">AGN damped random walk — engine/astra/agn_changepoint.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=MacLeod+2010+ApJ+721+1014">MacLeod et al. 2010, ApJ 721, 1014<span class="desc">DRW parameterisation — engine/astra/agn_changepoint.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Rees+1988+Nature+333+tidal+disruption">Rees 1988, Nature 333<span class="desc">TDE fallback-accretion power law — engine/astra/agn_changepoint.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=van+Velzen+2019+ApJ+872+198">van Velzen et al. 2019, ApJ 872, 198<span class="desc">Empirical TDE models — engine/astra/agn_changepoint.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Gaskell+Peterson+1987+ApJ+314+738">Gaskell &amp; Peterson 1987, ApJ 314, 738<span class="desc">Interpolated cross-correlation — engine/astra/reverberation.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Peterson+1998+PASP+110+660">Peterson et al. 1998, PASP 110, 660<span class="desc">Centroid correlation convention — engine/astra/reverberation.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Peterson+2004+ApJ+613+682">Peterson et al. 2004, ApJ 613, 682<span class="desc">FR/RSS lag uncertainty — engine/astra/reverberation.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Gagliano+2021+PATH+host+association">Gagliano et al. 2021 (PATH)<span class="desc">Probabilistic host association — engine/astra/host_association.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Schechter+1976+ApJ+203+297">Schechter 1976, ApJ 203, 297<span class="desc">Galaxy luminosity function prior — engine/astra/host_association.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Blanton+2003+ApJ+592+819">Blanton et al. 2003, ApJ 592, 819<span class="desc">SDSS Schechter parameters — engine/astra/host_association.py</span></a>
+                </div>
+              </div></div>
+            </div>
+
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="m-a-2"><span>Stellar variability, flares &amp; asteroseismology</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="m-a-2"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Davenport+2014+ApJ+797+122">Davenport et al. 2014, ApJ 797, 122<span class="desc">Empirical flare template — engine/astra/flare.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Gershberg+1972+flare+equivalent+duration">Gershberg 1972<span class="desc">Equivalent duration definition — engine/astra/flare.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Hawley+2014+flare+energy+GJ+1243">Hawley et al. 2014<span class="desc">Flux-excess flare energy — engine/astra/flare_energy.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Chang+2015+flare+detection+Kepler">Chang et al. 2015<span class="desc">Flare detection heuristic — engine/astra/flare.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Kjeldsen+Bedding+1995+A%26A+293+87">Kjeldsen &amp; Bedding 1995, A&amp;A 293, 87<span class="desc">Asteroseismic scaling relations — engine/astra/asteroseismology.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Chaplin+Miglio+2013+ARA%26A+51+353">Chaplin &amp; Miglio 2013, ARA&amp;A 51, 353<span class="desc">Direct-method inversion — engine/astra/asteroseismology.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Huber+2011+ApJ+743+143">Huber et al. 2011, ApJ 743, 143<span class="desc">Solar reference numax — engine/astra/asteroseismology.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Mosser+2012+A%26A+537+A30">Mosser et al. 2012, A&amp;A 537, A30<span class="desc">Oscillation-envelope FWHM scaling — engine/astra/asteroseismology.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Stello+2009+MNRAS+400+L80">Stello et al. 2009, MNRAS 400, L80<span class="desc">Δν–numax relation — engine/astra/asteroseismology.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Viani+2019+asteroseismology+autocorrelation">Viani et al. 2019<span class="desc">2-D autocorrelation Δν method, noted alternative — engine/astra/asteroseismology.py</span></a>
+                  <a href="https://arxiv.org/abs/1603.05661">Sharma et al. 2016<span class="desc">Δν correction factors — explicitly not applied, see docs/LIMITATIONS.md</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Pecaut+Mamajek+2013+ApJS+208+9">Pecaut &amp; Mamajek 2013, ApJS 208, 9<span class="desc">ZAMS colour/Teff track — engine/astra/stellar_manifold.py</span></a>
+                  <a href="https://vizier.cds.unistra.fr/viz-bin/VizieR?-source=J/ApJ/709/535">Brown et al., VizieR J/ApJ/709/535<span class="desc">Eclipsing-binary mass/radius cross-check — engine/astra/eclipsing_binary_dimensions.py</span></a>
+                </div>
+              </div></div>
+            </div>
+
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="m-a-3"><span>Exoplanets, transits, habitability &amp; biosignatures</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="m-a-3"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Kopparapu+2013+ApJ+765+131">Kopparapu et al. 2013, ApJ 765, 131 + erratum ApJ 770, 82<span class="desc">Habitable-zone boundaries — engine/astra/habitability.py</span></a>
+                  <a href="https://doi.org/10.1089/ast.2010.0592">Schulze-Makuch et al. 2011, Astrobiology 11, 1041<span class="desc">Earth Similarity Index — engine/astra/habitability.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Williams+Pollard+2002+eccentric+habitable">Williams &amp; Pollard 2002<span class="desc">Orbit-averaged flux — engine/astra/habitability.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Agol+2002+ApJ+580+L171">Agol 2002, ApJ 580, L171<span class="desc">Transit-timing-variation formalism — engine/astra/transit_ttv.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Kopal+1950+limb+darkening">Kopal 1950<span class="desc">Quadratic limb-darkening law — engine/astra/transit_ttv.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Winn+2010+transits+exoplanets+review">Winn 2010<span class="desc">Sky-projected transit geometry — engine/astra/transit_ttv.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Thompson+2018+ApJS+235+38">Thompson et al. 2018, ApJS 235, 38<span class="desc">Kepler Robovetter analogue — engine/astra/transit_vetting.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Lecavelier+des+Etangs+2008+A%26A+481+L83">Lecavelier des Etangs et al. 2008, A&amp;A 481, L83<span class="desc">Transmission-spectrum scale height — engine/astra/biosignature.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Rackham+2018+transmission+spectra+contamination">Rackham et al. 2018<span class="desc">Stellar-contamination systematic — engine/astra/biosignature.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Krissansen-Totton+2018+biosignature+disequilibrium">Krissansen-Totton et al. 2018<span class="desc">Biosignature disequilibrium framing — engine/astra/biosignature_fit.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Lovelock+1965+Nature+atmosphere+life">Lovelock 1965<span class="desc">Atmospheric-disequilibrium argument — engine/astra/biosignature_fit.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Kass+Raftery+1995+Bayes+factors">Kass &amp; Raftery 1995<span class="desc">ΔBIC evidence threshold — engine/astra/biosignature_fit.py</span></a>
+                </div>
+              </div></div>
+            </div>
+
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="m-a-4"><span>Microlensing, solar system, SETI &amp; radio</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="m-a-4"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Paczynski+1986+gravitational+microlensing">Paczynski 1986<span class="desc">Point-lens magnification curve — engine/astra/microlensing.py</span></a>
+                  <a href="https://arxiv.org/abs/2607.04955">Ren &amp; Zhu 2026 (CausticFlow)<span class="desc">Neural posterior estimation, design justification — engine/astra/microlensing_fit.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Talts+simulation-based+calibration">Talts et al. (SBC)<span class="desc">Simulation-based calibration — engine/astra/microlensing_eval.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Bowell+1989+Asteroids+II+phase+function">Bowell et al. 1989, Asteroids II<span class="desc">H–G phase function — engine/astra/neo_hazard.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Fowler+Chillemi+1992+IRAS+asteroid+diameters">Fowler &amp; Chillemi 1992 (IRAS)<span class="desc">Diameter–albedo relation — engine/astra/neo_hazard.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Harris+Harris+1997+asteroid+albedo">Harris &amp; Harris 1997<span class="desc">Albedo/diameter literature — engine/astra/neo_hazard.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Enriquez+2017+ApJ+849+104">Enriquez et al. 2017, ApJ 849, 104<span class="desc">Breakthrough Listen drift-rate grid — engine/astra/technosignature.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Taylor+1974+A%26AS+15+367">Taylor 1974, A&amp;AS 15, 367<span class="desc">Taylor tree de-doppler — noted, not implemented — engine/astra/technosignature.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Price+2020+Breakthrough+Listen+cadence">Price et al. 2020<span class="desc">ON/OFF cadence convention — engine/astra/technosignature.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Lebofsky+2019+PASP+131+064505">Lebofsky et al. 2019, PASP 131, 064505<span class="desc">Breakthrough Listen data product — engine/astra/technosignature.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Bhat+2004+ApJ+605+759">Bhat et al. 2004, ApJ 605, 759<span class="desc">Pulse-broadening/scattering relation — engine/astra/radio_variability.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Rickett+1998+ARA%26A+scintillation">Rickett 1998<span class="desc">Scintillation thin-screen constant — engine/astra/radio_variability.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Rybicki+Lightman+Radiative+Processes+in+Astrophysics">Rybicki &amp; Lightman 1979, ch. 6<span class="desc">Brightness-temperature limits — engine/astra/radio_variability.py</span></a>
+                  <a href="https://vizier.cds.unistra.fr/viz-bin/VizieR?-source=J/ApJ/728/104">Santos et al. 2011, ApJ 728, 104<span class="desc">Optical polarization catalogue — engine/astra/polarization_features.py</span></a>
+                  <a href="https://vizier.cds.unistra.fr/viz-bin/VizieR?-source=J/MNRAS/405/2570">Bailey, Lucas &amp; Hough 2010, MNRAS 405, 2570<span class="desc">Secondary polarimetry catalogue — engine/astra/polarization_features.py</span></a>
+                  <a href="https://vizier.cds.unistra.fr/viz-bin/VizieR?-source=J/ApJ/702/1230">Taylor, Stil &amp; Sunstrum 2009, ApJ 702, 1230<span class="desc">NVSS rotation-measure catalogue — engine/astra/polarization_features.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Xu+Han+2014+RAA+14+942">Xu &amp; Han 2014, RAA 14, 942<span class="desc">RM catalogue columns — engine/astra/polarization_features.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Serkowski+1958+polarization+wavelength">Serkowski 1958<span class="desc">Polarization wavelength dependence — engine/astra/polarization_features.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Wardle+Kronberg+1974+ApJ+194+249">Wardle &amp; Kronberg 1974, ApJ 194, 249<span class="desc">Depolarization/RM formalism — engine/astra/polarization_features.py</span></a>
+                </div>
+              </div></div>
+            </div>
+
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="m-a-5"><span>Cosmology: lensing, dust, photo-z &amp; SED</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="m-a-5"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Kormann+Schneider+Bartelmann+1994+A%26A+284+285">Kormann, Schneider &amp; Bartelmann 1994, A&amp;A 284, 285<span class="desc">SIE deflection closed form — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Refsdal+1964+MNRAS+128+307">Refsdal 1964, MNRAS 128, 307<span class="desc">Fermat potential / time delay — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Treu+Marshall+2016+A%26ARv+24+11">Treu &amp; Marshall 2016, A&amp;ARv 24, 11<span class="desc">Time-delay cosmography — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Mao+Schneider+1998+MNRAS+295+587">Mao &amp; Schneider 1998, MNRAS 295, 587<span class="desc">Substructure flux-ratio anomalies — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Dalal+Kochanek+2002+ApJ+572+25">Dalal &amp; Kochanek 2002, ApJ 572, 25<span class="desc">Substructure lensing — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Kochanek+2006+Saas-Fee+strong+lensing">Kochanek 2006, Saas-Fee lectures<span class="desc">Single-galaxy lens modelling — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Schneider+Ehlers+Falco+Gravitational+Lenses+1992">Schneider, Ehlers &amp; Falco 1992, ch. 8<span class="desc">External shear conventions — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Grespan+2024+A%26A+688+A34">Grespan et al. 2024, A&amp;A 688, A34<span class="desc">KiDS DR4 strong-lens cross-match — engine/astra/strong_lens.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Hildebrandt+2017+MNRAS+465+1454">Hildebrandt et al. 2017, MNRAS 465, 1454<span class="desc">KiDS-450 weak-lensing catalogue — engine/astra/weak_lensing.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Heymans+2006+MNRAS+368+1323">Heymans et al. 2006, MNRAS 368, 1323 (STEP1)<span class="desc">Shear-measurement calibration — engine/astra/weak_lensing.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Mandelbaum+2018+ARA%26A+56+393">Mandelbaum 2018, ARA&amp;A 56, 393<span class="desc">Stacked tangential-shear profile — engine/astra/weak_lensing.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Wright+Brainerd+2000+ApJ+534+34">Wright &amp; Brainerd 2000, ApJ 534, 34<span class="desc">Projected NFW profile — engine/astra/weak_lensing.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Navarro+Frenk+White+1997+ApJ+490">Navarro, Frenk &amp; White 1997, ApJ 490<span class="desc">NFW halo profile — engine/astra/weak_lensing.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Vergely+Lallement+Cox+2022+A%26A+664+A174">Vergely, Lallement &amp; Cox 2022, A&amp;A 664, A174<span class="desc">Gaia–2MASS 3D dust map — engine/astra/dust_3d.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Bailer-Jones+2018+AJ+156+58">Bailer-Jones et al. 2018, AJ 156, 58<span class="desc">Distance prior — engine/astra/dust_3d.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Csabai+photometric+redshift+SDSS">Csabai et al.<span class="desc">kNN photometric-redshift regression — engine/astra/photo_z.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Noll+2009+A%26A+507+1793">Noll et al. 2009, A&amp;A 507, 1793 (CIGALE)<span class="desc">Energy-balance SED principle — engine/astra/sed_energy_balance.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=da+Cunha+2008+MNRAS+388+1595">da Cunha et al. 2008, MNRAS 388, 1595 (MAGPHYS)<span class="desc">Energy-balance SED principle — engine/astra/sed_energy_balance.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Cohen+Wheaton+Megeath+2003+AJ+126+1090">Cohen, Wheaton &amp; Megeath 2003, AJ 126, 1090<span class="desc">2MASS zero points — engine/astra/sed_energy_balance.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Wright+2010+AJ+140+1868">Wright et al. 2010, AJ 140, 1868<span class="desc">WISE zero points — engine/astra/sed_energy_balance.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Jarrett+2011+ApJ+735+112">Jarrett et al. 2011, ApJ 735, 112<span class="desc">WISE W1–W4 zero points — engine/astra/sed_energy_balance.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Olivero+Longbothum+1977+Voigt+profile">Olivero &amp; Longbothum 1977<span class="desc">Voigt pseudo-profile — engine/astra/line_profile.py</span></a>
+                </div>
+              </div></div>
+            </div>
+
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="m-a-6"><span>Machine learning, statistics &amp; cryptography</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="m-a-6"><div class="faq-a-inner">
+                <div class="doc-index">
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Ho+2020+denoising+diffusion+probabilistic+models">Ho et al. 2020, "Denoising Diffusion Probabilistic Models"<span class="desc">Morphology-patch generation — engine/astra/diffusion.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=He+2019+momentum+contrast+unsupervised">He et al. 2019, "Momentum Contrast" (MoCo)<span class="desc">Multimodal contrastive pretraining — engine/astra/multimodal_moco.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Rubanova+2019+latent+ODE+irregular+time+series">Rubanova et al. 2019 (ODE-RNN / Latent ODE)<span class="desc">Irregular-sampling continuous-time model — engine/astra/models.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Vovk+Gammerman+Shafer+Algorithmic+Learning+in+a+Random+World">Vovk, Gammerman &amp; Shafer 2005, ch. 2<span class="desc">Split-conformal p-value formula — engine/astra/conformal.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=El-Yaniv+Wiener+2010+selective+classification">El-Yaniv &amp; Wiener 2010<span class="desc">Selective-risk curve — engine/astra/conformal.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Laxhammar+Falkman+2010+conformal+prediction+anomaly">Laxhammar &amp; Falkman 2010<span class="desc">Conformal prediction for anomaly detection — engine/astra/conformal.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Zechmeister+Kurster+2009+generalised+Lomb-Scargle">Zechmeister &amp; Kürster 2009<span class="desc">Generalised Lomb-Scargle — engine/astra/gpu_periodogram.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Press+Rybicki+1989+fast+Lomb-Scargle">Press &amp; Rybicki / Ruiz-Antolín &amp; Townsend<span class="desc">Fast O[N log M] periodogram — engine/astra/gpu_periodogram.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Sun+Saenko+2016+CORAL+domain+adaptation">Sun &amp; Saenko 2016 (CORAL)<span class="desc">Correlation-alignment domain adaptation — engine/astra/artifact_bank.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=McMahan+2017+federated+averaging">McMahan et al. 2017 (FedAvg)<span class="desc">Federated averaging — engine/astra/federated_training.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Bonawitz+2017+secure+aggregation">Bonawitz et al. 2017<span class="desc">Secure-aggregation additive masking — engine/astra/federated_training.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Baram+El-Yaniv+Luz+2004+online+choice+active+learning">Baram, El-Yaniv &amp; Luz 2004<span class="desc">Online acquisition-function selection — engine/astra/active_review.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Houlsby+2011+Bayesian+active+learning+disagreement">Houlsby, Huszár, Lengyel &amp; Ghahramani 2011 (BALD)<span class="desc">Bayesian active learning — engine/astra/information_gain.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Lindley+1956+information+experiment">Lindley 1956, Ann. Math. Stat.<span class="desc">Expected information gain — engine/astra/information_gain.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=MacKay+1992+information-based+objective+functions">MacKay 1992<span class="desc">Information-based objectives — engine/astra/information_gain.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Elkan+2001+cost-sensitive+learning">Elkan 2001<span class="desc">Cost-sensitive classification — engine/astra/ccd_attribution_eval.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Pearl+2009+Causality">Pearl 2009, Causality<span class="desc">Counterfactual framing — engine/astra/ccd_attribution.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Gelman+Hill+2007+multilevel+hierarchical+models">Gelman &amp; Hill 2007, ch. 12<span class="desc">Hierarchical rate model — engine/astra/population_rate.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Betancourt+Girolami+2015+hierarchical+models">Betancourt &amp; Girolami 2015<span class="desc">Non-centered parameterisation — engine/astra/population_rate.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Benjamini+Hochberg+1995+false+discovery+rate">Benjamini &amp; Hochberg 1995, JRSS-B 57(1) 289<span class="desc">False discovery rate control — research/stats.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Page+1954+continuous+inspection+schemes">Page 1954<span class="desc">CUSUM control chart — engine/astra/quality_drift.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Basseville+Nikiforov+1993+detection+abrupt+changes">Basseville &amp; Nikiforov 1993<span class="desc">Change-detection theory — engine/astra/quality_drift.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Bernstein+2012+high-speed+high-security+signatures">Bernstein, Duif, Lange, Schwabe &amp; Yang 2012<span class="desc">Ed25519 signing — engine/astra/reproducibility_bundle.py</span></a>
+                </div>
+              </div></div>
+            </div>
+
+            <div class="faq-item">
+              <button class="faq-q" aria-expanded="false" aria-controls="m-a-7"><span>Canonical papers for implemented-but-uncited methods</span><svg class="chev" width="16" height="16"><use href="#chev-icon"/></svg></button>
+              <div class="faq-a" id="m-a-7"><div class="faq-a-inner">
+                <p style="color: var(--color-muted); font-size: 0.85rem; margin: 0 0 0.75rem">These four are attributed by the project, not cited in the code itself — the algorithm is implemented, but no paper is named in its docstring.</p>
+                <div class="doc-index">
+                  <a href="https://arxiv.org/abs/0710.3742">Adams &amp; MacKay 2007, "Bayesian Online Changepoint Detection"<span class="desc">BOCPD — engine/astra/features.py, bocpd_gpu.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=VanderPlas+2018+ApJS+236+16+Lomb-Scargle">Lomb 1976 / Scargle 1982 / VanderPlas 2018, ApJS 236, 16 (review)<span class="desc">Lomb-Scargle periodogram core — engine/astra/features.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Liu+Ting+Zhou+2008+Isolation+Forest">Liu, Ting &amp; Zhou 2008, "Isolation Forest", ICDM<span class="desc">engine/astra/anomaly.py</span></a>
+                  <a href="https://ui.adsabs.harvard.edu/search/q=Scholkopf+2001+support+vector+method+novelty+detection">Schölkopf et al. 2001 / Breunig et al. 2000 (LOF)<span class="desc">One-Class SVM / LOF ensemble members — engine/astra/anomaly.py</span></a>
+                </div>
+              </div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Software">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Software</div>
+            <h2>The scientific stack</h2>
+            <p class="section-lede">Versions pinned in <span class="mono">engine/pyproject.toml</span> and <span class="mono">package.json</span>.</p>
+          </div>
+
+          <div class="survey-group reveal">
+            <h3>Python / scientific engine</h3>
+            <div class="chip-row">
+              <span class="chip">Astropy 8.0.1</span><span class="chip">Astroquery 0.4.11</span><span class="chip">Lightkurve 2.6.0</span><span class="chip">NumPy 2.5.2</span><span class="chip">SciPy 1.18.0</span><span class="chip">scikit-learn 1.9.0</span><span class="chip">Matplotlib 3.11.1</span><span class="chip">Plotly 6.9.0</span><span class="chip">Polars 1.43.2</span><span class="chip">PyArrow 25.0.1</span><span class="chip">DuckDB 1.5.5</span><span class="chip">Dask 2026.7.1</span><span class="chip">h5py 3.16.0</span><span class="chip">astropy-healpix 2.0.1</span><span class="chip">gwosc 0.8.3</span><span class="chip">photutils 3.0.0</span><span class="chip">PyVO</span><span class="chip">PyYAML 6.0.3</span><span class="chip">celerite2 0.3.3</span><span class="chip">emcee 3.1.6</span><span class="chip">VBMicrolensing 5.5</span><span class="chip">cryptography 50.0.1</span><span class="chip">PyTorch 2.13.0 (optional)</span><span class="chip">CuPy 14.1.1 (optional)</span>
+            </div>
+            <p class="section-lede" style="margin-top: 0.9rem; font-size: 0.82rem;">
+              <span class="mono">astropy-healpix</span> is used for GW sky-localization, not <span class="mono">healpy</span> — noted in <span class="mono">engine/pyproject.toml</span> as having no native Windows wheel.
+            </p>
+          </div>
+
+          <div class="survey-group reveal">
+            <h3>TypeScript / desktop UI</h3>
+            <div class="chip-row">
+              <span class="chip">Aladin Lite 3.9.0-beta</span><span class="chip">Plotly.js 3.1.0</span><span class="chip">D3 7.9.0</span><span class="chip">Three.js 0.180.0</span><span class="chip">React 19.1.0</span><span class="chip">Tauri 2</span>
+            </div>
+            <p class="section-lede" style="margin-top: 0.9rem; font-size: 0.82rem;">
+              Aladin Lite is built by <a href="https://aladin.cds.unistra.fr/AladinLite/">CDS, Strasbourg Observatory</a>. The desktop app's Content-Security-Policy allows outbound connections only to <span class="mono">*.cds.unistra.fr</span> / <span class="mono">*.u-strasbg.fr</span> (HiPS tiles, hips2fits, SIMBAD/VizieR name resolution) — CDS is the app's only external service dependency at runtime.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Citing ASTRA">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="eyebrow">Citing ASTRA</div>
+            <h2>Cite the release you used</h2>
+          </div>
+          <div class="doc-index">
+            <a href="https://github.com/Ranshiv/ASTRA/blob/master/CITATION.cff">CITATION.cff<span class="desc">How to cite ASTRA itself</span></a>
+            <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/REFERENCES.md">docs/REFERENCES.md<span class="desc">This page's source, in Markdown, with the same link convention</span></a>
+            <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/LICENCES_AND_CITATIONS.md">docs/LICENCES_AND_CITATIONS.md<span class="desc">Archive terms; cite the specific release used, e.g. "ZTF DR24"</span></a>
+            <a href="https://github.com/Ranshiv/ASTRA/blob/master/docs/DATA_SOURCES.md">docs/DATA_SOURCES.md<span class="desc">Retrieval procedure and how to read a source's status field</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>ASTRA — see <a href="https://github.com/Ranshiv/ASTRA/blob/master/CITATION.cff">CITATION.cff</a> for citing this work.</span>
+      <span class="footer-links">
+        <a href="https://github.com/Ranshiv/ASTRA">GitHub</a>
+        <a href="https://github.com/Ranshiv/ASTRA/blob/master/README.md">Documentation</a>
+        <a href="/references">References</a>
+        <a href="https://github.com/Ranshiv/ASTRA/issues">Issues</a>
+      </span>
+    </footer>
+
+    <script src="/astra.js?v=2026-09-02-7" defer></script>
+  </body>
+</html>

@@ -122,6 +122,9 @@ timestamp URL are supplied.
 - `docs/RESEARCH-INTEGRATION.md` — event packets, calibration, selection
   diagnostics, source-attribution priors, literature/event association,
   follow-up constraints, TAP/alert polling, and their RPC/UI boundaries.
+- `docs/REFERENCES.md` — every research paper, data archive, and software
+  library the project draws on, with links and file-level provenance; also
+  published at `/references` on the site.
 
 ---
 

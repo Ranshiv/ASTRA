@@ -7,6 +7,11 @@ step, no shared routing with the root `index.html`.
 ## Files
 
 - `index.html` — markup only.
+- `references.html` — the References page (`/references`): every research
+  paper, data archive, and software library the project draws on, sourced
+  from `docs/REFERENCES.md`. Reuses `astra.js`/CSS as-is; does not load
+  `hero-canvas.js` and omits `#nav-cta` (it never becomes visible without
+  `#hero-cta-anchor`, which only `index.html` has).
 - `base.css` — tokens (copied verbatim from `src/index.css`), fonts, the
   reset, and page chrome (starfield, nav, buttons).
 - `sections.css` — hero through the download panel: the main content blocks.
