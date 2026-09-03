@@ -15,6 +15,13 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+// https://learn.microsoft.com/windows/win32/procthread/process-creation-flags
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -129,6 +136,8 @@ impl Engine {
             .args(&args)
             .env("PYTHONUNBUFFERED", "1")
             .env("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True");
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
         if !bundled {
             command
                 .env("PYTHONPATH", project_root.join("engine"))
