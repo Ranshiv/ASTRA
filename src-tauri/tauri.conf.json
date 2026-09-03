@@ -31,7 +31,11 @@
     "active": true,
     "targets": ["nsis"],
     "windows": {
-      "webviewInstallMode": { "type": "offlineInstaller" }
+      "webviewInstallMode": { "type": "offlineInstaller" },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
     },
     "icon": [
       "icons/32x32.png",
