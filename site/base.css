@@ -421,6 +421,8 @@ nav#site-nav.scrolled {
 }
 
 .cta-row > * {
-  margin: 0 0.425rem; /* not flex `gap` — see .status-line */
+  margin: 0.425rem; /* not flex `gap` — see .status-line. Both axes: this row
+  wraps to a vertical stack on narrow viewports, and a horizontal-only
+  margin left zero gap between the stacked buttons. */
 }
 
