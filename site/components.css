@@ -189,7 +189,7 @@ footer a:hover {
   color: var(--color-text);
 }
 
-.footer-links a {
+.footer-links a + a {
   margin-left: 1rem;
 }
 

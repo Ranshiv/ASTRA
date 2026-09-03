@@ -11,11 +11,11 @@
     />
     <link rel="preload" href="/fonts/roboto-var.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/roboto-mono-400.woff2" as="font" type="font/woff2" crossorigin />
-    <script src="/theme-boot.js?v=2026-09-02-3"></script>
-    <link rel="stylesheet" href="/base.css?v=2026-09-02-3" />
-    <link rel="stylesheet" href="/sections.css?v=2026-09-02-3" />
-    <link rel="stylesheet" href="/components.css?v=2026-09-02-3" />
-    <link rel="stylesheet" href="/motion.css?v=2026-09-02-3" />
+    <script src="/theme-boot.js?v=2026-09-02-4"></script>
+    <link rel="stylesheet" href="/base.css?v=2026-09-02-4" />
+    <link rel="stylesheet" href="/sections.css?v=2026-09-02-4" />
+    <link rel="stylesheet" href="/components.css?v=2026-09-02-4" />
+    <link rel="stylesheet" href="/motion.css?v=2026-09-02-4" />
   </head>
   <body>
     <div class="starfield" aria-hidden="true">
@@ -122,14 +122,14 @@
 
           <div class="schematic-wrap reveal" id="premise-schematic">
             <div class="schematic-scroll">
-            <svg viewBox="0 0 700 260" role="img" aria-labelledby="schematic-title schematic-desc" style="width:100%;height:auto;">
+            <svg viewBox="0 0 380 260" role="img" aria-labelledby="schematic-title schematic-desc" style="width:100%;height:auto;">
               <title id="schematic-title">Cross-survey corroboration schematic</title>
               <desc id="schematic-desc">A stylised diagram, not application output. Five survey nodes — ZTF, Gaia, TESS, SDSS, Pan-STARRS — each draw an arc toward a shared candidate node. Once two arcs land, the candidate flips from a muted grey "claim" state to a vermilion "evidence" state with an expanding ring.</desc>
 
               <!-- Survey nodes. Labels sit to the LEFT of each dot: the arcs
                    leave the dots rightward with a horizontal tangent, so a
                    right-hand label would be struck through by its own arc. -->
-              <g class="mono" font-size="12" fill="var(--color-muted)">
+              <g class="mono" font-size="13" fill="var(--color-muted)">
                 <text x="138" y="44" text-anchor="end">ZTF</text>
                 <circle cx="152" cy="40" r="5" fill="var(--color-muted)" />
 
@@ -146,18 +146,18 @@
                 <circle cx="152" cy="232" r="5" fill="var(--color-muted)" />
               </g>
 
-              <!-- arcs into the candidate at ~(500,130) -->
-              <path class="draw-path" d="M159,40 C 260,40 380,80 492,124" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
-              <path class="draw-path" d="M159,88 C 260,88 380,106 492,127" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
-              <path class="draw-path" d="M159,136 C 260,136 380,133 492,130" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
-              <path class="draw-path" d="M159,184 C 260,184 380,160 492,133" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
-              <path class="draw-path" d="M159,232 C 260,232 380,186 492,136" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <!-- arcs into the candidate at ~(310,130) -->
+              <path class="draw-path" d="M159,40 C 201,40 251,80 298,124" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,88 C 201,88 251,106 298,127" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,136 C 201,136 251,133 298,130" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,184 C 201,184 251,160 298,133" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
+              <path class="draw-path" d="M159,232 C 201,232 251,186 298,136" fill="none" stroke="var(--color-accent)" stroke-width="1.75" />
 
               <!-- candidate node -->
-              <circle class="focal-ring" cx="500" cy="130" r="34" fill="none" stroke="var(--color-accent)" stroke-width="1.5" />
-              <circle class="node-pulse" cx="500" cy="130" r="9" fill="var(--color-muted)" />
-              <text x="500" y="176" text-anchor="middle" class="mono" font-size="12" fill="var(--color-text)">candidate</text>
-              <text x="500" y="192" text-anchor="middle" class="mono" font-size="10" fill="var(--color-muted)">claim → evidence</text>
+              <circle class="focal-ring" cx="310" cy="130" r="34" fill="none" stroke="var(--color-accent)" stroke-width="1.5" />
+              <circle class="node-pulse" cx="310" cy="130" r="9" fill="var(--color-muted)" />
+              <text x="310" y="176" text-anchor="middle" class="mono" font-size="13" fill="var(--color-text)">candidate</text>
+              <text x="310" y="192" text-anchor="middle" class="mono" font-size="11" fill="var(--color-muted)">claim → evidence</text>
             </svg>
             </div>
             <p class="schematic-caption">
@@ -476,7 +476,7 @@ keywords: astronomy, anomaly-detection, cross-survey,
       </span>
     </footer>
 
-    <script src="/hero-canvas.js?v=2026-09-02-3" defer></script>
-    <script src="/astra.js?v=2026-09-02-3" defer></script>
+    <script src="/hero-canvas.js?v=2026-09-02-4" defer></script>
+    <script src="/astra.js?v=2026-09-02-4" defer></script>
   </body>
 </html>

@@ -114,18 +114,20 @@
   padding: 2rem;
 }
 
-/* The diagram's labels are set at fixed font sizes inside its own 700-unit
-   viewBox; scaling the whole SVG down to fit a narrow phone shrinks that
-   text below legibility (measured: ~6px tall at 390px viewport width).
-   Give it a floor close to its native size and let it scroll horizontally
-   below that, instead of shrinking further — same trade-off already made
-   for pre.cmds and the checksum block. */
+/* The diagram is deliberately compact (a 380-unit viewBox, not the original
+   700) so it fits and stays legible without ever needing to scroll — a
+   min-width forcing legibility previously pushed the candidate node
+   (the whole point of the diagram) off the edge of narrow viewports,
+   hidden behind a horizontal scrollbar nobody was going to find.
+   overflow-x: auto stays only as a safety net for viewports narrower than
+   the diagram's own natural minimum, not as the primary mechanism. */
 .schematic-scroll {
   overflow-x: auto;
 }
 
 .schematic-scroll svg {
-  min-width: 640px;
+  max-width: 460px;
+  margin: 0 auto;
 }
 
 .schematic-caption {
