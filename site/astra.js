@@ -313,6 +313,7 @@
     var btn = document.getElementById("download-btn");
     var meta = document.getElementById("dl-meta");
     var checksumEl = document.getElementById("checksum");
+    var verifyBand = document.getElementById("verify");
     if (!dot || !text || !btn) return;
 
     function bytesToMiB(n) {
@@ -389,7 +390,7 @@
         }
 
         if (checksumAsset && checksumEl) {
-          checksumEl.hidden = false;
+          if (verifyBand) verifyBand.hidden = false;
           checksumEl.textContent =
             "# Verify after downloading (PowerShell)\n" +
             "Get-FileHash .\\" + exe.name + " -Algorithm SHA256\n" +

@@ -311,20 +311,34 @@
   background: var(--color-panel);
   border-radius: var(--radius-lg);
   padding: 2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+  gap: 2rem;
 }
 
-/* Deliberately NOT flexbox. This spacing broke twice under flex (`gap`
-   dropped silently with no fallback; a margin-based flex fix still put
-   the dot's position at the mercy of the flex layout algorithm) in a
-   renderer that clearly diverges from this file's own test browser.
-   Plain block flow removes the ambiguity: the dot is pulled OUT of flow
-   with `position: absolute` and pinned to a fixed offset, and the text's
-   left edge is fixed by `padding-left` on the block itself — a value the
-   text cannot start before, in any box model, flex or not. */
+.download-main {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .download-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Deliberately NOT flexbox (`gap` dropped silently with no fallback in a
+   renderer that clearly diverges from this file's own test browser; a
+   margin-based flex fix fared no better). NOT `vertical-align: middle`
+   either: for a childless inline-block (the dot has no content of its
+   own, so no line box), the spec has no real baseline to align *to* and
+   leaves it implementation-defined — it centred fine in one renderer and
+   badly overlapped the text in another. `position: absolute` with
+   `top: 50%; transform: translateY(-50%)` centres on the line's box
+   geometry directly, with no font baseline or line-box guesswork
+   involved, so it can't diverge between renderers the way the above did. */
 .status-line {
   position: relative;
-  padding-left: 22px;
-  min-height: 9px;
+  padding-left: 18px; /* dot width (10px) + gap (8px) */
   font-size: 0.88rem;
   color: var(--color-muted);
   margin-bottom: 1.25rem;
@@ -333,9 +347,12 @@
 .dot {
   position: absolute;
   left: 0;
-  top: 0.5em; /* sits on the first line's cap-height */
-  width: 9px;
-  height: 9px;
+  top: 50%;
+  /* -1px on top of the geometric centre: "Latest release v0.1.0" has no
+     descenders, so its ink sits above the box's true vertical centre. */
+  transform: translateY(calc(-50% - 1px));
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
   background: var(--color-muted);
 }
@@ -362,30 +379,42 @@
   margin-top: 0.35rem;
 }
 
-.checksum {
-  margin-top: 1rem;
-  background: var(--color-panel-2);
-  border: 1px solid var(--color-edge);
-  border-radius: var(--radius-sm);
-  padding: 0.8rem 1rem;
-  font-size: 0.8rem;
-  overflow-x: auto;
-  white-space: pre;
-  position: relative;
-}
-
 .requirements {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--color-edge);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
+  align-self: stretch;
+  align-content: start; /* the divider spans the row; the items stay top-aligned */
+  padding-left: 2rem;
+  border-left: 1px solid var(--color-edge);
   font-size: 0.82rem;
   color: var(--color-muted);
 }
 
-.requirements b {
+@media (max-width: 640px) {
+  .requirements {
+    /* stays one column — see the 860px rule in components.css */
+    padding: 1.5rem 0 0;
+    border-left: none;
+    border-top: 1px solid var(--color-edge);
+  }
+}
+
+/* Full-width footer band, so the checksum isn't squeezed into the
+   left column with a ragged void beside it. */
+.verify-band {
+  grid-column: 1 / -1;
+  min-width: 0; /* grid items default to min-width:auto — the pre would push the card wide */
+  margin-top: 0.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-edge);
+}
+
+.verify-head {
+  margin-bottom: 0.75rem;
+}
+
+.requirements b,
+.verify-head b {
   color: var(--color-text);
   display: block;
   font-size: 0.78rem;

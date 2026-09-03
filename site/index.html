@@ -303,15 +303,16 @@
             <h2>Get the Windows build</h2>
           </div>
           <div class="download-panel">
-            <div id="status" class="status-line">
-              <span class="dot pulse" id="status-dot"></span>
-              <span id="status-text">Checking for the latest release…</span>
+            <div class="download-main">
+              <div id="status" class="status-line">
+                <span class="dot pulse" id="status-dot"></span>
+                <span id="status-text">Checking for the latest release…</span>
+              </div>
+              <a id="download-btn" class="btn" href="https://github.com/Ranshiv/ASTRA/releases" aria-disabled="true">
+                Download for Windows
+              </a>
+              <div class="dl-meta mono" id="dl-meta"></div>
             </div>
-            <a id="download-btn" class="btn" href="https://github.com/Ranshiv/ASTRA/releases" aria-disabled="true">
-              Download for Windows
-            </a>
-            <div class="dl-meta mono" id="dl-meta"></div>
-            <div class="checksum mono" id="checksum" hidden></div>
 
             <div class="requirements">
               <div>
@@ -325,6 +326,17 @@
               <div>
                 <b>GPU models</b>
                 Build from source
+              </div>
+            </div>
+
+            <div class="verify-band" id="verify" hidden>
+              <div class="verify-head"><b>Verify your download</b></div>
+              <div class="code-block">
+                <pre class="cmds mono" id="checksum"></pre>
+                <button class="copy-btn" type="button" data-copy-target="checksum">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                  <span class="label">Copy</span>
+                </button>
               </div>
             </div>
           </div>
