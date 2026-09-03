@@ -80,6 +80,28 @@ a low/medium-traffic landing page. If that ever becomes a bottleneck, switch
 to a scheduled build that writes the release info into the HTML instead of
 fetching it client-side.
 
+## Analytics
+
+Both pages load two deferred scripts for Vercel's client-side telemetry:
+
+- `/_vercel/insights/script.js` — [Web Analytics](https://vercel.com/docs/analytics): visitor and page-view counts, no cookies.
+- `/_vercel/speed-insights/script.js` — [Speed Insights](https://vercel.com/docs/speed-insights): real-user Core Web Vitals.
+
+This site isn't a Next.js/framework project, so both use the plain-HTML
+script-tag integration rather than the `@vercel/analytics` /
+`@vercel/speed-insights` npm packages and their `<Analytics/>` /
+`<SpeedInsights/>` components (those need a build step this site
+deliberately doesn't have). Every script and its beacon endpoint
+(`/_vercel/insights/view`, `/_vercel/speed-insights/vitals`) is same-origin
+under Vercel's routing, so no `vercel.json` CSP change was needed —
+`script-src 'self'` and `connect-src 'self'` already permit them.
+
+**Both must also be turned on for this project** in the Vercel dashboard
+(Project → Analytics tab / Speed Insights tab → Enable) — the scripts
+alone don't activate collection. Per Vercel's own guidance, allow up to 30
+seconds and navigate between pages before expecting data to appear, and
+check for content blockers if it doesn't.
+
 ## Deploying
 
 This is its own Vercel project, deployed independently of the main app.
