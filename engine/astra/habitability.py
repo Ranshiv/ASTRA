@@ -358,6 +358,16 @@ def score(star: StellarParameters, planet: PlanetParameters, *,
     }
 
 
+def _catalog_luminosity_lsun(record: Any) -> float | None:
+    """The archive occasionally carries a zero or negative `st_lum` for a
+    record that otherwise has a usable Teff/radius (a placeholder, not a
+    real measurement) -- `StellarParameters` rejects a non-positive value
+    outright, so treat it the same as "not given" and let
+    `effective_luminosity_lsun()` derive L from Teff/radius instead."""
+    luminosity = record.st_luminosity_lsun
+    return luminosity if luminosity is not None and luminosity > 0 else None
+
+
 def score_archive_planet(planet_name: str, *, offline: bool = False, root=None) -> dict[str, Any]:
     """Score a named confirmed planet via `exoplanet_archive.query_confirmed_planets`."""
     from . import exoplanet_archive
@@ -370,7 +380,7 @@ def score_archive_planet(planet_name: str, *, offline: bool = False, root=None) 
     if record.st_teff_k is None or record.st_radius_rsun is None:
         raise HabitabilityError(f"{planet_name!r} is missing stellar Teff/radius; cannot score")
     star = StellarParameters(teff_k=record.st_teff_k, radius_rsun=record.st_radius_rsun,
-                             luminosity_lsun=record.st_luminosity_lsun)
+                             luminosity_lsun=_catalog_luminosity_lsun(record))
     planet = PlanetParameters(radius_rearth=record.radius_earth, mass_mearth=record.mass_earth,
                               semi_major_axis_au=record.semimajor_au,
                               eccentricity=record.eccentricity)
@@ -388,7 +398,7 @@ def rank_planets(records: list, *, limit: int = 50) -> list[dict[str, Any]]:
         if record.st_teff_k is None or record.st_radius_rsun is None:
             continue
         star = StellarParameters(teff_k=record.st_teff_k, radius_rsun=record.st_radius_rsun,
-                                 luminosity_lsun=record.st_luminosity_lsun)
+                                 luminosity_lsun=_catalog_luminosity_lsun(record))
         planet = PlanetParameters(radius_rearth=record.radius_earth, mass_mearth=record.mass_earth,
                                   semi_major_axis_au=record.semimajor_au,
                                   eccentricity=record.eccentricity)

@@ -42,6 +42,25 @@ function layoutBase(): Partial<Plotly.Layout> {
   };
 }
 
+/** `scattergl` needs a WebGL context. Where one isn't available (GPU
+ * acceleration off in the webview, no compatible driver, too many contexts
+ * already open), Plotly doesn't throw or fall back on its own -- it draws a
+ * "WebGL is not supported" placeholder *inside* the plot area, which our
+ * render() try/catch never sees because nothing actually failed. Checked
+ * once per module load rather than per render: a WebGL context, once
+ * unavailable, doesn't become available again mid-session. */
+let webglSupported: boolean | null = null;
+function supportsWebGL(): boolean {
+  if (webglSupported !== null) return webglSupported;
+  try {
+    const canvas = document.createElement("canvas");
+    webglSupported = !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch {
+    webglSupported = false;
+  }
+  return webglSupported;
+}
+
 function axisBase(): Partial<Plotly.LayoutAxis> {
   const edge = readThemeColor("--color-edge");
   return {
@@ -78,7 +97,7 @@ export function LightCurvePlot({
     const trace: Partial<Plotly.PlotData> = {
       x,
       y,
-      type: "scattergl",
+      type: supportsWebGL() ? "scattergl" : "scatter",
       mode: "markers",
       marker: { size: folded ? 3 : 4, color, opacity: 0.75 },
       hovertemplate: folded

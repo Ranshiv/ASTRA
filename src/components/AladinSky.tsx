@@ -64,15 +64,22 @@ export function AladinSky({
     document.getElementById(id)?.replaceChildren();
     overlay.current = null;
     setStatus("Loading sky map…");
-    let timedOut = false;
+    // This only decides what to show *while still waiting* -- a module +
+    // WASM init that finishes after the deadline still renders below,
+    // instead of being discarded as if it had failed. In dev the
+    // "aladin-lite" chunk loads from the Vite dev server's memory cache and
+    // clears this easily; in an installed build it's a bundled JS+WASM
+    // asset read from disk through Tauri's asset protocol (slower, and
+    // slower still under first-run antivirus scanning), which can genuinely
+    // take longer than a short deadline without the network being at fault.
     const timeout = window.setTimeout(() => {
-      timedOut = true;
       if (!disposed) setStatus("Sky map unavailable offline; coordinates are shown below.");
-    }, 1500);
+    }, 8000);
     void import("aladin-lite")
       .then(async ({ default: A }) => {
         await A.init;
-        if (disposed || timedOut) return;
+        if (disposed) return;
+        window.clearTimeout(timeout);
         api.current = A;
         aladin.current = A.aladin(`#${id}`, {
           target: `${ra} ${dec}`,
@@ -114,12 +121,11 @@ export function AladinSky({
           gridOpacity: 0.35,
           reticleColor: readThemeColor("--color-accent"),
         });
-        window.clearTimeout(timeout);
         setStatus("");
       })
       .catch(() => {
         window.clearTimeout(timeout);
-        if (!disposed && !timedOut) setStatus("Sky map unavailable offline; coordinates are shown below.");
+        if (!disposed) setStatus("Sky map unavailable offline; coordinates are shown below.");
       });
     return () => {
       disposed = true;

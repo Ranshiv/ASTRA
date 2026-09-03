@@ -22,6 +22,13 @@ import {
 } from "@/lib/engine";
 import { Badge, Button, Empty, Field, KeyValue, Note, Panel, Select, Table, num } from "@/components/ui";
 
+/** The engine's refusal is long and explanatory; treat it as prose, not an
+ * error. Mirrors ModelsView.tsx's isDeepUnavailable -- the transfer study
+ * trains real deep models too, so it hits the same CPU-only-build refusal. */
+function isDeepUnavailable(message: string): boolean {
+  return message.includes("PyTorch is not available in this build");
+}
+
 const SURVEY_OPTIONS = [
   { value: "ZTF", label: "ZTF" },
   { value: "TESS", label: "TESS" },
@@ -122,6 +129,7 @@ export function DigitalTwinPanel({ projectId: _projectId }: { projectId?: string
   const [transfer, setTransfer] = useState<DigitalTwinTransferResult | null>(null);
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferRefusal, setTransferRefusal] = useState<string | null>(null);
 
   const parsedLimit = Number(limit) || 500;
 
@@ -152,10 +160,16 @@ export function DigitalTwinPanel({ projectId: _projectId }: { projectId?: string
   async function evaluateTransfer() {
     setTransferBusy(true);
     setTransferError(null);
+    setTransferRefusal(null);
     try {
       setTransfer(await engine.digitalTwinEvaluateTransfer(survey, parsedLimit));
     } catch (err) {
-      setTransferError(String(err));
+      const message = String(err);
+      if (isDeepUnavailable(message)) {
+        setTransferRefusal(message);
+      } else {
+        setTransferError(message);
+      }
     } finally {
       setTransferBusy(false);
     }
@@ -227,7 +241,17 @@ export function DigitalTwinPanel({ projectId: _projectId }: { projectId?: string
         }
       >
         {transferError && <Note tone="bad">{transferError}</Note>}
-        {!transfer && !transferError && (
+
+        {transferRefusal && (
+          <div className="mt-2 rounded border border-[var(--color-accent)]/40 bg-[var(--color-accent)]/5 p-3">
+            <div className="mb-1 flex items-center gap-2">
+              <Badge tone="accent">CPU-only build</Badge>
+            </div>
+            <p className="text-xs leading-relaxed text-[var(--color-text)]">{transferRefusal}</p>
+          </div>
+        )}
+
+        {!transfer && !transferError && !transferRefusal && (
           <Empty>No transfer study run yet. This trains real models and can take a few minutes.</Empty>
         )}
         {transfer && <TransferPanel result={transfer} />}
