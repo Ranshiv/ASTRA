@@ -114,18 +114,24 @@
   padding: 2rem;
 }
 
-/* The diagram scales with its container (width: 100%, inline on the svg) at
-   every breakpoint, filling the full card on wide screens rather than
-   sitting small inside it. Its own viewBox is compact (380 units, not the
-   original 700) so that scaling DOWN on narrow phones still leaves the
-   labels legible instead of shrinking to ~6px — a fixed min-width was
-   tried instead and rejected: it forced horizontal scroll to see the rest,
-   hiding the candidate node (the whole point of the diagram) off the edge
-   of narrow viewports by default. overflow-x: auto stays only as a safety
-   net below the diagram's own natural minimum size, not the primary
-   mechanism. */
+/* The diagram scales with its container (width: 100%, inline on the svg),
+   capped by the max-width below so it stays a diagram-sized illustration
+   instead of ballooning to the full ~900px card width on wide screens.
+   Its own viewBox is compact (380 units, not the original 700) so that
+   scaling DOWN on narrow phones still leaves the labels legible instead
+   of shrinking to ~6px — a fixed min-width was tried instead and
+   rejected: it forced horizontal scroll to see the rest, hiding the
+   candidate node (the whole point of the diagram) off the edge of narrow
+   viewports by default. overflow-x: auto stays only as a safety net below
+   the diagram's own natural minimum size, not the primary mechanism. */
 .schematic-scroll {
   overflow-x: auto;
+}
+
+.schematic-scroll svg {
+  display: block;
+  max-width: 460px;
+  margin: 0 auto;
 }
 
 .schematic-caption {
