@@ -16,6 +16,7 @@ import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js
 
 import type { SpatialCandidatePoint } from "@/lib/engine";
 import { readThemeColorHexInt, useTheme } from "@/lib/theme";
+import { webglSupport } from "@/lib/webgl";
 
 /** Interactive 3D scatter of candidates by RA/Dec/Gaia distance.
  *
@@ -122,6 +123,15 @@ export function SpatialScene3D({
     ])
       .then(([THREE, { OrbitControls }]) => {
         if (disposed || !container) return;
+
+        // THREE.WebGLRenderer below throws when WebGL isn't usable; that
+        // failure lands in the .catch() further down, which historically
+        // reported it as "offline" regardless of cause. Checking first gives
+        // the actual reason (driver/webview, not network).
+        if (!webglSupport().webgl1) {
+          setStatus("3D view needs WebGL, which this system's graphics driver doesn't provide.");
+          return;
+        }
 
         const tones = toneColors();
         const voidColor = readThemeColorHexInt("--color-void");

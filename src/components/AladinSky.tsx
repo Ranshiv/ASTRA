@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { AladinCatalog, AladinInstance, AladinStatic } from "aladin-lite";
 
 import { readThemeColor, useTheme } from "@/lib/theme";
+import { webglSupport } from "@/lib/webgl";
 
 export interface SkyMarker {
   ra: number;
@@ -54,6 +55,15 @@ export function AladinSky({
       }
     } catch {
       setStatus("Sky map unavailable offline; coordinates are shown below.");
+      return () => { disposed = true; };
+    }
+    // aladin-lite is a WebGL2-only WASM renderer (its npm build script pins
+    // `--features webgl2`); it throws during A.init/A.aladin(...) below when
+    // WebGL2 isn't usable. That failure lands in the .catch() further down,
+    // which historically mislabeled it "offline" -- checking here instead
+    // gives the actual reason (driver/webview, not network).
+    if (!webglSupport().webgl2) {
+      setStatus("Sky map needs WebGL2, which this system's graphics driver doesn't provide; coordinates are shown below.");
       return () => { disposed = true; };
     }
     // A re-run for a theme change (see the [id, resolved] deps below) lands

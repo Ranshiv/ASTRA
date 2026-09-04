@@ -3,6 +3,7 @@ import type Plotly from "plotly.js-dist-min";
 
 import type { CurvePayload, FoldedCurve } from "@/lib/engine";
 import { readThemeColor, useTheme } from "@/lib/theme";
+import { webglSupport } from "@/lib/webgl";
 
 /** Band colours read from the theme tokens at render time rather than
  * hardcoded: they were already exact duplicates of --color-ok/-bad/-warn/
@@ -42,23 +43,12 @@ function layoutBase(): Partial<Plotly.Layout> {
   };
 }
 
-/** `scattergl` needs a WebGL context. Where one isn't available (GPU
- * acceleration off in the webview, no compatible driver, too many contexts
- * already open), Plotly doesn't throw or fall back on its own -- it draws a
- * "WebGL is not supported" placeholder *inside* the plot area, which our
- * render() try/catch never sees because nothing actually failed. Checked
- * once per module load rather than per render: a WebGL context, once
- * unavailable, doesn't become available again mid-session. */
-let webglSupported: boolean | null = null;
-function supportsWebGL(): boolean {
-  if (webglSupported !== null) return webglSupported;
-  try {
-    const canvas = document.createElement("canvas");
-    webglSupported = !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
-  } catch {
-    webglSupported = false;
-  }
-  return webglSupported;
+/** Plotly reports a failed WebGL/regl init only by drawing its own
+ * `div.no-webgl` placeholder into the plot container -- it neither throws nor
+ * rejects, so no try/catch or `.catch()` can see it. Detecting that element is
+ * the only reliable signal that `scattergl` silently gave up. */
+export function hasNoWebglPlaceholder(node: HTMLElement): boolean {
+  return !!node.querySelector(".no-webgl");
 }
 
 function axisBase(): Partial<Plotly.LayoutAxis> {
@@ -97,7 +87,12 @@ export function LightCurvePlot({
     const trace: Partial<Plotly.PlotData> = {
       x,
       y,
-      type: supportsWebGL() ? "scattergl" : "scatter",
+      // `scattergl` needs a real WebGL context (see src/lib/webgl.ts for why
+      // a naive getContext() probe isn't enough). Where WebGL isn't usable,
+      // Plotly doesn't throw or fall back on its own -- it draws a "WebGL is
+      // not supported" placeholder *inside* the plot area, which the
+      // render() try/catch below never sees because nothing actually failed.
+      type: webglSupport().webgl1 ? "scattergl" : "scatter",
       mode: "markers",
       marker: { size: folded ? 3 : 4, color, opacity: 0.75 },
       hovertemplate: folded
@@ -140,10 +135,28 @@ export function LightCurvePlot({
       },
     };
 
-      Plotly.react(container.current, [trace], layout, {
+      await Plotly.react(container.current, [trace], layout, {
       displayModeBar: false,
       responsive: true,
       });
+
+      // Last line of defence. `webglSupport()` above answers "can this machine
+      // make a WebGL context at all", which is not the same question as "will
+      // regl succeed in this document right now" -- in the packaged build the
+      // probe reports yes and regl still fails, so the grey placeholder gets
+      // drawn over real data. Plotly reports that failure only as DOM (see
+      // hasNoWebglPlaceholder), so detect it and redraw once through the SVG
+      // path, which needs no WebGL and always renders.
+      if (
+        !disposed && container.current
+        && trace.type === "scattergl"
+        && hasNoWebglPlaceholder(container.current)
+      ) {
+        await Plotly.react(container.current, [{ ...trace, type: "scatter" }], layout, {
+          displayModeBar: false,
+          responsive: true,
+        });
+      }
     };
     // Plotly's scattergl trace needs a WebGL context. Losing one (GPU driver
     // reset, too many contexts already open, an unavailable GPU) throws

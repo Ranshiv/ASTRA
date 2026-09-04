@@ -5,11 +5,12 @@
  * reports only whether a key is configured and usable, which is all the UI
  * needs to know and all it should be able to see.
  */
-import { Database, HardDrive, KeyRound, Trash2 } from "lucide-react";
+import { Database, HardDrive, KeyRound, Monitor, Trash2 } from "lucide-react";
 import { useState, type MouseEvent } from "react";
 
 import { engine } from "@/lib/engine";
 import { Badge, Button, Empty, Field, KeyValue, Note, Panel, StatTile, Table, num, useAction, useAsync } from "@/components/ui";
+import { webglSupport } from "@/lib/webgl";
 
 export function SettingsView() {
   const catalog = useAsync(() => engine.catalogStatus());
@@ -25,9 +26,11 @@ export function SettingsView() {
   const storage = useAction();
 
   const dataset = usage.data?.dataset;
+  const graphics = webglSupport();
 
   const SECTIONS = [
     { id: "settings-readiness", label: "Readiness" },
+    { id: "settings-graphics", label: "Graphics" },
     { id: "settings-tns", label: "TNS credentials" },
     { id: "settings-storage", label: "Storage" },
     { id: "settings-paths", label: "Engine paths" },
@@ -60,6 +63,20 @@ export function SettingsView() {
           <div className="rounded border border-[var(--color-edge)] p-2 text-xs"><p className="font-medium">Multimodal training</p><p className="mt-1 text-[var(--color-muted)]">{readiness.data.multimodal.status} · {readiness.data.multimodal.free_vram_mb ?? "—"} MB free</p></div>
           <div className="rounded border border-[var(--color-edge)] p-2 text-xs"><p className="font-medium">Production release</p><p className="mt-1 text-[var(--color-muted)]">{readiness.data.release.status}</p></div>
         </div> : <Empty>{readiness.error ?? "Checking readiness…"}</Empty>}
+      </Panel>
+
+      <Panel
+        icon={Monitor}
+        title={<span id="settings-graphics">Graphics</span>}
+        description="What the light curve plot, sky map and 3D view rely on. If any of those panels show a fallback message, check here first."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={graphics.webgl1 ? "ok" : "bad"}>WebGL1 {graphics.webgl1 ? "available" : "unavailable"}</Badge>
+          <Badge tone={graphics.webgl2 ? "ok" : "bad"}>WebGL2 {graphics.webgl2 ? "available" : "unavailable"}</Badge>
+          <span className="text-xs text-[var(--color-muted)]">
+            renderer: {graphics.renderer ?? "unknown"}
+          </span>
+        </div>
       </Panel>
 
       <Panel

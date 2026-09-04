@@ -20,11 +20,13 @@
         "resizable": true,
         "decorations": false,
         "visible": false,
-        "backgroundColor": "#0f131b"
+        "backgroundColor": "#0f131b",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --ignore-gpu-blocklist --enable-unsafe-swiftshader"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://*.cds.unistra.fr https://*.u-strasbg.fr; img-src 'self' asset: data: blob: https://*.cds.unistra.fr https://*.u-strasbg.fr; worker-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost data: https://*.unistra.fr https://*.u-strasbg.fr https://casda.csiro.au https://irsa.ipac.caltech.edu https://healpix.ias.u-psud.fr https://skies.esac.esa.int https://stpubdata.s3.us-east-1.amazonaws.com; img-src 'self' asset: data: blob: https://*.unistra.fr https://*.u-strasbg.fr; worker-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+      "dangerousDisableAssetCspModification": ["style-src"]
     }
   },
   "bundle": {
